@@ -1,0 +1,2 @@
+-- Datos semilla del módulo de Gestión de Tutorías Académicas ECCI.
+-- Pendiente de poblar con datos de prueba (usuarios, programas, materias, etc.).
