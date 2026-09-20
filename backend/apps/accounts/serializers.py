@@ -125,3 +125,33 @@ class TutorRegisterSerializer(serializers.ModelSerializer):
         user.groups.add(tutor)
 
         return user
+
+""" SERIALIZERS PARA REGISTRAR COORDINADORES"""
+class CoordinatorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'username',
+            'email',
+            'password',
+            'nombres',
+            'apellidos',
+            'documento',
+            'telefono',
+            'codigo_institucional',
+        ]
+        extra_kwargs = {
+            'password': {'write_only': True},
+        }
+
+    def create(self, validated_data):
+        User = get_user_model()
+
+        user = User.objects.create_user(
+            **validated_data
+        )
+
+        coordinador = Group.objects.get(name='Coordinador')
+        user.groups.add(coordinador)
+
+        return user
