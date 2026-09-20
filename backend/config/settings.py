@@ -41,7 +41,7 @@ BASE_APPS = [
 ]
 
 THIRD_PARTY_APPS = [
-
+    'import_export',
 ]
 
 LOCAL_APPS = [
@@ -91,6 +91,8 @@ DATABASES = POSTGRES
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
+
+AUTH_USER_MODEL = 'accounts.User'
 
 AUTH_PASSWORD_VALIDATORS = [
     {
