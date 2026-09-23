@@ -39,26 +39,155 @@ class RecoveryTokenView(views.APIView):
             status=status.HTTP_200_OK
         )
 
-""" API PARA REGISTRAR ESTUDIANTE"""
-class StudentRegisterView(views.APIView):
+""" API PARA CRUD ESTUDIANTE"""
+class StudentView(views.APIView):
+    def get(self, request, pk=None, format=None):
+        if pk:
+            user = get_user_model().objects.get(
+                pk=pk,
+                groups__name='Estudiante'
+            )
+            serializer = StudentRegisterSerializer(user)
+        else:
+            users = get_user_model().objects.filter(
+                groups__name='Estudiante'
+            )
+            serializer = StudentRegisterSerializer(users, many=True)
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
     def post(self, request, format=None):
         serializer = StudentRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-
         return Response(
             serializer.data,
             status=status.HTTP_201_CREATED
         )
+    def put(self, request, pk, format=None):
+        user = get_user_model().objects.get(
+            pk=pk,
+            groups__name='Estudiante'
+        )
+        serializer = StudentRegisterSerializer(
+            user,
+            data=request.data
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
+    def delete(self, request, pk, format=None):
+        user = get_user_model().objects.get(
+            pk=pk,
+            groups__name='Estudiante'
+        )
+        user.delete()
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
+        )
 
 """ API PARA REGISTRAR TUTORES/DOCENTE """
-class TutorRegisterView(views.APIView):
+class TutorView(views.APIView):
+    def get(self, request, pk=None, format=None):
+        if pk:
+            user = get_user_model().objects.get(
+                pk=pk,
+                groups__name='Docente'
+            )
+            serializer = TutorRegisterSerializer(user)
+        else:
+            users = get_user_model().objects.filter(
+                groups__name='Docente'
+            )
+            serializer = TutorRegisterSerializer(users, many=True)
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
     def post(self, request, format=None):
         serializer = TutorRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-
         return Response(
             serializer.data,
             status=status.HTTP_201_CREATED
+        )
+    def put(self, request, pk, format=None):
+        user = get_user_model().objects.get(
+            pk=pk,
+            groups__name='Docente'
+        )
+        serializer = TutorRegisterSerializer(
+            user,
+            data=request.data
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
+    def delete(self, request, pk, format=None):
+        user = get_user_model().objects.get(
+            pk=pk,
+            groups__name='Docente'
+        )
+        user.delete()
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+""" API PARA CRUD COORDINADORES"""
+class CoordinatorView(views.APIView):
+    def get(self, request, pk=None, format=None):
+        if pk:
+            user = get_user_model().objects.get(
+                pk=pk,
+                groups__name='Coordinador'
+            )
+            serializer = CoordinatorSerializer(user)
+        else:
+            users = get_user_model().objects.filter(
+                groups__name='Coordinador'
+            )
+            serializer = CoordinatorSerializer(users, many=True)
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
+    def post(self, request, format=None):
+        serializer = CoordinatorSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED
+        )
+    def put(self, request, pk, format=None):
+        user = get_user_model().objects.get(
+            pk=pk,
+            groups__name='Coordinador'
+        )
+        serializer = CoordinatorSerializer(
+            user,
+            data=request.data
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
+    def delete(self, request, pk, format=None):
+        user = get_user_model().objects.get(
+            pk=pk,
+            groups__name='Coordinador'
+        )
+        user.delete()
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
         )
