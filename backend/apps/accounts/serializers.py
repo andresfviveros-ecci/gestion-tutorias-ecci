@@ -6,6 +6,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.tokens import AccessToken
 import random
 from datetime import timedelta
+from django.contrib.auth.models import Group
 """ SERIALIZERS PARA VALIDAR INICIO DE SESION"""
 class LoginSerializers(serializers.Serializer):
     username = serializers.CharField()
@@ -68,3 +69,30 @@ class RecoveryTokenSerializer(serializers.Serializer):
         attrs['token'] = str(token)
 
         return attrs
+
+""" SERIALIZERS PARA REGISTRAR ESTUDIANTE """
+class StudentRegisterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'username',
+            'email',
+            'password',
+            'nombres',
+            'apellidos',
+            'documento',
+            'telefono',
+            'codigo_institucional',           
+        ]
+        extra_kwargs = {
+            'password': {'write_only': True},
+        }
+    def create(self, validated_data):
+        User = get_user_model()
+        user = User.objects.create_user(
+            **validated_data
+        )
+        estudiante = Group.objects.get(name='Estudiante')
+        user.groups.add(estudiante)
+        return user
+    

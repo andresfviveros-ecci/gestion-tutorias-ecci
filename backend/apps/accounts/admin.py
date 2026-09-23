@@ -18,9 +18,7 @@ class UserAdmin(ImportExportModelAdmin):
 
     filter_horizontal = ['groups']
 
-    def save_related(self, request, form, formsets, change):
-        super().save_related(request, form, formsets, change)
-
-        if not change and not form.instance.groups.exists():
-            estudiante = Group.objects.get(id=4)
-            form.instance.groups.add(estudiante)
+    def rol(self, obj):
+        return ', '.join(obj.groups.values_list('name', flat=True))
+    rol.short_description = 'Rol'
+   

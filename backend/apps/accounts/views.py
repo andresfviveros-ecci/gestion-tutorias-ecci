@@ -2,7 +2,7 @@ from rest_framework import status, views
 from rest_framework.response import Response
 from rest_framework import status, views
 from django.conf import settings
-from .serializers import LoginSerializers, RecoveryTokenSerializer
+from .serializers import *
 from django.core.mail import send_mail
 """ API PARA INICIAR SESION"""
 class LoginView(views.APIView):
@@ -37,4 +37,15 @@ class RecoveryTokenView(views.APIView):
         return Response(
             {'message': 'Se ha enviado el código de recuperación al correo.'},
             status=status.HTTP_200_OK
+        )
+
+class StudentRegisterView(views.APIView):
+    def post(self, request, format=None):
+        serializer = StudentRegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED
         )
