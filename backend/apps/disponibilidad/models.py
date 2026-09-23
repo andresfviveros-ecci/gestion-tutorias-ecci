@@ -1,7 +1,7 @@
 from django.db import models
 from django.conf import settings
-from backend.apps.disponibilidad.choices import MODALIDAD_CHOICES
-from backend.apps.models import BaseModel
+from .choices import MODALIDAD_CHOICES
+from apps.models import BaseModel
 
 class BloqueDisponibilidad(BaseModel):
     docente = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,related_name='disponibilidades')
