@@ -7,10 +7,10 @@ from .models import User
 @admin.register(User)
 class UserAdmin(ImportExportModelAdmin):
     list_display = [
-        'username','nombres','apellidos','email','documento','rol','is_active',
+        'username','nombres','apellidos','email','documento','is_active',
     ]
     list_filter = [
-        'rol','is_active','groups',
+        'is_active','groups',
     ]
     search_fields = [
         'username','nombres','apellidos','documento','email',
