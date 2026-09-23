@@ -39,9 +39,22 @@ class RecoveryTokenView(views.APIView):
             status=status.HTTP_200_OK
         )
 
+""" API PARA REGISTRAR ESTUDIANTE"""
 class StudentRegisterView(views.APIView):
     def post(self, request, format=None):
         serializer = StudentRegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED
+        )
+
+""" API PARA REGISTRAR TUTORES/DOCENTE """
+class TutorRegisterView(views.APIView):
+    def post(self, request, format=None):
+        serializer = TutorRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
