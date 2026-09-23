@@ -19,5 +19,22 @@ services:
       timeout: 5s
       retries: 5
 
+  # Inicio configuración Django
+  tutorias-django:
+    container_name: tutorias_ecci
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: bash -c "python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - ./backend:/backend
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+  # Fin configuración Django
+
 volumes:
   postgres_data:
