@@ -1,0 +1,413 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: #0d1b2a;
+  --paper: #f7f5ed;
+  --green: #1f7a5c;
+  --green-light: #a7f3d0;
+  --error: #ef4444;
+  --font-body: 'Montserrat', sans-serif;
+  --font-display: 'Fraunces', serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* LOADER SVG - ANIMACIÓN DE TRAZO REANIMABLE */
+.loader-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 27, 42, 0.98);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.loader-logo {
+  width: 320px;
+  height: 80px;
+  overflow: visible;
+}
+
+.loader-text {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 52px;
+  fill: transparent;
+  stroke: var(--paper);
+  stroke-width: 1.5px;
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: drawStrokeText 1.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes drawStrokeText {
+  0% {
+    stroke-dashoffset: 1000;
+    fill: transparent;
+  }
+  75% {
+    stroke-dashoffset: 0;
+    fill: transparent;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    fill: var(--paper);
+    stroke-width: 0px;
+  }
+}
+
+/* PERSONALIZACIÓN DE BARRAS DE DESPLAZAMIENTO SUAVES */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ESTRUCTURA DUAL RESPONSIVE */
+.container {
+  display: flex;
+  min-height: 440px;
+  width: 100%;
+}
+
+@media (max-width: 868px) {
+  .container {
+    flex-direction: column;
+    min-height: auto;
+  }
+}
+
+/* PANEL IZQUIERDO */
+.panel-left {
+  flex: 1.1;
+  background-color: var(--ink);
+  color: var(--paper);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2.5rem;
+  position: relative;
+  min-height: 200px;
+  overflow: hidden;
+}
+
+.panel-left-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 90%;
+  opacity: 0.22;
+  filter: grayscale(20%);
+  pointer-events: none;
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0) 80%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0) 80%);
+}
+
+.title-wrapper {
+  z-index: 2;
+  min-height: 3.5rem;
+}
+
+.typed-title {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.cursor {
+  display: inline-block;
+  margin-left: 4px;
+  color: var(--green-light);
+  animation: blink 0.8s infinite;
+}
+
+/* BENTO CONSOLE */
+.bento-console {
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.bento-card {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.bento-card:hover {
+  box-shadow: 0 8px 25px rgba(31, 122, 92, 0.15), inset 0 1px 0 rgba(167, 243, 208, 0.2);
+}
+
+/* PANEL DERECHO FORMULARIO */
+.panel-right {
+  flex: 1;
+  background-color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.form-card {
+  width: 100%;
+  max-width: 360px;
+}
+
+.form-view.hidden {
+  display: none;
+}
+
+.form-card h2 {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.6rem;
+  color: var(--ink);
+  margin-bottom: 0.2rem;
+}
+
+.subtitle {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 1.2rem;
+  line-height: 1.3;
+}
+
+/* STEPPER */
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.2rem;
+}
+
+.step-node {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.step-node.active {
+  background: var(--ink);
+  color: #ffffff;
+  border-color: var(--ink);
+}
+
+.step-node.completed {
+  background: var(--green);
+  color: #ffffff;
+  border-color: var(--green);
+}
+
+.step-line {
+  flex: 1;
+  height: 1px;
+  background: #e2e8f0;
+  max-width: 40px;
+  margin: 0 6px;
+  transition: background 0.3s ease;
+}
+
+.step-line.completed {
+  background: var(--green);
+}
+
+/* FLOATING LABELS */
+.floating-group {
+  position: relative;
+  margin-bottom: 0.9rem;
+}
+
+.floating-group input {
+  width: 100%;
+  height: 42px;
+  padding: 1rem 0.8rem 0.25rem 0.8rem;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background-color: #ffffff;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.floating-group label {
+  position: absolute;
+  left: 0.8rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.78rem;
+  color: #94a3b8;
+  pointer-events: none;
+  transition: all 0.2s ease;
+}
+
+.floating-group input:focus ~ label,
+.floating-group input:not(:placeholder-shown) ~ label {
+  top: 0.35rem;
+  transform: translateY(0);
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.floating-group input:focus ~ label {
+  color: var(--ink);
+}
+
+.floating-group input:focus {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px rgba(13, 27, 42, 0.1);
+}
+
+.floating-group input.input-error {
+  border-color: var(--error) !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15) !important;
+}
+
+.error-msg {
+  color: var(--error);
+  font-size: 0.68rem;
+  font-weight: 500;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+.req-item {
+  font-size: 0.68rem;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.req-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid #cbd5e1;
+  font-size: 0.5rem;
+  color: transparent;
+}
+
+.req-item.valid {
+  color: var(--green);
+}
+
+.req-item.valid .req-icon {
+  background-color: var(--green);
+  border-color: var(--green);
+  color: #ffffff;
+}
+
+.btn-submit {
+  width: 100%;
+  padding: 0.7rem;
+  background-color: var(--ink);
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-submit:hover:not(:disabled) {
+  background-color: #1b2a3a;
+}
+
+/* FULLCALENDAR RESPONSIVO */
+#calendario-section .fc {
+  font-family: var(--font-body) !important;
+  font-size: 0.72rem !important;
+  color: #f7f5ed !important;
+}
+
+#calendario-section .fc .fc-toolbar-title {
+  font-family: var(--font-display) !important;
+  font-style: italic !important;
+  color: #f7f5ed !important;
+  font-size: 1rem !important;
+}
+
+#calendario-section .fc .fc-button-primary {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f7f5ed !important;
+  font-size: 0.68rem !important;
+  padding: 0.25rem 0.5rem !important;
+  text-transform: capitalize !important;
+}
+
+#calendario-section .fc .fc-button-primary:hover {
+  background-color: var(--green) !important;
+  border-color: var(--green) !important;
+}
+
+#calendario-section .fc-theme-standard td,
+#calendario-section .fc-theme-standard th,
+#calendario-section .fc-theme-standard .fc-scrollgrid {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+#calendario-section .fc .fc-col-header-cell-cushion,
+#calendario-section .fc .fc-timegrid-axis-cushion,
+#calendario-section .fc .fc-timegrid-slot-label-cushion {
+  color: #cbd5e1 !important;
+}
+
+.fc-timegrid-slot {
+  height: 1.9rem !important;
+}
+
+.fc-event {
+  cursor: pointer !important;
+  border-radius: 3px !important;
+  padding: 1px 3px !important;
+  font-size: 0.68rem !important;
+  font-weight: 600 !important;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
