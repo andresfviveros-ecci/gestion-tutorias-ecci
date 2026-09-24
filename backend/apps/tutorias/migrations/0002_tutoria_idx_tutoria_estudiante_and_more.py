@@ -15,15 +15,15 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddIndex(
             model_name='tutoria',
-            index=models.Index(fields=['estudiante', 'estado'], name='idx_tutoria_estudiante'),
+            index=models.Index(fields=['estudiante', 'estado'], name='idx_tutoria_estudiante_v2'),
         ),
         migrations.AddIndex(
             model_name='tutoria',
-            index=models.Index(fields=['bloque'], name='idx_tutoria_bloque'),
+            index=models.Index(fields=['bloque'], name='idx_tutoria_bloque_v2'),
         ),
         migrations.AddConstraint(
             model_name='tutoria',
-            constraint=models.UniqueConstraint(condition=models.Q(('estado__in', ['RESERVADA', 'CONFIRMADA', 'EN_CURSO'])), fields=('bloque', 'estudiante'), name='ux_tutoria_activa'),
+            constraint=models.UniqueConstraint(condition=models.Q(('estado__in', ['RESERVADA', 'CONFIRMADA', 'EN_CURSO'])), fields=('bloque', 'estudiante'), name='ux_tutoria_activa_v2'),
         ),
         migrations.AddConstraint(
             model_name='tutoria',

@@ -5,6 +5,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import gsap from "gsap";
 import { useAuthStore } from "../store/useAuthStore";
+import { api } from "../api/axios";
+import axios from "axios";
 
 const loginSchema = z.object({
   email: z
@@ -28,6 +30,8 @@ export const Login: React.FC = () => {
   const [typedTitle, setTypedTitle] = useState("");
   const [authError, setAuthError] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
 
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -73,12 +77,12 @@ export const Login: React.FC = () => {
       gsap.fromTo(
         panelLeftRef.current,
         { x: -50, opacity: 0 },
-        { x: 0, opacity: 1, duration: 0.8, ease: "power2.out" },
+        { x: 0, opacity: 1, duration: 0.8, ease: "power2.out" }
       );
       gsap.fromTo(
         formCardRef.current,
         { y: 30, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.8, delay: 0.2, ease: "power2.out" },
+        { y: 0, opacity: 1, duration: 0.8, delay: 0.2, ease: "power2.out" }
       );
     });
 
@@ -94,22 +98,53 @@ export const Login: React.FC = () => {
     resolver: zodResolver(loginSchema),
   });
 
-  const onLoginSubmit = (data: LoginFormData) => {
-  setAuthError(false);
-  const loggedUser = login(data.email, data.password);
+  // INICIO DE SESIÓN CONECTADO AL BACKEND
+  const onLoginSubmit = async (data: LoginFormData) => {
+    setAuthError(false);
+    const loggedUser = await login(data.email, data.password);
 
-  if (loggedUser) {
-    triggerLoaderAndReset(() => {
-      if (loggedUser.role === 'admin') {
-        navigate('/dashboard');
+    if (loggedUser) {
+      triggerLoaderAndReset(() => {
+        if (loggedUser.role === 'admin') {
+          navigate('/dashboard');
+        } else {
+          navigate('/inicio');
+        }
+      });
+    } else {
+      setAuthError(true);
+    }
+  };
+
+  // SOLICITUD DE RECUPERACIÓN DE CONTRASEÑA CONECTADA AL BACKEND
+  // SOLICITUD DE RECUPERACIÓN DE CONTRASEÑA CONECTADA AL BACKEND
+  const handleRecoverySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoveryError(null);
+
+    if (!recoveryEmail) return;
+
+    try {
+      setRecoveryLoading(true);
+      // Petición al endpoint /accounts/recovery/ de Django
+      await api.post('/accounts/recovery/', {
+        email: recoveryEmail.trim().toLowerCase(),
+      });
+      setRecoveryLoading(false);
+      setCurrentView("step2");
+    } catch (err: unknown) {
+      setRecoveryLoading(false);
+      if (axios.isAxiosError(err) && err.response && err.response.data) {
+        const data = err.response.data;
+        const msg = typeof data === 'string' 
+          ? data 
+          : data.detail || data.non_field_errors?.[0] || 'No existe un usuario activo con este correo.';
+        setRecoveryError(msg);
       } else {
-        navigate('/inicio');
+        setRecoveryError('Ocurrió un error al conectar con el servidor.');
       }
-    });
-  } else {
-    setAuthError(true);
-  }
-};
+    }
+  };
 
   const handleOtpChange = (index: number, value: string) => {
     if (value.length > 1) value = value.charAt(0);
@@ -124,7 +159,7 @@ export const Login: React.FC = () => {
 
   const handleOtpKeyDown = (
     index: number,
-    e: React.KeyboardEvent<HTMLInputElement>,
+    e: React.KeyboardEvent<HTMLInputElement>
   ) => {
     if (e.key === "Backspace" && !otp[index] && index > 0) {
       otpRefs.current[index - 1]?.focus();
@@ -140,6 +175,7 @@ export const Login: React.FC = () => {
   const resetAllForms = () => {
     resetLoginForm();
     setRecoveryEmail("");
+    setRecoveryError(null);
     setOtp(Array(6).fill(""));
     setNewPassword("");
     setConfirmPassword("");
@@ -148,6 +184,7 @@ export const Login: React.FC = () => {
 
   return (
     <div className="flex min-h-screen w-full bg-[#f7f5ed] font-body overflow-hidden">
+      {/* LOADER OVERLAY */}
       <div
         className={`fixed inset-0 z-[9999] flex items-center justify-center bg-[#0d1b2a]/85 backdrop-blur-[14px] transition-all duration-500 ${
           loaderVisible
@@ -165,6 +202,7 @@ export const Login: React.FC = () => {
         </svg>
       </div>
 
+      {/* PANEL IZQUIERDO */}
       <div
         ref={panelLeftRef}
         className="relative hidden md:flex md:w-[55%] bg-[#0d1b2a] text-[#f7f5ed] flex-col justify-center p-16 overflow-hidden"
@@ -182,8 +220,10 @@ export const Login: React.FC = () => {
         </div>
       </div>
 
+      {/* PANEL DERECHO - FORMULARIOS */}
       <div className="flex-1 flex items-center justify-center p-8 bg-[#f7f5ed]">
         <div ref={formCardRef} className="w-full max-w-[380px]">
+          {/* STEPPER DE RECUPERACIÓN */}
           {["step1", "step2", "step3"].includes(currentView) && (
             <div className="flex items-center justify-center mb-8">
               <div
@@ -234,6 +274,7 @@ export const Login: React.FC = () => {
             </div>
           )}
 
+          {/* VISTA LOGIN */}
           {currentView === "login" && (
             <div>
               <h2 className="font-display italic text-3xl font-semibold text-slate-800 mb-2">
@@ -304,7 +345,10 @@ export const Login: React.FC = () => {
                   </label>
                   <button
                     type="button"
-                    onClick={() => setCurrentView("step1")}
+                    onClick={() => {
+                      setRecoveryError(null);
+                      setCurrentView("step1");
+                    }}
                     className="text-[#0d1b2a] font-medium hover:underline"
                   >
                     ¿Olvidaste tu contraseña?
@@ -327,6 +371,7 @@ export const Login: React.FC = () => {
             </div>
           )}
 
+          {/* VISTA STEP 1: SOLICITAR RECUPERACIÓN */}
           {currentView === "step1" && (
             <div>
               <h2 className="font-display italic text-3xl font-semibold text-slate-800 mb-2">
@@ -337,13 +382,7 @@ export const Login: React.FC = () => {
                 recuperar el acceso.
               </p>
 
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (recoveryEmail) setCurrentView("step2");
-                }}
-                className="space-y-5"
-              >
+              <form onSubmit={handleRecoverySubmit} className="space-y-5">
                 <div className="relative">
                   <input
                     type="email"
@@ -351,18 +390,29 @@ export const Login: React.FC = () => {
                     value={recoveryEmail}
                     onChange={(e) => setRecoveryEmail(e.target.value)}
                     placeholder=" "
-                    className="peer w-full h-[52px] pt-5 pb-1 px-3.5 text-sm bg-white border border-slate-300 rounded-md outline-none focus:border-[#0d1b2a]"
+                    className={`peer w-full h-[52px] pt-5 pb-1 px-3.5 text-sm bg-white border rounded-md outline-none ${
+                      recoveryError
+                        ? "border-red-500 ring-2 ring-red-500/10"
+                        : "border-slate-300 focus:border-[#0d1b2a]"
+                    }`}
                   />
                   <label className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none transition-all peer-focus:top-2 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:uppercase peer-focus:text-[#0d1b2a] peer-[:not(:placeholder-shown)]:top-2 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:font-semibold peer-[:not(:placeholder-shown)]:uppercase">
                     Correo Institucional
                   </label>
                 </div>
 
+                {recoveryError && (
+                  <span className="text-xs text-red-500 font-medium block">
+                    {recoveryError}
+                  </span>
+                )}
+
                 <button
                   type="submit"
-                  className="w-full py-3 bg-[#0d1b2a] text-white text-xs font-semibold rounded-md hover:bg-[#1b2a3a]"
+                  disabled={recoveryLoading}
+                  className="w-full py-3 bg-[#0d1b2a] text-white text-xs font-semibold rounded-md hover:bg-[#1b2a3a] disabled:opacity-50 transition-all"
                 >
-                  Enviar código de recuperación
+                  {recoveryLoading ? "Enviando código..." : "Enviar código de recuperación"}
                 </button>
               </form>
 
@@ -378,6 +428,7 @@ export const Login: React.FC = () => {
             </div>
           )}
 
+          {/* VISTA STEP 2: INGRESAR CÓDIGO/PIN */}
           {currentView === "step2" && (
             <div>
               <button
@@ -394,7 +445,7 @@ export const Login: React.FC = () => {
               <p className="text-xs text-slate-500 mb-6 leading-relaxed">
                 Enviamos un código de 6 dígitos a{" "}
                 <strong className="text-slate-700">
-                  {recoveryEmail || "usuario@gmail.com"}
+                  {recoveryEmail || "usuario@ecci.edu.co"}
                 </strong>
                 . Ingrésalo para continuar.
               </p>
@@ -424,7 +475,7 @@ export const Login: React.FC = () => {
                 </div>
 
                 <p className="text-[11px] text-slate-500 text-center">
-                  ¿No llegó nada? Revisa spam o reenviar código.
+                  ¿No llegó nada? Revisa spam o reenvía el código.
                 </p>
 
                 <button
@@ -437,6 +488,7 @@ export const Login: React.FC = () => {
             </div>
           )}
 
+          {/* VISTA STEP 3: NUEVA CONTRASEÑA */}
           {currentView === "step3" && (
             <div>
               <button
@@ -544,6 +596,7 @@ export const Login: React.FC = () => {
             </div>
           )}
 
+          {/* VISTA ÉXITO */}
           {currentView === "success" && (
             <div className="text-center">
               <div className="flex justify-center mb-6">

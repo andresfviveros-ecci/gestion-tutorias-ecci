@@ -89,7 +89,7 @@ class Migration(migrations.Migration):
                 'verbose_name': 'Inscripción',
                 'verbose_name_plural': 'Inscripciones',
                 'ordering': ['id'],
-                'constraints': [models.UniqueConstraint(fields=('estudiante', 'materia', 'periodo'), name='ux_inscripcion')],
+                'constraints': [models.UniqueConstraint(fields=('estudiante', 'materia', 'periodo'), name='ux_inscripcion_cat')],
             },
         ),
         migrations.CreateModel(
@@ -108,7 +108,7 @@ class Migration(migrations.Migration):
                 'verbose_name': 'Docente - Materia',
                 'verbose_name_plural': 'Docentes - Materias',
                 'ordering': ['id'],
-                'constraints': [models.UniqueConstraint(fields=('docente', 'materia', 'periodo'), name='ux_docente_materia')],
+                'constraints': [models.UniqueConstraint(fields=('docente', 'materia', 'periodo'), name='ux_docente_materia_cat')],
             },
         ),
     ]

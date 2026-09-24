@@ -1,7 +1,7 @@
 from rest_framework import status, views
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from backend.apps.disponibilidad.models import BloqueDisponibilidad
+from apps.disponibilidad.models import BloqueDisponibilidad
 from .serializers import BloqueDisponibilidadSerializer, BloqueDisponibilidadUpdateSerializer
 class BloqueDisponibilidadView(views.APIView):
     permission_classes = [IsAuthenticated]

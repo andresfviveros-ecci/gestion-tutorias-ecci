@@ -1,16 +1,18 @@
 import axios from 'axios';
 
+// Instancia global conectada a tu servidor Django
 export const api = axios.create({
-  baseURL: 'https://api.aulalibre.edu.co/v1',
+  baseURL: 'http://localhost:8000/api', // Asegúrate si tu grupo usó el prefijo /api/ en el urls.py principal
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
+// Interceptor para adjuntar el Token JWT cuando el usuario esté autenticado
 api.interceptors.request.use((config) => {
-  const user = localStorage.getItem('aula_user');
-  if (user && config.headers) {
-    config.headers.Authorization = `Bearer fake-jwt-token`;
+  const token = localStorage.getItem('token');
+  if (token && config.headers) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
