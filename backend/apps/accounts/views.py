@@ -1,10 +1,12 @@
-from rest_framework import status, views
 from rest_framework.response import Response
 from rest_framework import status, views
 from django.conf import settings
 from .serializers import *
 from django.core.mail import send_mail
+from drf_spectacular.utils import extend_schema
+
 """ API PARA INICIAR SESION"""
+@extend_schema(tags=['Autenticación'])
 class LoginView(views.APIView):
     def post(self, request, format=None):
         serializer = LoginSerializers(data=request.data)
@@ -17,8 +19,8 @@ class LoginView(views.APIView):
         }, status=status.HTTP_200_OK)
 
 """ API PARA RECUPERAR CONTRASEÑA """
+@extend_schema(tags=['Autenticación'])
 class RecoveryTokenView(views.APIView):
-
     def post(self, request, format=None):
         serializer = RecoveryTokenSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -40,23 +42,18 @@ class RecoveryTokenView(views.APIView):
         )
 
 """ API PARA CRUD ESTUDIANTE"""
+@extend_schema(tags=['Estudiantes'])
 class StudentView(views.APIView):
-    def get(self, request, pk=None, format=None):
-        if pk:
-            user = get_user_model().objects.get(
-                pk=pk,
-                groups__name='Estudiante'
-            )
-            serializer = StudentRegisterSerializer(user)
-        else:
-            users = get_user_model().objects.filter(
-                groups__name='Estudiante'
-            )
-            serializer = StudentRegisterSerializer(users, many=True)
+    def get(self, request, format=None):
+        users = get_user_model().objects.filter(
+            groups__name='Estudiante'
+        )
+        serializer = StudentRegisterSerializer(users, many=True)
         return Response(
             serializer.data,
             status=status.HTTP_200_OK
         )
+    @extend_schema(request=StudentRegisterSerializer)   
     def post(self, request, format=None):
         serializer = StudentRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -65,6 +62,20 @@ class StudentView(views.APIView):
             serializer.data,
             status=status.HTTP_201_CREATED
         )
+
+@extend_schema(tags=['Estudiantes'])
+class StudentDetailView(views.APIView):
+    def get(self, request, pk, format=None):
+        user = get_user_model().objects.get(
+            pk=pk,
+            groups__name='Estudiante'
+        )
+        serializer = StudentRegisterSerializer(user)
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
+
     def put(self, request, pk, format=None):
         user = get_user_model().objects.get(
             pk=pk,
@@ -80,6 +91,7 @@ class StudentView(views.APIView):
             serializer.data,
             status=status.HTTP_200_OK
         )
+
     def delete(self, request, pk, format=None):
         user = get_user_model().objects.get(
             pk=pk,
@@ -91,23 +103,18 @@ class StudentView(views.APIView):
         )
 
 """ API PARA REGISTRAR TUTORES/DOCENTE """
+@extend_schema(tags=['Docentes'])
 class TutorView(views.APIView):
-    def get(self, request, pk=None, format=None):
-        if pk:
-            user = get_user_model().objects.get(
-                pk=pk,
-                groups__name='Docente'
-            )
-            serializer = TutorRegisterSerializer(user)
-        else:
-            users = get_user_model().objects.filter(
-                groups__name='Docente'
-            )
-            serializer = TutorRegisterSerializer(users, many=True)
+    def get(self, request, format=None):
+        users = get_user_model().objects.filter(
+            groups__name='Docente'
+        )
+        serializer = TutorRegisterSerializer(users, many=True)
         return Response(
             serializer.data,
             status=status.HTTP_200_OK
         )
+    @extend_schema(request=TutorRegisterSerializer)
     def post(self, request, format=None):
         serializer = TutorRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -116,6 +123,20 @@ class TutorView(views.APIView):
             serializer.data,
             status=status.HTTP_201_CREATED
         )
+
+@extend_schema(tags=['Docentes'])
+class TutorDetailView(views.APIView):
+    def get(self, request, pk, format=None):
+        user = get_user_model().objects.get(
+            pk=pk,
+            groups__name='Docente'
+        )
+        serializer = TutorRegisterSerializer(user)
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
+
     def put(self, request, pk, format=None):
         user = get_user_model().objects.get(
             pk=pk,
@@ -131,6 +152,7 @@ class TutorView(views.APIView):
             serializer.data,
             status=status.HTTP_200_OK
         )
+
     def delete(self, request, pk, format=None):
         user = get_user_model().objects.get(
             pk=pk,
@@ -142,23 +164,18 @@ class TutorView(views.APIView):
         )
 
 """ API PARA CRUD COORDINADORES"""
+@extend_schema(tags=['Coordinadores'])
 class CoordinatorView(views.APIView):
-    def get(self, request, pk=None, format=None):
-        if pk:
-            user = get_user_model().objects.get(
-                pk=pk,
-                groups__name='Coordinador'
-            )
-            serializer = CoordinatorSerializer(user)
-        else:
-            users = get_user_model().objects.filter(
-                groups__name='Coordinador'
-            )
-            serializer = CoordinatorSerializer(users, many=True)
+    def get(self, request, format=None):
+        users = get_user_model().objects.filter(
+            groups__name='Coordinador'
+        )
+        serializer = CoordinatorSerializer(users, many=True)
         return Response(
             serializer.data,
             status=status.HTTP_200_OK
         )
+    @extend_schema(request=CoordinatorSerializer)
     def post(self, request, format=None):
         serializer = CoordinatorSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -167,6 +184,20 @@ class CoordinatorView(views.APIView):
             serializer.data,
             status=status.HTTP_201_CREATED
         )
+
+@extend_schema(tags=['Coordinadores'])
+class CoordinatorDetailView(views.APIView):
+    def get(self, request, pk, format=None):
+        user = get_user_model().objects.get(
+            pk=pk,
+            groups__name='Coordinador'
+        )
+        serializer = CoordinatorSerializer(user)
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
+
     def put(self, request, pk, format=None):
         user = get_user_model().objects.get(
             pk=pk,
@@ -182,6 +213,7 @@ class CoordinatorView(views.APIView):
             serializer.data,
             status=status.HTTP_200_OK
         )
+
     def delete(self, request, pk, format=None):
         user = get_user_model().objects.get(
             pk=pk,

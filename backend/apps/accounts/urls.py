@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import LoginView, RecoveryTokenView, StudentView, TutorView, CoordinatorView
+from .views import LoginView,RecoveryTokenView,StudentView,StudentDetailView,TutorView,TutorDetailView,CoordinatorView,CoordinatorDetailView
 
 urlpatterns = [
     # AUTENTICACIÓN
@@ -8,11 +8,11 @@ urlpatterns = [
     path('recovery/', RecoveryTokenView.as_view(), name='recovery'),
     # CRUD ESTUDIANTES
     path('estudiantes/', StudentView.as_view(), name='estudiantes'),
-    path('estudiantes/<int:pk>/', StudentView.as_view(), name='estudiante-detail'),
+    path('estudiantes/<int:pk>/', StudentDetailView.as_view(), name='estudiante-detail'),
     # CRUD TUTORES
     path('tutores/', TutorView.as_view(), name='tutores'),
-    path('tutores/<int:pk>/', TutorView.as_view(), name='tutor-detail'),
+    path('tutores/<int:pk>/', TutorDetailView.as_view(), name='tutor-detail'),
     # CRUD COORDINADORES
     path('coordinadores/', CoordinatorView.as_view(), name='coordinadores'),
-    path('coordinadores/<int:pk>/', CoordinatorView.as_view(), name='coordinador-detail'),
+    path('coordinadores/<int:pk>/', CoordinatorDetailView.as_view(), name='coordinador-detail'),
 ]

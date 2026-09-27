@@ -2,7 +2,10 @@ from rest_framework import views, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from apps.tutorias.serializers import TutoriaRegisterSerializer
+from drf_spectacular.utils import extend_schema
 
+
+@extend_schema(tags=['Tutorías'])
 class TutoRegisterView(views.APIView):
     permission_classes = [IsAuthenticated]
 
