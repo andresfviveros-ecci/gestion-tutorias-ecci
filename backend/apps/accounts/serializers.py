@@ -7,20 +7,25 @@ from rest_framework_simplejwt.tokens import AccessToken
 import random
 from datetime import timedelta
 from django.contrib.auth.models import Group
+
 """ SERIALIZERS PARA VALIDAR INICIO DE SESION"""
 class LoginSerializers(serializers.Serializer):
-    username = serializers.CharField()
+    email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
-
     def validate(self, attrs):
-        username = attrs.get('username')
+        email = attrs.get('email')
         password = attrs.get('password')
-
+        user = get_user_model().objects.filter(
+            email=email
+        ).first()
+        if not user:
+            raise serializers.ValidationError(
+                'Credenciales invalidas.'
+            )
         user = authenticate(
-            username=username,
+            username=user.username,
             password=password
         )
-
         if not user:
             raise serializers.ValidationError(
                 'Credenciales invalidas.'
@@ -29,9 +34,7 @@ class LoginSerializers(serializers.Serializer):
             raise serializers.ValidationError(
                 'El usuario esta inactivo.'
             )
-
         refresh = RefreshToken.for_user(user)
-
         attrs['user'] = user
         attrs['refresh'] = str(refresh)
         attrs['access'] = str(refresh.access_token)
@@ -108,7 +111,6 @@ class TutorRegisterSerializer(serializers.ModelSerializer):
             'apellidos',
             'documento',
             'telefono',
-            'codigo_institucional',
         ]
         extra_kwargs = {
             'password': {'write_only': True},
@@ -138,7 +140,6 @@ class CoordinatorSerializer(serializers.ModelSerializer):
             'apellidos',
             'documento',
             'telefono',
-            'codigo_institucional',
         ]
         extra_kwargs = {
             'password': {'write_only': True},

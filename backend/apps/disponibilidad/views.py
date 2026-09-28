@@ -1,8 +1,11 @@
 from rest_framework import status, views
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from backend.apps.disponibilidad.models import BloqueDisponibilidad
+from apps.disponibilidad.models import BloqueDisponibilidad
 from .serializers import BloqueDisponibilidadSerializer, BloqueDisponibilidadUpdateSerializer
+from drf_spectacular.utils import extend_schema
+
+@extend_schema(tags=['Disponibilidad'])
 class BloqueDisponibilidadView(views.APIView):
     permission_classes = [IsAuthenticated]
     def post(self, request, format=None):
@@ -11,7 +14,8 @@ class BloqueDisponibilidadView(views.APIView):
         serializer.save(docente=request.user)
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
+
+@extend_schema(tags=['Disponibilidad'])
 class DisponibilidadUpdateView(views.APIView):
     permission_classes = [IsAuthenticated]
     def put(self, request, pk, format=None):

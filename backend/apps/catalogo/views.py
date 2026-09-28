@@ -3,7 +3,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .models import Materia
 from .serializer import *
-
+from drf_spectacular.utils import extend_schema
+@extend_schema(tags=['Materias'])
 class MateriaView(views.APIView):
     permission_classes = [IsAuthenticated]
 
@@ -24,13 +25,16 @@ class MateriaView(views.APIView):
             status=status.HTTP_201_CREATED
         )
 
+@extend_schema(tags=['Materias'])
 class MateriaDetailView(views.APIView):
     permission_classes = [IsAuthenticated]
+    
     def get_materia(self, pk):
         try:
             return Materia.objects.get(id=pk)
         except Materia.DoesNotExist:
             return None
+    
     def get(self, request, pk, format=None):
         materia = self.get_materia(pk)
         if materia is None:
@@ -43,6 +47,7 @@ class MateriaDetailView(views.APIView):
             serializer.data,
             status=status.HTTP_200_OK
         )
+    
     def put(self, request, pk, format=None):
         materia = self.get_materia(pk)
         if materia is None:
@@ -60,6 +65,7 @@ class MateriaDetailView(views.APIView):
             serializer.data,
             status=status.HTTP_200_OK
         )
+    
     def delete(self, request, pk, format=None):
         materia = self.get_materia(pk)
         if materia is None:

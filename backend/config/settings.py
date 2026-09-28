@@ -43,6 +43,8 @@ BASE_APPS = [
 
 THIRD_PARTY_APPS = [
     'import_export',
+    'corsheaders',
+    'drf_spectacular',
 ]
 
 LOCAL_APPS = [
@@ -53,11 +55,13 @@ LOCAL_APPS = [
     'apps.reportes',
     'apps.tutorias',
 ]
+
 INSTALLED_APPS = BASE_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -139,3 +143,24 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+CORS_ALLOW_CREDENTIALS = True
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+# CONFIGURACION SWAGGER
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Gestión de Tutorías API',
+    'DESCRIPTION': 'Documentacion de APIS para la gestion de tutorias',
+    'VERSION': '1.0',
+}
