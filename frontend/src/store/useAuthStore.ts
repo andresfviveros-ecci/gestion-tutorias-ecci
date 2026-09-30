@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { api } from '../api/axios';
-import type { StudentFormData } from '../schemas/studentSchema';
 
 export type UserRole = 'admin' | 'estudiante' | 'tutor';
 
@@ -12,13 +11,17 @@ export interface User {
   role: UserRole;
 }
 
+interface LoginBackendResponse {
+  access: string;
+  refresh: string;
+  groups: [number, string][];
+}
+
 interface AuthState {
   user: User | null;
   token: string | null;
-  students: StudentFormData[];
   login: (correo: string, pass: string) => Promise<User | null>;
   logout: () => void;
-  addStudent: (student: StudentFormData) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -26,34 +29,33 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
       token: null,
-      students: [
-        {
-          fullName: 'Juan Esteban Soto',
-          idNumber: '1006543210',
-          career: 'Ingeniería de Sistemas',
-          email: 'usuario@ecci.edu.co',
-        },
-      ],
 
       login: async (correo: string, pass: string) => {
         try {
           const cleanEmail = correo.trim().toLowerCase();
 
-          // Petición real al backend de Django
-          const response = await api.post('/accounts/login/', {
-            username: cleanEmail, // El serializer en Django valida por 'username'
+          // Limpiar tokens previos en el almacenamiento antes de iniciar sesión
+          localStorage.removeItem('token');
+          localStorage.removeItem('refresh_token');
+
+          // Petición a http://localhost:8000/api/accounts/login/
+          const response = await api.post<LoginBackendResponse>('accounts/login/', {
+            email: cleanEmail,
             password: pass,
           });
 
           const { access, refresh, groups } = response.data;
 
-          // Mapear el grupo que retorna Django con el rol del Frontend
+          // Mapeo de grupos retornado por LoginView en Django
           let role: UserRole = 'estudiante';
-          if (groups && groups.length > 0) {
-            const groupName = groups[0][1]; // 'Estudiante', 'Docente' o 'Coordinador'
-            if (groupName === 'Docente') role = 'tutor';
-            else if (groupName === 'Coordinador') role = 'admin';
-            else role = 'estudiante';
+          const groupNames = groups ? groups.map((g) => g[1]) : [];
+
+          if (groupNames.includes('Coordinador')) {
+            role = 'admin';
+          } else if (groupNames.includes('Docente')) {
+            role = 'tutor';
+          } else if (groupNames.includes('Estudiante')) {
+            role = 'estudiante';
           }
 
           const loggedUser: User = {
@@ -63,7 +65,7 @@ export const useAuthStore = create<AuthState>()(
             role: role,
           };
 
-          // Guardar los tokens JWT en el navegador
+          // Guardar el nuevo token JWT
           localStorage.setItem('token', access);
           localStorage.setItem('refresh_token', refresh);
 
@@ -84,11 +86,6 @@ export const useAuthStore = create<AuthState>()(
         localStorage.removeItem('refresh_token');
         set({ user: null, token: null });
       },
-
-      addStudent: (student) =>
-        set((state) => ({
-          students: [student, ...state.students],
-        })),
     }),
     {
       name: 'aula_auth_storage',

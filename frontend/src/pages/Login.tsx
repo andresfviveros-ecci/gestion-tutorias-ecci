@@ -98,7 +98,6 @@ export const Login: React.FC = () => {
     resolver: zodResolver(loginSchema),
   });
 
-  // INICIO DE SESIÓN CONECTADO AL BACKEND
   const onLoginSubmit = async (data: LoginFormData) => {
     setAuthError(false);
     const loggedUser = await login(data.email, data.password);
@@ -116,8 +115,6 @@ export const Login: React.FC = () => {
     }
   };
 
-  // SOLICITUD DE RECUPERACIÓN DE CONTRASEÑA CONECTADA AL BACKEND
-  // SOLICITUD DE RECUPERACIÓN DE CONTRASEÑA CONECTADA AL BACKEND
   const handleRecoverySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRecoveryError(null);
@@ -126,7 +123,6 @@ export const Login: React.FC = () => {
 
     try {
       setRecoveryLoading(true);
-      // Petición al endpoint /accounts/recovery/ de Django
       await api.post('/accounts/recovery/', {
         email: recoveryEmail.trim().toLowerCase(),
       });
