@@ -1,192 +1,368 @@
 import React, { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { studentSchema, type StudentFormData } from '../schemas/studentSchema';
-import { useAuthStore } from '../store/useAuthStore';
 import { Loader } from '../components/Loader';
+import { api } from '../api/axios';
 
-interface ExtendedStudentFormData extends StudentFormData {
-  phone?: string;
+interface StudentData {
+  nombres: string;
+  apellidos: string;
+  idNumber: string;
+  email: string;
+  career: string;
+  phone: string;
 }
 
+interface StudentBackend {
+  id?: string | number;
+  fullName?: string;
+  nombre?: string;
+  nombres?: string;
+  apellidos?: string;
+  first_name?: string;
+  last_name?: string;
+  documento?: string | number;
+  identificacion?: string | number;
+  idNumber?: string;
+  email?: string;
+  correo?: string;
+  career?: string;
+  carrera?: string;
+  programa?: string;
+  phone?: string;
+  telefono?: string;
+}
+
+interface ToastState {
+  type: 'success' | 'error';
+  title: string;
+  message: string;
+}
+
+const parseBackendError = (error: unknown): string => {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const res = (error as { response?: { data?: Record<string, unknown> | string } }).response;
+    if (res && res.data) {
+      const data = res.data;
+      if (typeof data === 'string') return data;
+      if (typeof data === 'object') {
+        if (data.detail && typeof data.detail === 'string') return data.detail;
+        if (data.message && typeof data.message === 'string') return data.message;
+        
+        // Manejo específico de correos/usuarios duplicados
+        if (data.email || data.username) {
+          const emailMsg = data.email ? (Array.isArray(data.email) ? data.email.join(' ') : String(data.email)) : '';
+          const userMsg = data.username ? (Array.isArray(data.username) ? data.username.join(' ') : String(data.username)) : '';
+          const combined = `${emailMsg} ${userMsg}`.toLowerCase();
+
+          if (combined.includes('already exists') || combined.includes('ya existe') || combined.includes('registrado')) {
+            return 'El correo electrónico ya se encuentra registrado con otra cuenta.';
+          }
+          return `Correo: ${emailMsg || userMsg}`;
+        }
+        if (data.documento || data.identificacion) {
+          return 'El número de identificación ya se encuentra registrado.';
+        }
+        const firstKey = Object.keys(data)[0];
+        if (firstKey) {
+          const val = data[firstKey];
+          const msg = Array.isArray(val) ? val.join(' ') : String(val);
+          return `${firstKey.toUpperCase()}: ${msg}`;
+        }
+      }
+    }
+  }
+  return 'Ocurrió un error al guardar en la base de datos.';
+};
+
 export const Estudiantes: React.FC = () => {
-  const { students, addStudent } = useAuthStore();
-  const [toast, setToast] = useState<string | null>(null);
+  const [students, setStudents] = useState<StudentData[]>([]);
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 1600);
-    return () => clearTimeout(timer);
-  }, []);
+  const [nombres, setNombres] = useState('');
+  const [apellidos, setApellidos] = useState('');
+  const [idNumber, setIdNumber] = useState('');
+  const [career, setCareer] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<ExtendedStudentFormData>({
-    resolver: zodResolver(studentSchema),
+  const [errors, setErrors] = useState({
+    nombres: false,
+    apellidos: false,
+    idNumber: false,
+    email: false,
   });
 
-  const onSubmit = (data: ExtendedStudentFormData) => {
-    addStudent(data);
-    setToast(`¡Estudiante ${data.fullName} registrado con éxito!`);
-    reset();
-    setTimeout(() => setToast(null), 3500);
+  const triggerToast = (type: 'success' | 'error', title: string, message: string) => {
+    setToast({ type, title, message });
+    setTimeout(() => setToast(null), 4500);
+  };
+
+  const mapBackendStudents = (data: StudentBackend[]): StudentData[] => {
+    return data.map((item) => {
+      const fullNameCombined = `${item.nombres || item.first_name || ''} ${item.apellidos || item.last_name || ''}`.trim();
+      const finalName = fullNameCombined || item.fullName || item.nombre || 'Estudiante';
+
+      const docVal = String(
+        item.documento || item.identificacion || item.idNumber || item.id || ''
+      );
+
+      return {
+        nombres: item.nombres || item.first_name || finalName,
+        apellidos: item.apellidos || item.last_name || '',
+        idNumber: docVal,
+        email: item.email || item.correo || '',
+        career: item.career || item.carrera || item.programa || 'Ingeniería',
+        phone: item.telefono || item.phone || 'N/A',
+      };
+    });
+  };
+
+  const fetchStudents = async () => {
+    try {
+      const response = await api.get<StudentBackend[]>('/accounts/estudiantes/');
+      setStudents(mapBackendStudents(response.data));
+    } catch (error) {
+      console.error('Error al obtener estudiantes:', error);
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadStudents = async () => {
+      try {
+        const response = await api.get<StudentBackend[]>('/accounts/estudiantes/');
+        if (isMounted) {
+          setStudents(mapBackendStudents(response.data));
+        }
+      } catch (error) {
+        console.error('Error al cargar estudiantes:', error);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    void loadStudents();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const limpiarFormulario = () => {
+    setNombres('');
+    setApellidos('');
+    setIdNumber('');
+    setCareer('');
+    setEmail('');
+    setPhone('');
+    setErrors({ nombres: false, apellidos: false, idNumber: false, email: false });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const newErrors = {
+      nombres: !nombres.trim(),
+      apellidos: !apellidos.trim(),
+      idNumber: !idNumber.trim(),
+      email: !email.trim(),
+    };
+
+    setErrors(newErrors);
+
+    if (newErrors.nombres || newErrors.apellidos || newErrors.idNumber || newErrors.email) {
+      triggerToast('error', 'Campos incompletos', 'Por favor completa todos los campos requeridos (*).');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+
+      const payload = {
+        username: email.trim(),
+        email: email.trim(),
+        password: '12345678',
+        nombres: nombres.trim(),
+        apellidos: apellidos.trim(),
+        first_name: nombres.trim(),
+        last_name: apellidos.trim(),
+        documento: idNumber.trim(),
+        identificacion: idNumber.trim(),
+        telefono: phone.trim() || '3000000000',
+        carrera: career.trim() || 'Ingeniería',
+      };
+
+      await api.post('/accounts/estudiantes/', payload);
+
+      triggerToast('success', '¡Estudiante Registrado!', `${nombres} ${apellidos} ha sido guardado con éxito.`);
+      limpiarFormulario();
+      await fetchStudents();
+    } catch (error) {
+      const errorDetail = parseBackendError(error);
+      triggerToast('error', 'No se pudo registrar', errorDetail);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <div className="w-full flex flex-col bg-[#f7f5ed] h-screen overflow-hidden">
+    <div className="w-full flex flex-col bg-[#f7f5ed] h-screen overflow-hidden relative">
       <Loader hidden={!loading} />
 
-      {/* BARRA SUPERIOR BLANCA */}
-      <header className="w-full h-14 bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0">
-        <div className="text-[0.82rem] text-slate-500">
-          Usuarios / <span className="font-semibold text-[#0d1b2a]">Registrar estudiante</span>
-        </div>
-        <div className="text-xs font-semibold text-slate-600">
-          Administrador
-        </div>
-      </header>
-
-      {/* NOTIFICACIÓN TOAST */}
+      {/* NOTIFICACIÓN MODAL CON BACKDROP BLUR (DIFUMINADO DE FONDO) */}
       {toast && (
-        <div className="fixed top-5 right-5 z-[10000] bg-white border-l-4 border-emerald-600 shadow-xl rounded-lg p-4 flex items-center gap-3 animate-bounce">
-          <div className="w-7 h-7 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center font-bold text-xs">✓</div>
-          <div>
-            <strong className="block text-xs text-slate-800">Operación exitosa</strong>
-            <p className="text-[11px] text-slate-500">{toast}</p>
+        <div className="fixed inset-0 z-[10000] bg-slate-900/40 backdrop-blur-xs flex items-start justify-center pt-10 px-4 animate-in fade-in duration-200">
+          <div className="max-w-md w-full bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-700/80 p-5 flex items-center gap-4 animate-in zoom-in-95 duration-200">
+            <div
+              className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${
+                toast.type === 'success'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+              }`}
+            >
+              <i className={`fa-solid ${toast.type === 'success' ? 'fa-check text-lg animate-bounce' : 'fa-triangle-exclamation text-lg'}`}></i>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-sm font-bold text-slate-100 tracking-tight">{toast.title}</h4>
+              <p className="text-xs text-slate-300 leading-relaxed mt-1">{toast.message}</p>
+            </div>
+            <button
+              onClick={() => setToast(null)}
+              className="text-slate-400 hover:text-white text-sm px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors"
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}
 
-      {/* CONTENIDO PRINCIPAL CON ESPACIOS AMPLIOS EQUILIBRADOS */}
+      <header className="w-full h-14 bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0">
+        <div className="text-[0.82rem] text-slate-500">
+          Usuarios / <span className="font-semibold text-[#0d1b2a]">Registrar estudiante</span>
+        </div>
+        <div className="text-xs font-semibold text-slate-600">Administrador</div>
+      </header>
+
       <main className="px-8 py-6 w-full max-w-[1400px] mx-auto flex-1 flex flex-col justify-start space-y-4 overflow-hidden">
         <div>
-          <h1 className="font-display italic text-3xl font-semibold text-[#0d1b2a] mb-1">
-            Registrar estudiante
-          </h1>
-          <p className="text-[0.83rem] text-slate-500">
-            Completa los datos del estudiante para darle acceso a la plataforma.
-          </p>
+          <h1 className="font-display italic text-3xl font-semibold text-[#0d1b2a] mb-1">Registrar estudiante</h1>
+          <p className="text-[0.83rem] text-slate-500">Completa los datos para darle acceso a la plataforma.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          
-          {/* FORMULARIO DE REGISTRO */}
           <div className="lg:col-span-5 bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-            <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-              
-              {/* NOMBRE COMPLETO */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Nombre completo <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  {...register('fullName')}
-                  className={`w-full h-10 px-3.5 text-xs bg-white border rounded-md outline-none transition-all ${
-                    errors.fullName
-                      ? 'border-rose-500 ring-2 ring-rose-500/15'
-                      : 'border-slate-200 focus:border-[#0d1b2a] focus:ring-2 focus:ring-[#0d1b2a]/10'
-                  }`}
-                />
-                {errors.fullName && (
-                  <span className="text-[11px] text-rose-500 mt-1 block">
-                    {errors.fullName.message}
-                  </span>
-                )}
+            <form onSubmit={handleSubmit} noValidate className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Nombres <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={nombres}
+                    onChange={(e) => {
+                      setNombres(e.target.value);
+                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, nombres: false }));
+                    }}
+                    className={`w-full h-9 px-3 text-xs bg-white border rounded-md outline-none transition-all ${
+                      errors.nombres ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Apellidos <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={apellidos}
+                    onChange={(e) => {
+                      setApellidos(e.target.value);
+                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, apellidos: false }));
+                    }}
+                    className={`w-full h-9 px-3 text-xs bg-white border rounded-md outline-none transition-all ${
+                      errors.apellidos ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
+                    }`}
+                  />
+                </div>
               </div>
 
-              {/* IDENTIFICACIÓN Y PROGRAMA / CARRERA */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     N.º de identificación <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
-                    {...register('idNumber')}
-                    className={`w-full h-10 px-3.5 text-xs bg-white border rounded-md outline-none transition-all ${
-                      errors.idNumber
-                        ? 'border-rose-500 ring-2 ring-rose-500/15'
-                        : 'border-slate-200 focus:border-[#0d1b2a] focus:ring-2 focus:ring-[#0d1b2a]/10'
+                    value={idNumber}
+                    onChange={(e) => {
+                      setIdNumber(e.target.value);
+                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, idNumber: false }));
+                    }}
+                    className={`w-full h-9 px-3 text-xs bg-white border rounded-md outline-none transition-all ${
+                      errors.idNumber ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
                     }`}
                   />
-                  {errors.idNumber && (
-                    <span className="text-[11px] text-rose-500 mt-1 block">
-                      {errors.idNumber.message}
-                    </span>
-                  )}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Programa / carrera
-                  </label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Programa / carrera</label>
                   <input
                     type="text"
-                    {...register('career')}
-                    className="w-full h-10 px-3.5 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a] focus:ring-2 focus:ring-[#0d1b2a]/10 transition-all"
+                    value={career}
+                    onChange={(e) => setCareer(e.target.value)}
+                    className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
                   />
                 </div>
               </div>
 
-              {/* CORREO INSTITUCIONAL */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Correo institucional <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="email"
-                  {...register('email')}
-                  className={`w-full h-10 px-3.5 text-xs bg-white border rounded-md outline-none transition-all ${
-                    errors.email
-                      ? 'border-rose-500 ring-2 ring-rose-500/15'
-                      : 'border-slate-200 focus:border-[#0d1b2a] focus:ring-2 focus:ring-[#0d1b2a]/10'
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, email: false }));
+                  }}
+                  className={`w-full h-9 px-3 text-xs bg-white border rounded-md outline-none transition-all ${
+                    errors.email ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
                   }`}
                 />
-                {errors.email && (
-                  <span className="text-[11px] text-rose-500 mt-1 block">
-                    {errors.email.message}
-                  </span>
-                )}
               </div>
 
-              {/* TELÉFONO DE CONTACTO */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Teléfono de contacto
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Teléfono de contacto</label>
                 <input
                   type="text"
-                  {...register('phone')}
-                  className="w-full h-10 px-3.5 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a] focus:ring-2 focus:ring-[#0d1b2a]/10 transition-all"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
                 />
               </div>
 
-              {/* CAJA AMARILLA DE ROL AUTOMÁTICO */}
-              <div className="bg-[#fef08a]/80 border border-[#fde047] rounded-lg p-3 flex items-center gap-3 my-3">
-                <span className="bg-[#ca8a04] text-white text-[0.7rem] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+              <div className="bg-[#fef08a]/80 border border-[#fde047] rounded-lg p-2.5 flex items-center gap-3 my-2">
+                <span className="bg-[#ca8a04] text-white text-[0.68rem] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                   ESTUDIANTE
                 </span>
-                <span className="text-xs text-[#854d0e] font-medium">
-                  Rol asignado automáticamente
-                </span>
+                <span className="text-xs text-[#854d0e] font-medium">Rol asignado automáticamente</span>
               </div>
 
-              {/* BOTONES */}
               <div className="flex gap-3 pt-1">
                 <button
                   type="submit"
-                  className="flex-[1.2] h-10 bg-[#0d1b2a] hover:bg-[#1e2d4a] text-white font-semibold text-xs rounded-md transition-colors"
+                  disabled={submitting}
+                  className="flex-[1.2] h-9 bg-[#0d1b2a] hover:bg-[#1e2d4a] text-white font-semibold text-xs rounded-md transition-colors disabled:opacity-50"
                 >
-                  Registrar estudiante
+                  {submitting ? 'Guardando...' : 'Registrar estudiante'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => reset()}
-                  className="flex-[0.8] h-10 bg-transparent hover:bg-slate-50 text-[#0d1b2a] border border-slate-200 font-semibold text-xs rounded-md transition-colors"
+                  onClick={limpiarFormulario}
+                  className="flex-[0.8] h-9 bg-transparent hover:bg-slate-50 text-[#0d1b2a] border border-slate-200 font-semibold text-xs rounded-md transition-colors"
                 >
                   Cancelar
                 </button>
@@ -194,15 +370,12 @@ export const Estudiantes: React.FC = () => {
             </form>
           </div>
 
-          {/* TABLA DE REGISTROS RECIENTES */}
           <div className="lg:col-span-7 bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[0.88rem] font-bold text-[#0d1b2a] uppercase tracking-wider">
                 Estudiantes registrados recientemente
               </h3>
-              <span className="text-xs text-slate-500">
-                {students.length} registro{students.length !== 1 ? 's' : ''}
-              </span>
+              <span className="text-xs text-slate-500">{students.length} registro(s)</span>
             </div>
 
             <div className="overflow-x-auto">
@@ -225,8 +398,10 @@ export const Estudiantes: React.FC = () => {
                   ) : (
                     students.map((st, i) => (
                       <tr key={i} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-2 font-semibold text-[#0d1b2a]">{st.fullName}</td>
-                        <td className="py-3 px-2">{st.idNumber}</td>
+                        <td className="py-3 px-2 font-semibold text-[#0d1b2a]">
+                          {st.nombres} {st.apellidos}
+                        </td>
+                        <td className="py-3 px-2 font-mono">{st.idNumber || '—'}</td>
                         <td className="py-3 px-2">{st.email}</td>
                         <td className="py-3 px-2">
                           <span className="bg-[#fef08a] text-[#854d0e] text-[0.7rem] px-2.5 py-0.5 rounded font-semibold">
@@ -240,7 +415,6 @@ export const Estudiantes: React.FC = () => {
               </table>
             </div>
           </div>
-
         </div>
       </main>
     </div>
