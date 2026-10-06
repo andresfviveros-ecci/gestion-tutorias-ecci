@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -23,6 +23,7 @@ type ViewState = "login" | "step1" | "step2" | "step3" | "success";
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const login = useAuthStore((state) => state.login);
 
   const [currentView, setCurrentView] = useState<ViewState>("login");
@@ -104,10 +105,20 @@ export const Login: React.FC = () => {
 
     if (loggedUser) {
       triggerLoaderAndReset(() => {
-        if (loggedUser.role === 'admin') {
-          navigate('/dashboard');
+        // Verificar si venía de intentar ingresar a una URL específica
+        const stateFrom = (location.state as { from?: { pathname?: string } })?.from?.pathname;
+
+        if (stateFrom && stateFrom !== "/") {
+          navigate(stateFrom, { replace: true });
         } else {
-          navigate('/inicio');
+          // Redirección predeterminada según el rol asignado
+          if (loggedUser.role === 'admin') {
+            navigate('/dashboard');
+          } else if (loggedUser.role === 'tutor') {
+            navigate('/tutor/mi-disponibilidad');
+          } else {
+            navigate('/inicio');
+          }
         }
       });
     } else {
@@ -229,7 +240,7 @@ export const Login: React.FC = () => {
                     : "bg-[#1f7a5c] text-white border-[#1f7a5c]"
                 }`}
               >
-                {currentView !== "step1" ? "✓" : "1"}
+                {currentView !== "step1" ? "v" : "1"}
               </div>
 
               <div
@@ -249,7 +260,7 @@ export const Login: React.FC = () => {
                       : "bg-white text-slate-400 border-slate-300"
                 }`}
               >
-                {currentView === "step3" ? "✓" : "2"}
+                {currentView === "step3" ? "v" : "2"}
               </div>
 
               <div
@@ -418,7 +429,7 @@ export const Login: React.FC = () => {
                   onClick={() => setCurrentView("login")}
                   className="text-xs text-slate-600 hover:text-[#0d1b2a] font-medium"
                 >
-                  ← Volver a iniciar sesión
+                  Volver a iniciar sesión
                 </button>
               </div>
             </div>
@@ -432,7 +443,7 @@ export const Login: React.FC = () => {
                 onClick={() => setCurrentView("step1")}
                 className="text-xs text-slate-500 hover:text-slate-800 mb-4 block"
               >
-                ← Volver
+                Volver
               </button>
 
               <h2 className="font-display italic text-3xl font-semibold text-slate-800 mb-2">
@@ -465,7 +476,7 @@ export const Login: React.FC = () => {
                       value={digit}
                       onChange={(e) => handleOtpChange(idx, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                      className="w-11 h-[52px] text-center text-lg font-semibold border border-slate-300 rounded-md bg-white outline-none focus:border-[#0d1b2a] focus:ring-2 focus:ring-[#0d1b2a]/10"
+                      className="w-11 h-[52px] text-center text-lg font-semibold border border-slate-300 rounded-md bg-[#ffffff] outline-none focus:border-[#0d1b2a] focus:ring-2 focus:ring-[#0d1b2a]/10"
                     />
                   ))}
                 </div>
@@ -492,7 +503,7 @@ export const Login: React.FC = () => {
                 onClick={() => setCurrentView("step2")}
                 className="text-xs text-slate-500 hover:text-slate-800 mb-4 block"
               >
-                ← Volver
+                Volver
               </button>
 
               <h2 className="font-display italic text-3xl font-semibold text-slate-800 mb-2">
@@ -532,7 +543,7 @@ export const Login: React.FC = () => {
                     <span
                       className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${hasMin8 ? "bg-[#1f7a5c] text-white border-[#1f7a5c]" : "border-slate-300"}`}
                     >
-                      ✓
+                      v
                     </span>
                     Mínimo 8 caracteres
                   </div>
@@ -542,7 +553,7 @@ export const Login: React.FC = () => {
                     <span
                       className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${hasNum ? "bg-[#1f7a5c] text-white border-[#1f7a5c]" : "border-slate-300"}`}
                     >
-                      ✓
+                      v
                     </span>
                     Al menos un número
                   </div>
@@ -552,7 +563,7 @@ export const Login: React.FC = () => {
                     <span
                       className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${hasSym ? "bg-[#1f7a5c] text-white border-[#1f7a5c]" : "border-slate-300"}`}
                     >
-                      ✓
+                      v
                     </span>
                     Al menos un símbolo
                   </div>
