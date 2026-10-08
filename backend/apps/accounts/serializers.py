@@ -80,7 +80,8 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
             'last_name',
             'documento',
             'telefono',
-            'codigo_institucional',           
+            'codigo_institucional',
+            'rol',
         ]
         extra_kwargs = {
             'password': {'write_only': True},
@@ -107,6 +108,7 @@ class TutorRegisterSerializer(serializers.ModelSerializer):
             'last_name',
             'documento',
             'telefono',
+            'rol',
         ]
         extra_kwargs = {
             'password': {'write_only': True},
@@ -134,6 +136,7 @@ class CoordinatorSerializer(serializers.ModelSerializer):
             'last_name',
             'documento',
             'telefono',
+            'rol',
         ]
         extra_kwargs = {
             'password': {'write_only': True},
