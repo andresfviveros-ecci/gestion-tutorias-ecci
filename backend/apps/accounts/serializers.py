@@ -47,7 +47,6 @@ class RecoveryTokenSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         User = get_user_model()
-
         try:
             user = User.objects.get(
                 email=attrs['email'],
@@ -57,20 +56,16 @@ class RecoveryTokenSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 'No existe un usuario activo con este correo.'
             )
-
         pin = f'{random.randint(0, 999999):06d}'
-
         token = AccessToken()
         token['user_id'] = user.id
         token['email'] = user.email
         token['pin'] = pin
         token['type'] = 'password_recovery'
         token.set_exp(lifetime=timedelta(minutes=5))
-
         attrs['user'] = user
         attrs['pin'] = pin
         attrs['token'] = str(token)
-
         return attrs
 
 """ SERIALIZERS PARA REGISTRAR ESTUDIANTE """
@@ -81,8 +76,8 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
             'username',
             'email',
             'password',
-            'nombres',
-            'apellidos',
+            'first_name',
+            'last_name',
             'documento',
             'telefono',
             'codigo_institucional',           
@@ -93,6 +88,7 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         User = get_user_model()
         user = User.objects.create_user(
+            rol='Estudiante',
             **validated_data
         )
         estudiante = Group.objects.get(name='Estudiante')
@@ -107,8 +103,8 @@ class TutorRegisterSerializer(serializers.ModelSerializer):
             'username',
             'email',
             'password',
-            'nombres',
-            'apellidos',
+            'first_name',
+            'last_name',
             'documento',
             'telefono',
         ]
@@ -118,14 +114,12 @@ class TutorRegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         User = get_user_model()
-
         user = User.objects.create_user(
+            rol='Docente',
             **validated_data
         )
-
         tutor = Group.objects.get(name='Docente')
         user.groups.add(tutor)
-
         return user
 
 """ SERIALIZERS PARA REGISTRAR COORDINADORES"""
@@ -136,8 +130,8 @@ class CoordinatorSerializer(serializers.ModelSerializer):
             'username',
             'email',
             'password',
-            'nombres',
-            'apellidos',
+            'first_name',
+            'last_name',
             'documento',
             'telefono',
         ]
@@ -147,12 +141,10 @@ class CoordinatorSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         User = get_user_model()
-
         user = User.objects.create_user(
+            rol='Coordinador',
             **validated_data
         )
-
         coordinador = Group.objects.get(name='Coordinador')
         user.groups.add(coordinador)
-
         return user
