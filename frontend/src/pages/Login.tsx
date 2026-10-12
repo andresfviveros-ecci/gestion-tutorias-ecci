@@ -100,31 +100,42 @@ export const Login: React.FC = () => {
   });
 
   const onLoginSubmit = async (data: LoginFormData) => {
-    setAuthError(false);
-    const loggedUser = await login(data.email, data.password);
+  setAuthError(false);
+  const loggedUser = await login(data.email, data.password);
 
-    if (loggedUser) {
-      triggerLoaderAndReset(() => {
-        // Verificar si venía de intentar ingresar a una URL específica
-        const stateFrom = (location.state as { from?: { pathname?: string } })?.from?.pathname;
+  if (loggedUser) {
+    triggerLoaderAndReset(() => {
+      // 1. Determinar la ruta predeterminada del usuario según su rol
+      let defaultPath = '/inicio';
+      if (loggedUser.role === 'admin') defaultPath = '/dashboard';
+      if (loggedUser.role === 'tutor') defaultPath = '/tutor/dashboard';
 
-        if (stateFrom && stateFrom !== "/") {
+      const stateFrom = (location.state as { from?: { pathname?: string } })?.from?.pathname;
+
+      // 2. Si venía de una URL previa, verificar que su rol tenga permiso en esa URL
+      if (stateFrom && stateFrom !== '/') {
+        const isTutorRoute = stateFrom.startsWith('/tutor');
+        const isAdminRoute = ['/dashboard', '/estudiantes', '/tutores', '/coordinadores', '/gestionar-usuarios'].includes(stateFrom);
+        const isStudentRoute = stateFrom === '/inicio';
+
+        const hasPermission =
+          (loggedUser.role === 'tutor' && isTutorRoute) ||
+          (loggedUser.role === 'admin' && isAdminRoute) ||
+          (loggedUser.role === 'estudiante' && isStudentRoute);
+
+        if (hasPermission) {
           navigate(stateFrom, { replace: true });
-        } else {
-          // Redirección predeterminada según el rol asignado
-          if (loggedUser.role === 'admin') {
-            navigate('/dashboard');
-          } else if (loggedUser.role === 'tutor') {
-            navigate('/tutor/mi-disponibilidad');
-          } else {
-            navigate('/inicio');
-          }
+          return;
         }
-      });
-    } else {
-      setAuthError(true);
-    }
-  };
+      }
+
+      // 3. Si no tiene permiso para la URL anterior o no existía, ir a su panel principal
+      navigate(defaultPath, { replace: true });
+    });
+  } else {
+    setAuthError(true);
+  }
+};
 
   const handleRecoverySubmit = async (e: React.FormEvent) => {
     e.preventDefault();

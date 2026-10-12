@@ -9,6 +9,8 @@ export interface User {
   nombre: string;
   correo: string;
   role: UserRole;
+  first_name?: string;
+  last_name?: string;
 }
 
 interface LoginBackendResponse {
@@ -58,11 +60,15 @@ export const useAuthStore = create<AuthState>()(
             role = 'estudiante';
           }
 
+          const rawName = cleanEmail.split('@')[0];
+          const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+
           const loggedUser: User = {
             id: cleanEmail,
-            nombre: cleanEmail.split('@')[0],
+            nombre: formattedName,
             correo: cleanEmail,
             role: role,
+            first_name: formattedName,
           };
 
           // Guardar el nuevo token JWT

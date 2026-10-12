@@ -7,6 +7,13 @@ interface ProtectedRouteProps {
   allowedRoles: UserRole[];
 }
 
+const normalizeRole = (role?: string): UserRole => {
+  const r = String(role || '').toLowerCase();
+  if (r.includes('admin') || r.includes('coordinador')) return 'admin';
+  if (r.includes('tutor') || r.includes('docente')) return 'tutor';
+  return 'estudiante';
+};
+
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles }) => {
   const user = useAuthStore((state) => state.user);
   const location = useLocation();
@@ -36,12 +43,15 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
+  const userRole = normalizeRole(user.role || (user as unknown as { rol?: string }).rol);
+  const isAllowed = allowedRoles.map((r) => r.toLowerCase()).includes(userRole);
+
   // 2. Si el rol del usuario no tiene acceso a esta vista, reorientarlo según su rol real
-  if (!allowedRoles.includes(user.role)) {
-    if (user.role === 'admin') {
+  if (!isAllowed) {
+    if (userRole === 'admin') {
       return <Navigate to="/dashboard" replace />;
     }
-    if (user.role === 'tutor') {
+    if (userRole === 'tutor') {
       return <Navigate to="/tutor/mi-disponibilidad" replace />;
     }
     return <Navigate to="/inicio" replace />;
