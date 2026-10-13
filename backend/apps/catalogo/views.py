@@ -10,6 +10,18 @@ class MateriaView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
+        responses={200: MateriaSerializer(many=True)}
+    )
+    def get(self, request, format=None):
+        materias = Materia.objects.all()
+        serializer = MateriaSerializer(materias, many=True)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
+
+    @extend_schema(
         request=MateriaSerializer,
         responses={201: MateriaSerializer}
     )
@@ -23,60 +35,87 @@ class MateriaView(views.APIView):
             status=status.HTTP_201_CREATED
         )
 
+
 @extend_schema(tags=['Materias'])
 class MateriaDetailView(views.APIView):
     permission_classes = [IsAuthenticated]
-    
+
     def get_materia(self, pk):
         try:
-            return Materia.objects.get(id=pk)
+            return Materia.objects.get(pk=pk)
         except Materia.DoesNotExist:
             return None
-    
+
+    @extend_schema(
+        responses={
+            200: MateriaSerializer,
+            404: {'type': 'object', 'properties': {'error': {'type': 'string'}}}
+        }
+    )
     def get(self, request, pk, format=None):
         materia = self.get_materia(pk)
+
         if materia is None:
             return Response(
                 {'error': 'La materia no existe.'},
                 status=status.HTTP_404_NOT_FOUND
             )
+
         serializer = MateriaSerializer(materia)
+
         return Response(
             serializer.data,
             status=status.HTTP_200_OK
         )
-    
+
+    @extend_schema(
+        request=MateriaSerializer,
+        responses={
+            200: MateriaSerializer,
+            404: {'type': 'object', 'properties': {'error': {'type': 'string'}}}
+        }
+    )
     def put(self, request, pk, format=None):
         materia = self.get_materia(pk)
+
         if materia is None:
             return Response(
                 {'error': 'La materia no existe.'},
                 status=status.HTTP_404_NOT_FOUND
             )
+
         serializer = MateriaSerializer(
             materia,
             data=request.data
         )
         serializer.is_valid(raise_exception=True)
         materia = serializer.save()
+
         return Response(
             serializer.data,
             status=status.HTTP_200_OK
         )
-    
+
+    @extend_schema(
+        responses={
+            204: None,
+            404: {'type': 'object', 'properties': {'error': {'type': 'string'}}}
+        }
+    )
     def delete(self, request, pk, format=None):
         materia = self.get_materia(pk)
+
         if materia is None:
             return Response(
                 {'error': 'La materia no existe.'},
                 status=status.HTTP_404_NOT_FOUND
             )
+
         materia.delete()
+
         return Response(
-            {'message': 'La materia fue eliminada correctamente.'},
             status=status.HTTP_204_NO_CONTENT
         )
-
 
 """ APIS PARA CREAR PROGRAMA ACADEMICO"""
 @extend_schema(tags=['Programas Académicos'])
