@@ -82,8 +82,15 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
             'codigo_institucional',
         ]
         extra_kwargs = {
-            'password': {'write_only': True},
+            'username': {'required': True, 'allow_blank': False},
+            'email': {'required': True},
+            'password': {'required': True, 'write_only': True, 'allow_blank': False},
+            'first_name': {'required': True, 'allow_blank': False},
+            'last_name': {'required': True, 'allow_blank': False},
+            'documento': {'required': True, 'allow_blank': False},
+            'telefono': {'required': True, 'allow_blank': False},
         }
+
     def create(self, validated_data):
         User = get_user_model()
         user = User.objects.create_user(
@@ -108,7 +115,13 @@ class TutorRegisterSerializer(serializers.ModelSerializer):
             'telefono',
         ]
         extra_kwargs = {
-            'password': {'write_only': True},
+            'username': {'required': True, 'allow_blank': False},
+            'email': {'required': True},
+            'password': {'required': True, 'write_only': True, 'allow_blank': False},
+            'first_name': {'required': True, 'allow_blank': False},
+            'last_name': {'required': True, 'allow_blank': False},
+            'documento': {'required': True, 'allow_blank': False},
+            'telefono': {'required': True, 'allow_blank': False},
         }
 
     def create(self, validated_data):
@@ -121,7 +134,7 @@ class TutorRegisterSerializer(serializers.ModelSerializer):
         user.groups.add(tutor)
         return user
 
-""" SERIALIZERS PARA REGISTRAR COORDINADORES"""
+"""" SERIALIZERS PARA REGISTRAR COORDINADORES"""
 class CoordinatorSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
@@ -135,7 +148,13 @@ class CoordinatorSerializer(serializers.ModelSerializer):
             'telefono',
         ]
         extra_kwargs = {
-            'password': {'write_only': True},
+            'username': {'required': True, 'allow_blank': False},
+            'email': {'required': True},
+            'password': {'required': True, 'write_only': True, 'allow_blank': False},
+            'first_name': {'required': True, 'allow_blank': False},
+            'last_name': {'required': True, 'allow_blank': False},
+            'documento': {'required': True, 'allow_blank': False},
+            'telefono': {'required': True, 'allow_blank': False},
         }
 
     def create(self, validated_data):
