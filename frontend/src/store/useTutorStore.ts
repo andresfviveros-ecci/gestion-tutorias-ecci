@@ -9,6 +9,7 @@ export interface TutorGroup {
 export interface Tutor {
   id: number | string;
   nombre: string;
+  username: string;
   correo: string;
   documento: string;
   telefono: string;
@@ -50,6 +51,7 @@ interface TutorStoreState {
   loading: boolean;
   fetchTutores: () => Promise<void>;
   addTutor: (tutorData: {
+    username: string;
     first_name: string;
     last_name: string;
     email: string;
@@ -59,7 +61,6 @@ interface TutorStoreState {
   }) => Promise<{ success: boolean; error?: string }>;
 }
 
-// Extrae un arreglo seguro sin usar 'any'
 const extractArray = (data: unknown): TutorBackend[] => {
   if (!data) return [];
   if (Array.isArray(data)) return data as TutorBackend[];
@@ -74,7 +75,6 @@ const extractArray = (data: unknown): TutorBackend[] => {
   return [];
 };
 
-// Determina si un usuario pertenece al grupo o rol Docente/Tutor
 const isDocente = (item: TutorBackend): boolean => {
   if (!item) return false;
 
@@ -97,7 +97,6 @@ const isDocente = (item: TutorBackend): boolean => {
   return false;
 };
 
-// Garantiza un nombre legible sin usar 'any'
 const getFullName = (item: TutorBackend): string => {
   if (!item) return 'Docente Tutor';
   const nombres = (item.first_name || item.nombres || '').trim();
@@ -125,9 +124,9 @@ const parseBackendError = (error: unknown): string => {
           const combined = `${emailMsg} ${userMsg}`.toLowerCase();
 
           if (combined.includes('already exists') || combined.includes('ya existe') || combined.includes('registrado')) {
-            return 'El correo electrónico ya se encuentra registrado con otra cuenta.';
+            return 'El usuario o correo electrónico ya se encuentra registrado.';
           }
-          return `Correo: ${emailMsg || userMsg}`;
+          return `Correo/Usuario: ${emailMsg || userMsg}`;
         }
         if (data.documento || data.identificacion) {
           return 'El número de identificación ya se encuentra registrado.';
@@ -177,6 +176,7 @@ export const useTutorStore = create<TutorStoreState>((set, get) => ({
         const email = item.email || item.correo || '';
         const doc = String(item.documento || '');
         const tel = item.telefono || '';
+        const user = item.username || '';
 
         const facultyName = item.facultad || item.faculty || 'Docente';
         const subject = item.materia || item.subject || 'Tutoría';
@@ -184,6 +184,7 @@ export const useTutorStore = create<TutorStoreState>((set, get) => ({
         return {
           id: item.id ?? item.pk ?? Math.random(),
           nombre: fullName,
+          username: user,
           correo: email,
           documento: doc,
           telefono: tel,
@@ -206,7 +207,7 @@ export const useTutorStore = create<TutorStoreState>((set, get) => ({
   addTutor: async (tutorData) => {
     try {
       const payload = {
-        username: tutorData.email.trim(),
+        username: tutorData.username.trim(),
         email: tutorData.email.trim(),
         password: tutorData.password.trim(),
         first_name: tutorData.first_name.trim(),

@@ -5,6 +5,7 @@ import { api } from '../api/axios';
 interface Coordinador {
   first_name: string;
   last_name: string;
+  username: string;
   documento: string;
   telefono: string;
   email: string;
@@ -34,7 +35,8 @@ const parseBackendError = (error: unknown): string => {
       if (typeof data === 'string') return data;
       if (typeof data === 'object') {
         if (data.detail && typeof data.detail === 'string') return data.detail;
-        if (data.email || data.username) return 'El correo electrónico ya se encuentra registrado.';
+        if (data.username) return 'El nombre de usuario ya existe.';
+        if (data.email) return 'El correo electrónico ya se encuentra registrado.';
         if (data.documento) return 'El número de documento ya se encuentra registrado.';
         const firstKey = Object.keys(data)[0];
         if (firstKey) {
@@ -54,27 +56,30 @@ export const Coordinadores: React.FC = () => {
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [documento, setDocumento] = useState('');
   const [telefono, setTelefono] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const [errors, setErrors] = useState({
     firstName: false,
     lastName: false,
+    username: false,
+    email: false,
     documento: false,
     telefono: false,
-    email: false,
     password: false,
   });
 
-  // Validar si algún campo obligatorio (*) está vacío
   const isFormInvalid =
     !firstName.trim() ||
     !lastName.trim() ||
+    !username.trim() ||
+    !email.trim() ||
     !documento.trim() ||
     !telefono.trim() ||
-    !email.trim() ||
     !password.trim();
 
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -89,6 +94,7 @@ export const Coordinadores: React.FC = () => {
     return data.map((item) => ({
       first_name: item.first_name || '',
       last_name: item.last_name || '',
+      username: item.username || '',
       documento: String(item.documento || ''),
       telefono: item.telefono || '',
       email: item.email || '',
@@ -138,7 +144,7 @@ export const Coordinadores: React.FC = () => {
       setSubmitting(true);
 
       const payload = {
-        username: email.trim(),
+        username: username.trim(),
         email: email.trim(),
         password: password.trim(),
         first_name: firstName.trim(),
@@ -163,16 +169,19 @@ export const Coordinadores: React.FC = () => {
   const limpiarFormulario = () => {
     setFirstName('');
     setLastName('');
+    setUsername('');
+    setEmail('');
     setDocumento('');
     setTelefono('');
-    setEmail('');
     setPassword('');
+    setShowPassword(false);
     setErrors({
       firstName: false,
       lastName: false,
+      username: false,
+      email: false,
       documento: false,
       telefono: false,
-      email: false,
       password: false,
     });
   };
@@ -211,7 +220,7 @@ export const Coordinadores: React.FC = () => {
         <div className="text-[0.82rem] text-slate-500">
           Usuarios / <span className="font-semibold text-[#0d1b2a]">Registrar coordinador</span>
         </div>
-        <div className="text-xs font-semibold text-slate-600">Coordinador</div>
+        <div className="text-xs font-semibold text-slate-600">Administrador</div>
       </header>
 
       <main className="p-8 w-full max-w-[1400px] space-y-6">
@@ -223,6 +232,24 @@ export const Coordinadores: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
           <div className="lg:col-span-5 bg-white rounded-xl p-7 border border-slate-200 shadow-sm">
             <form onSubmit={handleSubmit} noValidate className="space-y-4">
+              
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nombre de usuario <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
+                    errors.username ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
+                  }`}
+                  value={username}
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, username: false }));
+                  }}
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -256,6 +283,23 @@ export const Coordinadores: React.FC = () => {
                     }}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Correo electrónico <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
+                    errors.email ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
+                  }`}
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, email: false }));
+                  }}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -295,36 +339,29 @@ export const Coordinadores: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Correo electrónico <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                    errors.email ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                  }`}
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, email: false }));
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Contraseña <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="password"
-                  className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                    errors.password ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                  }`}
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, password: false }));
-                  }}
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    className={`w-full h-[40px] pl-3.5 pr-10 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
+                      errors.password ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
+                    }`}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, password: false }));
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer text-sm"
+                    title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    <i className={`fa-solid ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                  </button>
+                </div>
               </div>
 
               <div className="flex gap-3.5 pt-1">
@@ -363,6 +400,7 @@ export const Coordinadores: React.FC = () => {
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-400 uppercase text-[0.7rem] tracking-wider font-bold">
                     <th className="pb-3 px-2">Coordinador</th>
+                    <th className="pb-3 px-2">Usuario</th>
                     <th className="pb-3 px-2">Documento</th>
                     <th className="pb-3 px-2">Correo</th>
                     <th className="pb-3 px-2">Teléfono</th>
@@ -371,7 +409,7 @@ export const Coordinadores: React.FC = () => {
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {coordinadores.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="py-12 text-center text-slate-400 font-medium text-xs">
+                      <td colSpan={5} className="py-12 text-center text-slate-400 font-medium text-xs">
                         No hay coordinadores registrados aún.
                       </td>
                     </tr>
@@ -381,9 +419,10 @@ export const Coordinadores: React.FC = () => {
                         <td className="py-3 px-2 font-semibold text-[#0d1b2a]">
                           {c.first_name} {c.last_name}
                         </td>
+                        <td className="py-3 px-2 font-mono text-slate-600">{c.username || '—'}</td>
                         <td className="py-3 px-2 font-mono">{c.documento || '—'}</td>
                         <td className="py-3 px-2">{c.email}</td>
-                        <td className="py-3 px-2">{c.telefono}</td>
+                        <td className="py-3 px-2">{c.telefono || '—'}</td>
                       </tr>
                     ))
                   )}
