@@ -1,5 +1,17 @@
 from rest_framework import serializers
-from .models import Materia
+from .models import ProgramaAcademico, Materia
+
+
+class ProgramaAcademicoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProgramaAcademico
+        fields = [
+            'id',
+            'codigo',
+            'nombre',
+            'facultad',
+            'activo',
+        ]
 
 
 class MateriaSerializer(serializers.ModelSerializer):
