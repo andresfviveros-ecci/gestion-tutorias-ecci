@@ -1,9 +1,11 @@
 from rest_framework.response import Response
 from rest_framework import status, views
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from .serializers import *
 from django.core.mail import send_mail
 from drf_spectacular.utils import extend_schema
+from rest_framework.permissions import IsAuthenticated
 
 """ API PARA INICIAR SESION"""
 @extend_schema(tags=['Autenticación'])
@@ -44,182 +46,125 @@ class RecoveryTokenView(views.APIView):
 """ API PARA CRUD ESTUDIANTE"""
 @extend_schema(tags=['Estudiantes'])
 class StudentView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, format=None):
-        users = get_user_model().objects.filter(
-            groups__name='Estudiante'
-        )
+        if not request.user.groups.filter(name='Coordinador').exists():
+            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        users = get_user_model().objects.filter(groups__name='Estudiante')
         serializer = StudentRegisterSerializer(users, many=True)
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
-    @extend_schema(request=StudentRegisterSerializer)   
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(request=StudentRegisterSerializer)
     def post(self, request, format=None):
+        if not request.user.groups.filter(name='Coordinador').exists():
+            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = StudentRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(
-            serializer.data,
-            status=status.HTTP_201_CREATED
-        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 @extend_schema(tags=['Estudiantes'])
 class StudentDetailView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, pk, format=None):
-        user = get_user_model().objects.get(
-            pk=pk,
-            groups__name='Estudiante'
-        )
+        if not request.user.groups.filter(name='Coordinador').exists():
+            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        user = get_user_model().objects.get(pk=pk, groups__name='Estudiante')
         serializer = StudentRegisterSerializer(user)
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def put(self, request, pk, format=None):
-        user = get_user_model().objects.get(
-            pk=pk,
-            groups__name='Estudiante'
-        )
-        serializer = StudentRegisterSerializer(
-            user,
-            data=request.data
-        )
+        if not request.user.groups.filter(name='Coordinador').exists():
+            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        user = get_user_model().objects.get(pk=pk, groups__name='Estudiante')
+        serializer = StudentRegisterSerializer(user, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk, format=None):
-        user = get_user_model().objects.get(
-            pk=pk,
-            groups__name='Estudiante'
-        )
+        if not request.user.groups.filter(name='Coordinador').exists():
+            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        user = get_user_model().objects.get(pk=pk, groups__name='Estudiante')
         user.delete()
-        return Response(
-            status=status.HTTP_204_NO_CONTENT
-        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 """ API PARA REGISTRAR TUTORES/DOCENTE """
 @extend_schema(tags=['Docentes'])
 class TutorView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, format=None):
-        users = get_user_model().objects.filter(
-            groups__name='Docente'
-        )
+        if not request.user.groups.filter(name='Coordinador').exists():
+            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        users = get_user_model().objects.filter(groups__name='Docente')
         serializer = TutorRegisterSerializer(users, many=True)
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     @extend_schema(request=TutorRegisterSerializer)
     def post(self, request, format=None):
+        if not request.user.groups.filter(name='Coordinador').exists():
+            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = TutorRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(
-            serializer.data,
-            status=status.HTTP_201_CREATED
-        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 @extend_schema(tags=['Docentes'])
 class TutorDetailView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, pk, format=None):
-        user = get_user_model().objects.get(
-            pk=pk,
-            groups__name='Docente'
-        )
+        if not request.user.groups.filter(name='Coordinador').exists():
+            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        user = get_user_model().objects.get(pk=pk, groups__name='Docente')
         serializer = TutorRegisterSerializer(user)
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def put(self, request, pk, format=None):
-        user = get_user_model().objects.get(
-            pk=pk,
-            groups__name='Docente'
-        )
-        serializer = TutorRegisterSerializer(
-            user,
-            data=request.data
-        )
+        if not request.user.groups.filter(name='Coordinador').exists():
+            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        user = get_user_model().objects.get(pk=pk, groups__name='Docente')
+        serializer = TutorRegisterSerializer(user, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk, format=None):
-        user = get_user_model().objects.get(
-            pk=pk,
-            groups__name='Docente'
-        )
+        if not request.user.groups.filter(name='Coordinador').exists():
+            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        user = get_user_model().objects.get(pk=pk, groups__name='Docente')
         user.delete()
-        return Response(
-            status=status.HTTP_204_NO_CONTENT
-        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 """ API PARA CRUD COORDINADORES"""
 @extend_schema(tags=['Coordinadores'])
 class CoordinatorView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, format=None):
-        users = get_user_model().objects.filter(
-            groups__name='Coordinador'
-        )
-        serializer = CoordinatorSerializer(users, many=True)
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+        return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+
     @extend_schema(request=CoordinatorSerializer)
     def post(self, request, format=None):
-        serializer = CoordinatorSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(
-            serializer.data,
-            status=status.HTTP_201_CREATED
-        )
+        return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+
 
 @extend_schema(tags=['Coordinadores'])
 class CoordinatorDetailView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, pk, format=None):
-        user = get_user_model().objects.get(
-            pk=pk,
-            groups__name='Coordinador'
-        )
-        serializer = CoordinatorSerializer(user)
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+        return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
 
     def put(self, request, pk, format=None):
-        user = get_user_model().objects.get(
-            pk=pk,
-            groups__name='Coordinador'
-        )
-        serializer = CoordinatorSerializer(
-            user,
-            data=request.data
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+        return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
 
     def delete(self, request, pk, format=None):
-        user = get_user_model().objects.get(
-            pk=pk,
-            groups__name='Coordinador'
-        )
-        user.delete()
-        return Response(
-            status=status.HTTP_204_NO_CONTENT
-        )
+        return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)

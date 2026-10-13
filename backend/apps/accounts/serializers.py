@@ -44,7 +44,6 @@ class LoginSerializers(serializers.Serializer):
 """ SERIALIZER PARA RECUPERAR CONTRASEÑA"""
 class RecoveryTokenSerializer(serializers.Serializer):
     email = serializers.EmailField()
-
     def validate(self, attrs):
         User = get_user_model()
         try:
@@ -81,7 +80,6 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
             'documento',
             'telefono',
             'codigo_institucional',
-            'rol',
         ]
         extra_kwargs = {
             'password': {'write_only': True},
@@ -108,7 +106,6 @@ class TutorRegisterSerializer(serializers.ModelSerializer):
             'last_name',
             'documento',
             'telefono',
-            'rol',
         ]
         extra_kwargs = {
             'password': {'write_only': True},
@@ -136,7 +133,6 @@ class CoordinatorSerializer(serializers.ModelSerializer):
             'last_name',
             'documento',
             'telefono',
-            'rol',
         ]
         extra_kwargs = {
             'password': {'write_only': True},
