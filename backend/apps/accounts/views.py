@@ -6,6 +6,9 @@ from .serializers import *
 from django.core.mail import send_mail
 from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
+import re
+from django.core.cache import cache
+
 
 """ API PARA INICIAR SESION"""
 @extend_schema(tags=['Autenticación'])
@@ -19,6 +22,8 @@ class LoginView(views.APIView):
             'refresh': serializer.validated_data['refresh'],
             'groups': list(user.groups.values_list('id', 'name')),
         }, status=status.HTTP_200_OK)
+
+
 
 """ API PARA RECUPERAR CONTRASEÑA """
 @extend_schema(tags=['Autenticación'])
@@ -39,7 +44,23 @@ class RecoveryTokenView(views.APIView):
         )
 
         return Response(
-            {'message': 'Se ha enviado el código de recuperación al correo.'},
+            {
+                'message': 'Se ha enviado el código de recuperación al correo.',
+                'token': serializer.validated_data['token']
+            },
+            status=status.HTTP_200_OK
+        )
+    
+""" API PARA CAMBIAR CONTRASEÑA """
+@extend_schema(tags=['Autenticación'])
+class ChangePasswordView(views.APIView):
+    def post(self, request, format=None):
+        serializer = ChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            {'message': 'La contraseña se ha actualizado correctamente.'},
             status=status.HTTP_200_OK
         )
 
