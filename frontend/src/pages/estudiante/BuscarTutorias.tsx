@@ -140,13 +140,17 @@ export const BuscarTutorias: React.FC = () => {
     setShowConfirmModal(true);
   };
 
-  // Manejador para ejecutar la reserva
+  // Manejador para ejecutar la reserva con el endpoint /tutorias/reservar/
   const handleConfirmReserva = async () => {
     if (!selectedBloqueForModal) return;
     setReserving(true);
     try {
-      // Petición al backend para reservar el bloque
-      await api.post(`/disponibilidades/${selectedBloqueForModal.id}/reservar/`);
+      // Petición POST a la URL real del backend para reservar
+      await api.post('/tutorias/reservar/', {
+        disponibilidad: selectedBloqueForModal.id,
+        bloque: selectedBloqueForModal.id,
+        bloque_id: selectedBloqueForModal.id,
+      });
 
       // Agregar a reservas locales del usuario
       const nuevaReserva: TutoriaReservada = {
@@ -162,10 +166,24 @@ export const BuscarTutorias: React.FC = () => {
       setMisReservas((prev) => [nuevaReserva, ...prev]);
       setShowConfirmModal(false);
       setShowSuccessModal(true);
-      await fetchBloques(); // Recargar lista de horarios
-    } catch (error) {
+      await fetchBloques(); // Recargar lista de horarios disponibles
+    } catch (error: unknown) {
       console.error('Error al reservar tutoría:', error);
-      alert('Ocurrió un error al procesar la reserva. Inténtalo de nuevo.');
+      let errorMsg = 'Ocurrió un error al procesar la reserva. Inténtalo de nuevo.';
+      if (typeof error === 'object' && error !== null && 'response' in error) {
+        const res = (error as { response?: { data?: Record<string, unknown> | string } }).response;
+        if (res?.data) {
+          if (typeof res.data === 'string') {
+            errorMsg = res.data;
+          } else if (typeof res.data === 'object') {
+            errorMsg =
+              (res.data.detail as string) ||
+              (res.data.error as string) ||
+              (Array.isArray(res.data.non_field_errors) ? (res.data.non_field_errors[0] as string) : errorMsg);
+          }
+        }
+      }
+      alert(errorMsg);
     } finally {
       setReserving(false);
     }
@@ -199,9 +217,7 @@ export const BuscarTutorias: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* FILTRO TUTOR */}
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              Tutor
-            </label>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Tutor</label>
             <select
               value={selectedTutor}
               onChange={(e) => setSelectedTutor(e.target.value)}
@@ -218,9 +234,7 @@ export const BuscarTutorias: React.FC = () => {
 
           {/* FILTRO MATERIA */}
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              Materia
-            </label>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Materia</label>
             <select
               value={selectedMateria}
               onChange={(e) => setSelectedMateria(e.target.value)}
@@ -237,9 +251,7 @@ export const BuscarTutorias: React.FC = () => {
 
           {/* FILTRO MODALIDAD */}
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-              Modalidad
-            </label>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Modalidad</label>
             <select
               value={selectedModalidad}
               onChange={(e) => setSelectedModalidad(e.target.value)}
@@ -259,9 +271,7 @@ export const BuscarTutorias: React.FC = () => {
 
       {/* GRILLA DE HORARIOS DISPONIBLES */}
       <div className="space-y-3">
-        <h3 className="font-display text-lg font-bold text-slate-800">
-          Horarios disponibles
-        </h3>
+        <h3 className="font-display text-lg font-bold text-slate-800">Horarios disponibles</h3>
 
         {loading ? (
           <div className="py-12 text-center text-xs text-slate-400 bg-white rounded-2xl border border-slate-200/80">
@@ -296,9 +306,7 @@ export const BuscarTutorias: React.FC = () => {
                         </span>
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            isVirtual
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-slate-200 text-slate-700'
+                            isVirtual ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'
                           }`}
                         >
                           {bloque.modalidad}
@@ -307,16 +315,12 @@ export const BuscarTutorias: React.FC = () => {
                     </div>
 
                     <div className="text-right">
-                      <span className="text-xs font-semibold text-slate-700 block">
-                        {bloque.fecha}
-                      </span>
+                      <span className="text-xs font-semibold text-slate-700 block">{bloque.fecha}</span>
                       <span className="text-xs font-bold text-slate-900 block mt-0.5">
                         {bloque.hora_inicio.substring(0, 5)} - {bloque.hora_fin.substring(0, 5)}
                       </span>
                       <span className="text-[11px] text-slate-400 block mt-1">
-                        {isVirtual
-                          ? 'Enlace enviado al confirmar'
-                          : bloque.lugar || 'Bloque / Salón por definir'}
+                        {isVirtual ? 'Enlace enviado al confirmar' : bloque.lugar || 'Bloque / Salón por definir'}
                       </span>
                     </div>
                   </div>
@@ -336,14 +340,10 @@ export const BuscarTutorias: React.FC = () => {
 
       {/* MIS PRÓXIMAS TUTORÍAS */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm space-y-4">
-        <h3 className="font-display text-lg font-bold text-slate-800">
-          Mis próximas tutorías
-        </h3>
+        <h3 className="font-display text-lg font-bold text-slate-800">Mis próximas tutorías</h3>
 
         {misReservas.length === 0 ? (
-          <div className="py-10 text-center text-xs text-slate-400">
-            Aún no tienes tutorías reservadas.
-          </div>
+          <div className="py-10 text-center text-xs text-slate-400">Aún no tienes tutorías reservadas.</div>
         ) : (
           <div className="divide-y divide-slate-100">
             {misReservas.map((item, idx) => (
@@ -379,12 +379,8 @@ export const BuscarTutorias: React.FC = () => {
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
               className="bg-white w-full max-w-md rounded-3xl p-6 md:p-8 shadow-2xl border border-slate-100 font-body text-slate-800"
             >
-              <h3 className="font-display text-2xl font-bold text-[#0d1b2a] mb-1">
-                Confirmar reserva
-              </h3>
-              <p className="text-xs text-slate-500 mb-6">
-                Revisa los detalles antes de confirmar tu tutoría.
-              </p>
+              <h3 className="font-display text-2xl font-bold text-[#0d1b2a] mb-1">Confirmar reserva</h3>
+              <p className="text-xs text-slate-500 mb-6">Revisa los detalles antes de confirmar tu tutoría.</p>
 
               <div className="bg-[#f8fafc] border border-slate-200/80 rounded-2xl p-4 space-y-3 text-xs mb-6">
                 <div className="flex justify-between">
@@ -398,7 +394,8 @@ export const BuscarTutorias: React.FC = () => {
                 <div className="flex justify-between">
                   <span className="text-slate-500 font-medium">Horario:</span>
                   <span className="font-bold text-slate-800">
-                    {selectedBloqueForModal.fecha}, {selectedBloqueForModal.hora_inicio.substring(0, 5)} - {selectedBloqueForModal.hora_fin.substring(0, 5)}
+                    {selectedBloqueForModal.fecha}, {selectedBloqueForModal.hora_inicio.substring(0, 5)} -{' '}
+                    {selectedBloqueForModal.hora_fin.substring(0, 5)}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -444,17 +441,14 @@ export const BuscarTutorias: React.FC = () => {
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
               className="bg-white w-full max-w-md rounded-3xl p-6 md:p-8 shadow-2xl border border-slate-100 font-body text-slate-800 text-center"
             >
-              <h3 className="font-display text-2xl font-bold text-[#0d1b2a] mb-1">
-                ¡Tutoría reservada!
-              </h3>
-              <p className="text-xs text-slate-500 mb-6">
-                Ya quedó registrada en tus tutorías programadas.
-              </p>
+              <h3 className="font-display text-2xl font-bold text-[#0d1b2a] mb-1">¡Tutoría reservada!</h3>
+              <p className="text-xs text-slate-500 mb-6">Ya quedó registrada en tus tutorías programadas.</p>
 
               <div className="bg-[#f0f9ff] border border-sky-200 text-sky-900 rounded-2xl p-4 text-xs mb-6 leading-relaxed flex items-center gap-3 text-left">
                 <i className="fa-solid fa-envelope text-lg text-sky-600 shrink-0"></i>
                 <span>
-                  Enviamos una notificación por correo a <strong>{getTutorName(selectedBloqueForModal)}</strong> y a ti, confirmando los detalles.
+                  Enviamos una notificación por correo a <strong>{getTutorName(selectedBloqueForModal)}</strong> y a
+                  ti, confirmando los detalles.
                 </span>
               </div>
 

@@ -58,7 +58,7 @@ export const DashboardEstudiante: React.FC = () => {
       try {
         const [resDisponibilidades, resReservas] = await Promise.allSettled([
           api.get<BloqueBackend[]>('/disponibilidades/'),
-          api.get<TutoriaReservada[]>('/accounts/tutorias/mis-reservas/'),
+          api.get<unknown>('/tutorias/').catch(() => api.get<unknown>('/accounts/tutorias/mis-reservas/')),
         ]);
 
         if (resDisponibilidades.status === 'fulfilled' && Array.isArray(resDisponibilidades.value.data)) {
@@ -67,8 +67,20 @@ export const DashboardEstudiante: React.FC = () => {
           setDisponibilidades([]);
         }
 
-        if (resReservas.status === 'fulfilled' && Array.isArray(resReservas.value.data)) {
-          setMisReservas(resReservas.value.data);
+        if (resReservas.status === 'fulfilled') {
+          const resData = resReservas.value.data;
+          if (Array.isArray(resData)) {
+            setMisReservas(resData as TutoriaReservada[]);
+          } else if (
+            typeof resData === 'object' &&
+            resData !== null &&
+            'results' in resData &&
+            Array.isArray((resData as { results: unknown }).results)
+          ) {
+            setMisReservas((resData as { results: TutoriaReservada[] }).results);
+          } else {
+            setMisReservas([]);
+          }
         } else {
           setMisReservas([]);
         }
@@ -81,8 +93,6 @@ export const DashboardEstudiante: React.FC = () => {
 
     fetchData();
   }, []);
-
-  // --- CÁLCULO DE MÉTRICAS ---
 
   // 1. Próxima tutoría
   const proximaTutoria = useMemo(() => {
@@ -170,14 +180,10 @@ export const DashboardEstudiante: React.FC = () => {
           whileHover={{ y: -3 }}
           className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col justify-between"
         >
-          <span className="text-xs font-semibold text-slate-500 block mb-3">
-            Próxima tutoría
-          </span>
+          <span className="text-xs font-semibold text-slate-500 block mb-3">Próxima tutoría</span>
           <div>
             <span className="text-xl font-bold text-slate-900 block truncate">
-              {proximaTutoria
-                ? `${proximaTutoria.hora_inicio.substring(0, 5)} - ${proximaTutoria.materia}`
-                : '-'}
+              {proximaTutoria ? `${proximaTutoria.hora_inicio.substring(0, 5)} - ${proximaTutoria.materia}` : '-'}
             </span>
             <span className="text-[11px] text-emerald-600 font-medium block mt-1">
               {proximaTutoria ? `${proximaTutoria.fecha} . ${proximaTutoria.materia}` : 'Sin tutorías reservadas'}
@@ -190,16 +196,10 @@ export const DashboardEstudiante: React.FC = () => {
           whileHover={{ y: -3 }}
           className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col justify-between"
         >
-          <span className="text-xs font-semibold text-slate-500 block mb-3">
-            Tutorías tomadas
-          </span>
+          <span className="text-xs font-semibold text-slate-500 block mb-3">Tutorías tomadas</span>
           <div>
-            <span className="text-3xl font-extrabold text-slate-900 block">
-              {loading ? '-' : tutoriasTomadasCount}
-            </span>
-            <span className="text-[11px] text-emerald-600 font-medium block mt-1">
-              Este semestre
-            </span>
+            <span className="text-3xl font-extrabold text-slate-900 block">{loading ? '-' : tutoriasTomadasCount}</span>
+            <span className="text-[11px] text-emerald-600 font-medium block mt-1">Este semestre</span>
           </div>
         </motion.div>
 
@@ -208,16 +208,10 @@ export const DashboardEstudiante: React.FC = () => {
           whileHover={{ y: -3 }}
           className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col justify-between"
         >
-          <span className="text-xs font-semibold text-slate-500 block mb-3">
-            Materias con tutoría disponible
-          </span>
+          <span className="text-xs font-semibold text-slate-500 block mb-3">Materias con tutoría disponible</span>
           <div>
-            <span className="text-3xl font-extrabold text-slate-900 block">
-              {loading ? '-' : materiasDisponiblesCount}
-            </span>
-            <span className="text-[11px] text-amber-600 font-medium block mt-1">
-              Actualizado hoy
-            </span>
+            <span className="text-3xl font-extrabold text-slate-900 block">{loading ? '-' : materiasDisponiblesCount}</span>
+            <span className="text-[11px] text-amber-600 font-medium block mt-1">Actualizado hoy</span>
           </div>
         </motion.div>
 
@@ -226,16 +220,10 @@ export const DashboardEstudiante: React.FC = () => {
           whileHover={{ y: -3 }}
           className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm flex flex-col justify-between"
         >
-          <span className="text-xs font-semibold text-slate-500 block mb-3">
-            Tutores disponibles ahora
-          </span>
+          <span className="text-xs font-semibold text-slate-500 block mb-3">Tutores disponibles ahora</span>
           <div>
-            <span className="text-3xl font-extrabold text-slate-900 block">
-              {loading ? '-' : tutoresDisponiblesCount}
-            </span>
-            <span className="text-[11px] text-amber-600 font-medium block mt-1">
-              En tus materias
-            </span>
+            <span className="text-3xl font-extrabold text-slate-900 block">{loading ? '-' : tutoresDisponiblesCount}</span>
+            <span className="text-[11px] text-amber-600 font-medium block mt-1">En tus materias</span>
           </div>
         </motion.div>
       </div>
@@ -247,9 +235,7 @@ export const DashboardEstudiante: React.FC = () => {
         transition={{ delay: 0.2, duration: 0.5 }}
         className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm"
       >
-        <h3 className="font-display text-lg font-bold text-slate-800 mb-6">
-          Tus próximas tutorías
-        </h3>
+        <h3 className="font-display text-lg font-bold text-slate-800 mb-6">Tus próximas tutorías</h3>
 
         {loading ? (
           <div className="py-8 text-center text-xs text-slate-400">Cargando tutorías reservadas...</div>
@@ -269,19 +255,13 @@ export const DashboardEstudiante: React.FC = () => {
                     {(item.materia || 'T').charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-800">
-                      {item.materia}
-                    </h4>
-                    <p className="text-[11px] text-slate-500">
-                      Tutor: {item.tutor_nombre}
-                    </p>
+                    <h4 className="text-xs font-semibold text-slate-800">{item.materia}</h4>
+                    <p className="text-[11px] text-slate-500">Tutor: {item.tutor_nombre}</p>
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <span className="text-xs font-medium text-slate-700 block">
-                    {item.fecha}
-                  </span>
+                  <span className="text-xs font-medium text-slate-700 block">{item.fecha}</span>
                   <span className="text-[11px] text-emerald-600 font-semibold">
                     {item.hora_inicio.substring(0, 5)} - {item.hora_fin.substring(0, 5)}
                   </span>

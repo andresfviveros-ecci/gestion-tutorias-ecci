@@ -62,8 +62,8 @@ export const MiDisponibilidad: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
 
   const scheduleStore = useScheduleStore() as unknown as ScheduleStoreInterface;
-  const storeSlots = scheduleStore.slots || [];
-  const fetchSlots = scheduleStore.fetchSlots;
+  const storeSlots = scheduleStore?.slots || [];
+  const fetchSlots = scheduleStore?.fetchSlots;
 
   // ESTADOS CONECTADOS A LOS MODELOS DE DJANGO
   const [materias, setMaterias] = useState<MateriaBackend[]>([]);
@@ -95,34 +95,44 @@ export const MiDisponibilidad: React.FC = () => {
         resMaterias = await fetch(`${API_BASE_URL}/materias/`, { headers });
       }
 
+      let activas: MateriaBackend[] = [];
       if (resMaterias.ok) {
         const dataMaterias = (await resMaterias.json()) as MateriaBackend[];
-        // Filtrar materias activas
-        const activas = dataMaterias.filter((m) => m.activa !== false);
-        setMaterias(activas);
-        if (activas.length > 0) {
-          setMateriaId(activas[0].id);
-        }
+        activas = dataMaterias.filter((m) => m.activa !== false);
       }
 
       // 2. Cargar Periodos Académicos
+      let dataPeriodos: PeriodoBackend[] = [];
       const resPeriodos = await fetch(`${API_BASE_URL}/catalogo/periodos/`, { headers });
       if (resPeriodos.ok) {
-        const dataPeriodos = (await resPeriodos.json()) as PeriodoBackend[];
-        setPeriodos(dataPeriodos);
-        const activo = dataPeriodos.find((p) => p.activo) || dataPeriodos[0];
-        if (activo) setPeriodoId(activo.id);
+        dataPeriodos = (await resPeriodos.json()) as PeriodoBackend[];
       }
 
       // 3. Cargar Bloques de Disponibilidad
+      let dataBloques: BloqueDisponibilidadBackend[] = [];
       if (typeof fetchSlots === 'function') {
         await fetchSlots();
       } else {
         const resBloques = await fetch(`${API_BASE_URL}/disponibilidades/`, { headers });
         if (resBloques.ok) {
-          const dataBloques = (await resBloques.json()) as BloqueDisponibilidadBackend[];
-          setLocalSlots(dataBloques);
+          dataBloques = (await resBloques.json()) as BloqueDisponibilidadBackend[];
         }
+      }
+
+      // BATCH FINAL DE ACTUALIZACIÓN DE ESTADOS
+      setMaterias(activas);
+      if (activas.length > 0) {
+        setMateriaId((prev) => prev || activas[0].id);
+      }
+
+      setPeriodos(dataPeriodos);
+      const activoPeriodo = dataPeriodos.find((p) => p.activo) || dataPeriodos[0];
+      if (activoPeriodo) {
+        setPeriodoId((prev) => prev || activoPeriodo.id);
+      }
+
+      if (dataBloques.length > 0) {
+        setLocalSlots(dataBloques);
       }
     } catch (err) {
       console.error('Error al conectar con la API de Django:', err);
@@ -132,7 +142,18 @@ export const MiDisponibilidad: React.FC = () => {
   }, [fetchSlots]);
 
   useEffect(() => {
-    cargarCatalogos();
+    let isMounted = true;
+
+    const timer = setTimeout(() => {
+      if (isMounted) {
+        cargarCatalogos();
+      }
+    }, 0);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
   }, [cargarCatalogos]);
 
   // COMBINAR BLOQUES OBTENIDOS
@@ -373,7 +394,7 @@ export const MiDisponibilidad: React.FC = () => {
                     }}
                     className={`h-8 font-semibold rounded-md transition-all cursor-pointer ${
                       modalidad === 'Virtual'
-                        ? 'bg-[#1f7a5c]/20 text-[#1f7a5c] border border-[#1f7a5c]/30'
+                        ? 'bg-[#047857]/20 text-[#047857] border border-[#047857]/30'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -445,12 +466,12 @@ export const MiDisponibilidad: React.FC = () => {
 
               <div className="flex items-center gap-4 text-[11px] font-semibold text-slate-600">
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-700" /> Virtual
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#047857]" /> Virtual
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-[#0d1b2a]" /> Presencial
                 </span>
-                <span className="text-emerald-700 ml-2">• Visible para estudiantes</span>
+                <span className="text-[#047857] ml-2">• Visible para estudiantes</span>
               </div>
             </div>
 
@@ -480,7 +501,9 @@ export const MiDisponibilidad: React.FC = () => {
                           <div
                             key={s.id || idx}
                             className={`p-2 rounded text-[10px] text-white ${
-                              s.modalidad === 'Virtual' ? 'bg-emerald-700' : 'bg-[#0d1b2a]'
+                              s.modalidad?.toLowerCase() === 'virtual'
+                                ? 'bg-[#047857]'
+                                : 'bg-[#0d1b2a]'
                             }`}
                           >
                             <div className="font-bold truncate">{nombreMat}</div>

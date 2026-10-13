@@ -22,7 +22,6 @@ export interface TutoriaBackend {
 const MESES = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
 const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-// Formateador para las tarjetas de fecha (Día, Número y Mes)
 const parseFechaBadge = (fechaStr: string) => {
   if (!fechaStr) return { mes: 'OCT', diaNum: '11', diaSem: 'Dom' };
   const partes = fechaStr.split('-');
@@ -41,7 +40,6 @@ const parseFechaBadge = (fechaStr: string) => {
   return { mes: 'OCT', diaNum: '11', diaSem: 'Dom' };
 };
 
-// Formateador de horas
 const formatHora = (horaStr?: string) => {
   if (!horaStr) return '00:00';
   return horaStr.substring(0, 5);
@@ -57,7 +55,13 @@ export const MisReservas: React.FC = () => {
 
     const fetchReservas = async () => {
       try {
-        const response = await api.get<unknown>('/tutorias/');
+        let response;
+        try {
+          response = await api.get<unknown>('/tutorias/');
+        } catch {
+          response = await api.get<unknown>('/accounts/tutorias/mis-reservas/');
+        }
+
         let dataArray: TutoriaBackend[] = [];
 
         if (Array.isArray(response.data)) {
@@ -89,10 +93,8 @@ export const MisReservas: React.FC = () => {
     };
   }, []);
 
-  // Fecha actual en formato YYYY-MM-DD
   const hoyISO = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  // Helpers para extraer nombres limpios sin usar 'any'
   const getMateriaNombre = (item: TutoriaBackend): string => {
     if (typeof item.materia === 'string') return item.materia;
     if (typeof item.materia === 'object' && item.materia !== null && item.materia.nombre) {
@@ -111,14 +113,12 @@ export const MisReservas: React.FC = () => {
     return 'Docente Tutor';
   };
 
-  // Filtrado de tutorías activas (HOY y PRÓXIMAS)
   const { tutoriasHoy, tutoriasProximas } = useMemo(() => {
     const hoy: TutoriaBackend[] = [];
     const proximas: TutoriaBackend[] = [];
 
     tutorias.forEach((t) => {
       const estadoLower = (t.estado || '').toLowerCase();
-      // Excluir canceladas o finalizadas
       if (estadoLower.includes('cancel') || estadoLower.includes('finaliz')) return;
 
       if (t.fecha === hoyISO) {
@@ -128,7 +128,6 @@ export const MisReservas: React.FC = () => {
       }
     });
 
-    // Ordenar por fecha y hora ascendente
     proximas.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.hora_inicio.localeCompare(b.hora_inicio));
 
     return { tutoriasHoy: hoy, tutoriasProximas: proximas };
@@ -197,7 +196,6 @@ export const MisReservas: React.FC = () => {
                       className="bg-white border border-slate-300 rounded-2xl p-4 md:p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
                     >
                       <div className="flex items-center gap-4">
-                        {/* BADGE CON FECHA */}
                         <div className="w-14 h-16 rounded-xl bg-[#111a2e] text-white flex flex-col items-center justify-center shrink-0 shadow-sm">
                           <span className="text-[9px] font-bold tracking-wider uppercase text-slate-300">
                             {badge.mes}
@@ -206,7 +204,6 @@ export const MisReservas: React.FC = () => {
                           <span className="text-[9px] text-slate-400 font-medium">{badge.diaSem}</span>
                         </div>
 
-                        {/* DETALLES DE LA TUTORÍA */}
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <h4 className="font-bold text-sm md:text-base text-slate-800">
@@ -228,7 +225,6 @@ export const MisReservas: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* BADGES DE DERECHA */}
                       <div className="flex flex-col sm:items-end gap-2 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100">
                         <div className="flex items-center gap-2">
                           <span
@@ -289,7 +285,6 @@ export const MisReservas: React.FC = () => {
                       className="bg-white border border-slate-300 rounded-2xl p-4 md:p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
                     >
                       <div className="flex items-center gap-4">
-                        {/* BADGE CON FECHA */}
                         <div className="w-14 h-16 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 flex flex-col items-center justify-center shrink-0">
                           <span className="text-[9px] font-bold tracking-wider uppercase text-slate-400">
                             {badge.mes}
@@ -298,7 +293,6 @@ export const MisReservas: React.FC = () => {
                           <span className="text-[9px] text-slate-500 font-medium">{badge.diaSem}</span>
                         </div>
 
-                        {/* DETALLES DE LA TUTORÍA */}
                         <div className="space-y-1">
                           <h4 className="font-bold text-sm md:text-base text-slate-800">
                             {getMateriaNombre(item)}
@@ -315,7 +309,6 @@ export const MisReservas: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* BADGES DE DERECHA */}
                       <div className="flex flex-col sm:items-end gap-2 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100">
                         <div className="flex items-center gap-2">
                           <span
