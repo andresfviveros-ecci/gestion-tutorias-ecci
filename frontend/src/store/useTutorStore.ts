@@ -10,6 +10,8 @@ export interface Tutor {
   id: number | string;
   nombre: string;
   correo: string;
+  documento: string;
+  telefono: string;
   groups: TutorGroup[];
 }
 
@@ -30,6 +32,8 @@ export interface TutorBackend {
   last_name?: string;
   email?: string;
   correo?: string;
+  documento?: string | number;
+  telefono?: string;
   facultad?: string;
   faculty?: string;
   materia?: string;
@@ -46,12 +50,12 @@ interface TutorStoreState {
   loading: boolean;
   fetchTutores: () => Promise<void>;
   addTutor: (tutorData: {
-    nombres: string;
-    apellidos: string;
+    first_name: string;
+    last_name: string;
     email: string;
-    facultad: string;
-    materia: string;
-    password?: string;
+    documento: string;
+    telefono: string;
+    password: string;
   }) => Promise<{ success: boolean; error?: string }>;
 }
 
@@ -96,8 +100,8 @@ const isDocente = (item: TutorBackend): boolean => {
 // Garantiza un nombre legible sin usar 'any'
 const getFullName = (item: TutorBackend): string => {
   if (!item) return 'Docente Tutor';
-  const nombres = (item.nombres || item.first_name || '').trim();
-  const apellidos = (item.apellidos || item.last_name || '').trim();
+  const nombres = (item.first_name || item.nombres || '').trim();
+  const apellidos = (item.last_name || item.apellidos || '').trim();
   const combined = `${nombres} ${apellidos}`.trim();
   if (combined) return combined;
   if (item.nombre) return item.nombre;
@@ -171,17 +175,18 @@ export const useTutorStore = create<TutorStoreState>((set, get) => ({
       const mapped: Tutor[] = rawList.map((item) => {
         const fullName = getFullName(item);
         const email = item.email || item.correo || '';
+        const doc = String(item.documento || '');
+        const tel = item.telefono || '';
 
-        let facultyName = item.facultad || item.faculty || '';
-        if (!facultyName) facultyName = 'Facultad de Ingeniería';
-
-        let subject = item.materia || item.subject || '';
-        if (!subject) subject = 'Acompañamiento Académico';
+        const facultyName = item.facultad || item.faculty || 'Docente';
+        const subject = item.materia || item.subject || 'Tutoría';
 
         return {
           id: item.id ?? item.pk ?? Math.random(),
           nombre: fullName,
           correo: email,
+          documento: doc,
+          telefono: tel,
           groups: [
             {
               facultyName,
@@ -203,16 +208,11 @@ export const useTutorStore = create<TutorStoreState>((set, get) => ({
       const payload = {
         username: tutorData.email.trim(),
         email: tutorData.email.trim(),
-        password: tutorData.password || '12345678',
-        nombres: tutorData.nombres.trim(),
-        apellidos: tutorData.apellidos.trim(),
-        first_name: tutorData.nombres.trim(),
-        last_name: tutorData.apellidos.trim(),
-        documento: String(Math.floor(Math.random() * 89999999 + 10000000)),
-        telefono: '3000000000',
-        facultad: tutorData.facultad.trim(),
-        materia: tutorData.materia.trim(),
-        rol: 'Docente',
+        password: tutorData.password.trim(),
+        first_name: tutorData.first_name.trim(),
+        last_name: tutorData.last_name.trim(),
+        documento: tutorData.documento.trim(),
+        telefono: tutorData.telefono.trim(),
       };
 
       await api.post('/accounts/tutores/', payload);

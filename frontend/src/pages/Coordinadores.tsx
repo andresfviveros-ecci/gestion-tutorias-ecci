@@ -3,25 +3,21 @@ import { Loader } from '../components/Loader';
 import { api } from '../api/axios';
 
 interface Coordinador {
-  nombres: string;
-  apellidos: string;
-  id: string;
-  facultad: string;
-  correo: string;
+  first_name: string;
+  last_name: string;
+  documento: string;
+  telefono: string;
+  email: string;
 }
 
 interface CoordinadorBackend {
-  nombre?: string;
-  nombres?: string;
-  apellidos?: string;
+  id?: string | number;
+  username?: string;
+  email?: string;
   first_name?: string;
   last_name?: string;
   documento?: string | number;
-  identificacion?: string | number;
-  id?: string | number;
-  facultad?: string;
-  correo?: string;
-  email?: string;
+  telefono?: string;
 }
 
 interface ToastState {
@@ -38,21 +34,8 @@ const parseBackendError = (error: unknown): string => {
       if (typeof data === 'string') return data;
       if (typeof data === 'object') {
         if (data.detail && typeof data.detail === 'string') return data.detail;
-        if (data.message && typeof data.message === 'string') return data.message;
-        
-        if (data.email || data.username) {
-          const emailMsg = data.email ? (Array.isArray(data.email) ? data.email.join(' ') : String(data.email)) : '';
-          const userMsg = data.username ? (Array.isArray(data.username) ? data.username.join(' ') : String(data.username)) : '';
-          const combined = `${emailMsg} ${userMsg}`.toLowerCase();
-
-          if (combined.includes('already exists') || combined.includes('ya existe') || combined.includes('registrado')) {
-            return 'El correo electrónico ya se encuentra registrado con otra cuenta.';
-          }
-          return `Correo: ${emailMsg || userMsg}`;
-        }
-        if (data.documento || data.identificacion) {
-          return 'El número de identificación ya se encuentra registrado.';
-        }
+        if (data.email || data.username) return 'El correo electrónico ya se encuentra registrado.';
+        if (data.documento) return 'El número de documento ya se encuentra registrado.';
         const firstKey = Object.keys(data)[0];
         if (firstKey) {
           const val = data[firstKey];
@@ -69,19 +52,30 @@ export const Coordinadores: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const [nombres, setNombres] = useState('');
-  const [apellidos, setApellidos] = useState('');
-  const [identificacion, setIdentificacion] = useState('');
-  const [facultad, setFacultad] = useState('');
-  const [correo, setCorreo] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [documento, setDocumento] = useState('');
+  const [telefono, setTelefono] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   const [errors, setErrors] = useState({
-    nombres: false,
-    apellidos: false,
-    identificacion: false,
-    facultad: false,
-    correo: false,
+    firstName: false,
+    lastName: false,
+    documento: false,
+    telefono: false,
+    email: false,
+    password: false,
   });
+
+  // Validar si algún campo obligatorio (*) está vacío
+  const isFormInvalid =
+    !firstName.trim() ||
+    !lastName.trim() ||
+    !documento.trim() ||
+    !telefono.trim() ||
+    !email.trim() ||
+    !password.trim();
 
   const [toast, setToast] = useState<ToastState | null>(null);
   const [coordinadores, setCoordinadores] = useState<Coordinador[]>([]);
@@ -93,11 +87,11 @@ export const Coordinadores: React.FC = () => {
 
   const mapBackendCoordinadores = (data: CoordinadorBackend[]): Coordinador[] => {
     return data.map((item) => ({
-      nombres: item.nombres || item.first_name || item.nombre || 'Coordinador',
-      apellidos: item.apellidos || item.last_name || '',
-      id: String(item.documento || item.identificacion || item.id || ''),
-      facultad: item.facultad || 'Ingeniería',
-      correo: item.correo || item.email || '',
+      first_name: item.first_name || '',
+      last_name: item.last_name || '',
+      documento: String(item.documento || ''),
+      telefono: item.telefono || '',
+      email: item.email || '',
     }));
   };
 
@@ -135,17 +129,7 @@ export const Coordinadores: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const newErrors = {
-      nombres: !nombres.trim(),
-      apellidos: !apellidos.trim(),
-      identificacion: !identificacion.trim(),
-      facultad: !facultad.trim(),
-      correo: !correo.trim(),
-    };
-
-    setErrors(newErrors);
-
-    if (newErrors.nombres || newErrors.apellidos || newErrors.identificacion || newErrors.facultad || newErrors.correo) {
+    if (isFormInvalid) {
       triggerToast('error', 'Campos incompletos', 'Por favor completa todos los campos requeridos (*).');
       return;
     }
@@ -154,21 +138,18 @@ export const Coordinadores: React.FC = () => {
       setSubmitting(true);
 
       const payload = {
-        username: correo.trim(),
-        email: correo.trim(),
-        password: '12345678',
-        nombres: nombres.trim(),
-        apellidos: apellidos.trim(),
-        first_name: nombres.trim(),
-        last_name: apellidos.trim(),
-        documento: identificacion.trim(),
-        identificacion: identificacion.trim(),
-        facultad: facultad.trim(),
+        username: email.trim(),
+        email: email.trim(),
+        password: password.trim(),
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        documento: documento.trim(),
+        telefono: telefono.trim(),
       };
 
       await api.post('/accounts/coordinadores/', payload);
 
-      triggerToast('success', '¡Coordinador Creado!', `${nombres} ${apellidos} registrado correctamente.`);
+      triggerToast('success', '¡Coordinador Creado!', `${firstName} ${lastName} registrado correctamente.`);
       await fetchCoordinadores();
       limpiarFormulario();
     } catch (error) {
@@ -180,19 +161,26 @@ export const Coordinadores: React.FC = () => {
   };
 
   const limpiarFormulario = () => {
-    setNombres('');
-    setApellidos('');
-    setIdentificacion('');
-    setFacultad('');
-    setCorreo('');
-    setErrors({ nombres: false, apellidos: false, identificacion: false, facultad: false, correo: false });
+    setFirstName('');
+    setLastName('');
+    setDocumento('');
+    setTelefono('');
+    setEmail('');
+    setPassword('');
+    setErrors({
+      firstName: false,
+      lastName: false,
+      documento: false,
+      telefono: false,
+      email: false,
+      password: false,
+    });
   };
 
   return (
     <div className="w-full flex flex-col bg-[#f7f5ed] min-h-full relative">
       <Loader hidden={!loading} />
 
-      {/* NOTIFICACIÓN MODAL CON BACKDROP BLUR (DIFUMINADO DE FONDO) */}
       {toast && (
         <div className="fixed inset-0 z-[10000] bg-slate-900/40 backdrop-blur-xs flex items-start justify-center pt-10 px-4 animate-in fade-in duration-200">
           <div className="max-w-md w-full bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-700/80 p-5 flex items-center gap-4 animate-in zoom-in-95 duration-200">
@@ -203,7 +191,7 @@ export const Coordinadores: React.FC = () => {
                   : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
               }`}
             >
-              <i className={`fa-solid ${toast.type === 'success' ? 'fa-check text-lg animate-bounce' : 'fa-triangle-exclamation text-lg'}`}></i>
+              <i className={`fa-solid ${toast.type === 'success' ? 'fa-check text-lg' : 'fa-triangle-exclamation text-lg'}`}></i>
             </div>
             <div className="flex-1 min-w-0">
               <h4 className="text-sm font-bold text-slate-100 tracking-tight">{toast.title}</h4>
@@ -223,13 +211,13 @@ export const Coordinadores: React.FC = () => {
         <div className="text-[0.82rem] text-slate-500">
           Usuarios / <span className="font-semibold text-[#0d1b2a]">Registrar coordinador</span>
         </div>
-        <div className="text-xs font-semibold text-slate-600">Administrador</div>
+        <div className="text-xs font-semibold text-slate-600">Coordinador</div>
       </header>
 
       <main className="p-8 w-full max-w-[1400px] space-y-6">
         <div>
           <h1 className="font-display italic text-3xl font-semibold text-[#0d1b2a] mb-1">Registrar coordinador</h1>
-          <p className="text-[0.83rem] text-slate-500">Completa los datos del coordinador de facultad.</p>
+          <p className="text-[0.83rem] text-slate-500">Completa los datos del coordinador exigidos por el sistema.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
@@ -243,12 +231,12 @@ export const Coordinadores: React.FC = () => {
                   <input
                     type="text"
                     className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.nombres ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
+                      errors.firstName ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
                     }`}
-                    value={nombres}
+                    value={firstName}
                     onChange={(e) => {
-                      setNombres(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, nombres: false }));
+                      setFirstName(e.target.value);
+                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, firstName: false }));
                     }}
                   />
                 </div>
@@ -259,12 +247,12 @@ export const Coordinadores: React.FC = () => {
                   <input
                     type="text"
                     className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.apellidos ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
+                      errors.lastName ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
                     }`}
-                    value={apellidos}
+                    value={lastName}
                     onChange={(e) => {
-                      setApellidos(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, apellidos: false }));
+                      setLastName(e.target.value);
+                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, lastName: false }));
                     }}
                   />
                 </div>
@@ -273,33 +261,33 @@ export const Coordinadores: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Identificación <span className="text-rose-500">*</span>
+                    Documento <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
                     className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.identificacion ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
+                      errors.documento ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
                     }`}
-                    value={identificacion}
+                    value={documento}
                     onChange={(e) => {
-                      setIdentificacion(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, identificacion: false }));
+                      setDocumento(e.target.value);
+                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, documento: false }));
                     }}
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Facultad <span className="text-rose-500">*</span>
+                    Teléfono <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
                     className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.facultad ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
+                      errors.telefono ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
                     }`}
-                    value={facultad}
+                    value={telefono}
                     onChange={(e) => {
-                      setFacultad(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, facultad: false }));
+                      setTelefono(e.target.value);
+                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, telefono: false }));
                     }}
                   />
                 </div>
@@ -307,40 +295,54 @@ export const Coordinadores: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Correo institucional <span className="text-rose-500">*</span>
+                  Correo electrónico <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="email"
                   className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                    errors.correo ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
+                    errors.email ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
                   }`}
-                  value={correo}
+                  value={email}
                   onChange={(e) => {
-                    setCorreo(e.target.value);
-                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, correo: false }));
+                    setEmail(e.target.value);
+                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, email: false }));
                   }}
                 />
               </div>
 
-              <div className="bg-slate-300/80 rounded-lg p-3 flex items-center gap-3 my-4">
-                <span className="bg-[#0d1b2a] text-white text-[0.7rem] font-semibold px-3 py-0.5 rounded-full">
-                  Coordinador
-                </span>
-                <span className="text-xs text-slate-700 font-medium">Rol asignado automáticamente</span>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Contraseña <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
+                    errors.password ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
+                  }`}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, password: false }));
+                  }}
+                />
               </div>
 
               <div className="flex gap-3.5 pt-1">
                 <button
                   type="submit"
-                  disabled={submitting}
-                  className="flex-[1.2] h-[40px] bg-[#0d1b2a] hover:bg-[#1e2d4a] text-white font-semibold text-xs rounded-md transition-colors disabled:opacity-50"
+                  disabled={submitting || isFormInvalid}
+                  className={`flex-[1.2] h-[40px] bg-[#0d1b2a] text-white font-semibold text-xs rounded-md transition-all ${
+                    submitting || isFormInvalid
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:bg-[#1e2d4a] cursor-pointer'
+                  }`}
                 >
                   {submitting ? 'Guardando...' : 'Registrar coordinador'}
                 </button>
                 <button
                   type="button"
                   onClick={limpiarFormulario}
-                  className="flex-[0.8] h-[40px] bg-transparent hover:bg-slate-50 text-[#0d1b2a] border border-slate-200 font-semibold text-xs rounded-md transition-colors"
+                  className="flex-[0.8] h-[40px] bg-transparent hover:bg-slate-50 text-[#0d1b2a] border border-slate-200 font-semibold text-xs rounded-md transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -361,9 +363,9 @@ export const Coordinadores: React.FC = () => {
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-400 uppercase text-[0.7rem] tracking-wider font-bold">
                     <th className="pb-3 px-2">Coordinador</th>
-                    <th className="pb-3 px-2">Identificación</th>
+                    <th className="pb-3 px-2">Documento</th>
                     <th className="pb-3 px-2">Correo</th>
-                    <th className="pb-3 px-2">Facultad</th>
+                    <th className="pb-3 px-2">Teléfono</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -377,11 +379,11 @@ export const Coordinadores: React.FC = () => {
                     coordinadores.map((c, index) => (
                       <tr key={index} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3 px-2 font-semibold text-[#0d1b2a]">
-                          {c.nombres} {c.apellidos}
+                          {c.first_name} {c.last_name}
                         </td>
-                        <td className="py-3 px-2 font-mono">{c.id || '—'}</td>
-                        <td className="py-3 px-2">{c.correo}</td>
-                        <td className="py-3 px-2">{c.facultad}</td>
+                        <td className="py-3 px-2 font-mono">{c.documento || '—'}</td>
+                        <td className="py-3 px-2">{c.email}</td>
+                        <td className="py-3 px-2">{c.telefono}</td>
                       </tr>
                     ))
                   )}
