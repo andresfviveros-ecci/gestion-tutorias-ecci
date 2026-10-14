@@ -172,7 +172,7 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'username': {'required': True, 'allow_blank': False},
             'email': {'required': True},
-            'password': {'required': True, 'write_only': True, 'allow_blank': False},
+            'password': {'required': False, 'write_only': True, 'allow_blank': False},
             'first_name': {'required': True, 'allow_blank': False},
             'last_name': {'required': True, 'allow_blank': False},
             'documento': {'required': True, 'allow_blank': False},
@@ -216,7 +216,7 @@ class TutorRegisterSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'username': {'required': True, 'allow_blank': False},
             'email': {'required': True},
-            'password': {'required': True, 'write_only': True, 'allow_blank': False},
+            'password': {'required': False, 'write_only': True, 'allow_blank': False},
             'first_name': {'required': True, 'allow_blank': False},
             'last_name': {'required': True, 'allow_blank': False},
             'documento': {'required': True, 'allow_blank': False},
@@ -260,7 +260,7 @@ class CoordinatorSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'username': {'required': True, 'allow_blank': False},
             'email': {'required': True},
-            'password': {'required': True, 'write_only': True, 'allow_blank': False},
+            'password': {'required': False, 'write_only': True, 'allow_blank': False},
             'first_name': {'required': True, 'allow_blank': False},
             'last_name': {'required': True, 'allow_blank': False},
             'documento': {'required': True, 'allow_blank': False},
