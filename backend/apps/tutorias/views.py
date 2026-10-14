@@ -8,7 +8,7 @@ from drf_spectacular.utils import extend_schema
 
 from apps.tutorias.models import Tutoria
 from apps.disponibilidad.models import BloqueDisponibilidad
-from .serializer import (
+from .serializers import (
     TutoriaRegisterSerializer,
     TutoriaSerializer,
     CancelacionSerializer,
