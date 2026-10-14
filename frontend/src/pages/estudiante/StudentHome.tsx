@@ -10,6 +10,8 @@ interface TutorBackend {
   first_name?: string;
   last_name?: string;
   nombre?: string;
+  nombres?: string;
+  apellidos?: string;
   email?: string;
   correo?: string;
   documento?: string;
@@ -26,7 +28,7 @@ export interface BloqueBackend {
   docente?: number | string | { id?: number | string; nombre?: string; email?: string; first_name?: string; last_name?: string; username?: string } | null;
   docente_nombre?: string;
   docente_email?: string;
-  materia?: string | { id?: number | string; nombre?: string; codigo?: string } | null;
+  materia?: string | number | { id?: number | string; nombre?: string; codigo?: string } | null;
   materia_nombre?: string;
   fecha?: string;
   hora_inicio?: string;
@@ -35,6 +37,7 @@ export interface BloqueBackend {
   lugar?: string;
   enlace_virtual?: string;
   tutorNombre?: string;
+  estado?: string;
 }
 
 interface TutorFormatted {
@@ -47,10 +50,13 @@ interface TutorFormatted {
   bg: string;
 }
 
-// Diccionario local en Frontend para traducir las IDs de los usuarios/docentes
-const DOCENTES_MAP: Record<string | number, { name: string; email: string }> = {
-  1: { name: 'Carlos Mendoza', email: 'doc1@ecci.edu.co' },
-  2: { name: 'Juan Soto', email: 'kasda@ecci.edu.co' },
+// Obtener la fecha de hoy en formato YYYY-MM-DD
+const getTodayISO = (): string => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const formatearFechaLarga = (fechaStr?: string): string => {
@@ -69,7 +75,6 @@ const formatearFechaLarga = (fechaStr?: string): string => {
   return fechaStr;
 };
 
-// Genera iniciales reales (Ej. "Carlos Mendoza" -> "CM", "Juan Soto" -> "JS")
 const obtenerIniciales = (nombreCompleto: string): string => {
   if (!nombreCompleto) return 'DT';
   const partes = nombreCompleto.trim().split(' ').filter(Boolean);
@@ -94,10 +99,10 @@ export const StudentHome: React.FC = () => {
   const phrases = ['Asesoría Docente.', 'Tutorías Libres.', 'Espacio Estudiantil.'];
   const typewriterRef = useRef({ phraseIdx: 0, charIdx: 0, isDeleting: false });
 
-  const todayISO = new Date().toISOString().split('T')[0];
+  const todayISO = getTodayISO();
   const fechaEscritaTexto = formatearFechaLarga(todayISO);
 
-  // Cargar datos al ingresar
+  // Cargar datos
   useEffect(() => {
     let isMounted = true;
 
@@ -107,9 +112,7 @@ export const StudentHome: React.FC = () => {
           await fetchTutores().catch(() => null);
         }
 
-        // 1. Intentar consultar tutores
         const resTutores = await api.get('/accounts/tutores/').catch(() => null);
-
         if (resTutores && resTutores.data && isMounted) {
           const rawTutores = Array.isArray(resTutores.data)
             ? resTutores.data
@@ -117,7 +120,6 @@ export const StudentHome: React.FC = () => {
           setTutoresApi(rawTutores);
         }
 
-        // 2. Consultar bloques de disponibilidad
         const resBloques = await api.get('/disponibilidad/disponibilidad/').catch(() => null);
         if (resBloques && resBloques.data && isMounted) {
           const rawBloques = Array.isArray(resBloques.data)
@@ -175,78 +177,79 @@ export const StudentHome: React.FC = () => {
     return tutoresApi;
   }, [tutoresStore, tutoresApi]);
 
-  // Formatear datos de tutores resolviendo nombres y correos
+  // Mapa de resolución por ID
+  const tutoresMap = useMemo(() => {
+    const map = new Map<string, { name: string; email: string }>();
+    listaTutoresCombinada.forEach((t) => {
+      const nom = `${t.first_name || t.nombres || ''} ${t.last_name || t.apellidos || ''}`.trim();
+      const fullName = nom || t.nombre || t.username || 'Docente';
+      const email = t.email || t.correo || '';
+      if (t.id !== undefined) {
+        map.set(String(t.id), { name: fullName, email });
+      }
+      map.set(fullName, { name: fullName, email });
+    });
+    return map;
+  }, [listaTutoresCombinada]);
+
+  // Función para resolver nombre del docente
+  const resolverNombreDocente = (b: BloqueBackend): string => {
+    if (b.docente_nombre) return b.docente_nombre;
+    if (b.tutorNombre) return b.tutorNombre;
+    if (typeof b.docente === 'object' && b.docente !== null) {
+      const full = `${b.docente.first_name || ''} ${b.docente.last_name || ''}`.trim();
+      if (full) return full;
+      if (b.docente.nombre) return b.docente.nombre;
+      if (b.docente.username) return b.docente.username;
+    }
+    if (typeof b.docente === 'number' || typeof b.docente === 'string') {
+      const found = tutoresMap.get(String(b.docente));
+      if (found) return found.name;
+    }
+    return '';
+  };
+
+  // Función para resolver nombre de la materia
+  const resolverNombreMateria = (b: BloqueBackend): string => {
+    if (b.materia_nombre) return b.materia_nombre;
+    if (typeof b.materia === 'string') {
+      return b.materia.includes('—') ? b.materia.split('—')[1].trim() : b.materia;
+    }
+    if (typeof b.materia === 'object' && b.materia !== null && b.materia.nombre) {
+      return b.materia.nombre;
+    }
+    return 'Tutoría Académica';
+  };
+
+  // Formatear datos de tutores para las tarjetas
   const tutoresList = useMemo<TutorFormatted[]>(() => {
     const mapTutores = new Map<string, TutorFormatted>();
 
-    // 1. Procesar cuentas si se pudieron obtener de /accounts/tutores/
     if (listaTutoresCombinada && listaTutoresCombinada.length > 0) {
       listaTutoresCombinada.forEach((t, idx) => {
-        let fullName = `${t.first_name || ''} ${t.last_name || ''}`.trim() || t.nombre || t.username || '';
-        let email = t.email || t.correo || '';
-
-        // Si el usuario es 'doc1' o ID 1
-        if (!fullName || fullName === 'doc1') {
-          const docInfo = DOCENTES_MAP[String(t.id || idx + 1)] || DOCENTES_MAP[1];
-          fullName = docInfo.name;
-          email = docInfo.email;
-        }
-
+        const nom = `${t.first_name || t.nombres || ''} ${t.last_name || t.apellidos || ''}`.trim();
+        const fullName = nom || t.nombre || t.username || 'Docente';
+        const email = t.email || t.correo || `${(t.username || 'docente').toLowerCase()}@ecci.edu.co`;
         const tag = obtenerIniciales(fullName);
 
         mapTutores.set(fullName, {
           id: t.id ?? idx,
           name: fullName,
-          email: email || `${(t.username || 'docente').toLowerCase()}@ecci.edu.co`,
+          email,
           area: 'Tutoría Académica',
-          desc: `Docente asignado para brindar acompañamiento y asesorías académicas.`,
+          desc: 'Docente asignado para brindar acompañamiento y asesorías académicas.',
           tag,
           bg: 'bg-indigo-950 border-indigo-500/50 text-indigo-300',
         });
       });
     }
 
-    // 2. Extracción desde los bloques de disponibilidad si no hay lista directa
     if (bloques && bloques.length > 0) {
       bloques.forEach((b) => {
-        let name = '';
-        let email = '';
-
-        const docenteRaw = b.docente;
-
-        if (b.docente_nombre) {
-          name = b.docente_nombre;
-        } else if (typeof docenteRaw === 'object' && docenteRaw !== null) {
-          const full = `${docenteRaw.first_name || ''} ${docenteRaw.last_name || ''}`.trim();
-          name = full || docenteRaw.nombre || docenteRaw.username || '';
-          email = docenteRaw.email || '';
-        } else if (typeof docenteRaw === 'number' || (typeof docenteRaw === 'string' && !isNaN(Number(docenteRaw)))) {
-          const idKey = String(docenteRaw);
-          if (DOCENTES_MAP[idKey]) {
-            name = DOCENTES_MAP[idKey].name;
-            email = DOCENTES_MAP[idKey].email;
-          }
-        } else if (b.tutorNombre) {
-          name = b.tutorNombre;
-        }
-
-        if (b.docente_email) {
-          email = b.docente_email;
-        }
-
-        if (!name) name = 'Carlos Mendoza';
-        if (!email) email = 'doc1@ecci.edu.co';
-
-        let materia = 'Tutoría Académica';
-        if (typeof b.materia === 'string') {
-          materia = b.materia.includes('—') ? b.materia.split('—')[1].trim() : b.materia;
-        } else if (typeof b.materia === 'object' && b.materia !== null && b.materia.nombre) {
-          materia = b.materia.nombre;
-        } else if (b.materia_nombre) {
-          materia = b.materia_nombre;
-        }
-
-        if (!mapTutores.has(name)) {
+        const name = resolverNombreDocente(b);
+        if (name && !mapTutores.has(name)) {
+          const email = b.docente_email || (typeof b.docente === 'object' && b.docente?.email) || 'docente@ecci.edu.co';
+          const materia = resolverNombreMateria(b);
           const tag = obtenerIniciales(name);
 
           mapTutores.set(name, {
@@ -262,23 +265,21 @@ export const StudentHome: React.FC = () => {
       });
     }
 
-    // 3. Resguardo por defecto si aún no se han creado disponibilidades
-    if (mapTutores.size === 0) {
-      Object.values(DOCENTES_MAP).forEach((doc, idx) => {
-        mapTutores.set(doc.name, {
-          id: idx + 1,
-          name: doc.name,
-          email: doc.email,
-          area: 'Tutoría Académica',
-          desc: 'Docente asignado para brindar acompañamiento y asesorías académicas.',
-          tag: obtenerIniciales(doc.name),
-          bg: 'bg-indigo-950 border-indigo-500/50 text-indigo-300',
-        });
-      });
-    }
-
     return Array.from(mapTutores.values());
-  }, [listaTutoresCombinada, bloques]);
+  }, [listaTutoresCombinada, bloques, tutoresMap]);
+
+  // SOLO DISPONIBILIDADES LIBRES DE HOY
+  const disponibilidadesLibresHoy = useMemo(() => {
+    return bloques.filter((b) => {
+      if (!b.fecha) return false;
+      const fechaBloque = b.fecha.split('T')[0];
+      if (fechaBloque !== todayISO) return false;
+
+      const estadoUpper = (b.estado || '').toUpperCase();
+      const esLibre = estadoUpper === 'DISPONIBLE' || estadoUpper === 'LIBRE' || estadoUpper === '';
+      return esLibre;
+    });
+  }, [bloques, todayISO]);
 
   const handleVerDetalles = () => {
     navigate('/estudiante/dashboard');
@@ -286,6 +287,10 @@ export const StudentHome: React.FC = () => {
 
   const handleBuscarTutorias = () => {
     navigate('/estudiante/buscar-tutorias');
+  };
+
+  const handleVerDisponibilidadTutor = (tutorNombre: string) => {
+    navigate('/estudiante/buscar-tutorias', { state: { tutorNombre } });
   };
 
   return (
@@ -310,7 +315,6 @@ export const StudentHome: React.FC = () => {
             </span>
           </a>
 
-          {/* MENÚ CENTRAL DE NAVEGACIÓN */}
           <div className="hidden md:flex items-center gap-6 lg:gap-8 text-xs font-semibold uppercase tracking-wider text-slate-200">
             <a href="#inicio" className="hover:text-[var(--green-light)] transition-colors">
               Inicio
@@ -330,7 +334,6 @@ export const StudentHome: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* BADGE USUARIO */}
             <div className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg bg-slate-900/80 border border-slate-700/70 shadow-sm backdrop-blur-sm">
               <div className="w-6 h-6 rounded bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 font-bold text-xs flex items-center justify-center font-mono">
                 {user?.nombre ? user.nombre.charAt(0).toUpperCase() : (user?.first_name ? user.first_name.charAt(0).toUpperCase() : 'E')}
@@ -348,7 +351,6 @@ export const StudentHome: React.FC = () => {
               </div>
             </div>
 
-            {/* SALIR */}
             <button
               onClick={() => {
                 logout();
@@ -363,19 +365,7 @@ export const StudentHome: React.FC = () => {
         </nav>
       </header>
 
-      {/* FECHA FLOTANTE */}
-      <div
-        id="floatingDateWidget"
-        className="fixed bottom-4 right-4 z-30 hidden sm:flex items-center gap-2.5 px-3.5 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded text-slate-200 shadow-2xl backdrop-blur-md cursor-default"
-      >
-        <span className="w-2 h-2 rounded-xs bg-[var(--green-light)]"></span>
-        <span className="text-[11px] text-slate-400 font-medium">Hoy es</span>
-        <span id="floatingDateText" className="text-[11px] font-semibold text-white">
-          {fechaEscritaTexto}
-        </span>
-      </div>
-
-      {/* SECCIÓN 1: INICIO */}
+      {/* SECCIÓN 1: INICIO Y DISPONIBILIDAD DE HOY */}
       <section id="inicio" className="snap-start snap-always min-h-screen lg:h-screen w-full pt-24 lg:pt-20 pb-8 bg-[var(--ink)] text-[var(--paper)] relative overflow-hidden flex items-center flex-shrink-0">
         <img
           src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=1600&auto=format&fit=crop"
@@ -417,7 +407,7 @@ export const StudentHome: React.FC = () => {
             </div>
           </div>
 
-          {/* CONSOLA BENTO DINÁMICA */}
+          {/* CONSOLA BENTO DINÁMICA: LIBRES DE HOY */}
           <div className="lg:col-span-7">
             <div className="bento-console rounded-xl border border-slate-800 bg-slate-950/90 p-4 sm:p-6 shadow-2xl relative">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 sm:pb-4 mb-4 sm:mb-5 border-b border-slate-800/80 gap-2">
@@ -428,7 +418,7 @@ export const StudentHome: React.FC = () => {
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></span>
                   </div>
                   <span className="text-[11px] font-mono font-semibold uppercase tracking-widest text-[var(--green-light)] ml-2">
-                    TUTORES ACTIVOS
+                    DISPONIBILIDAD DE HOY (LIBRES)
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-[10px] sm:text-xs font-mono text-slate-400 bg-slate-900 px-2.5 py-1 rounded border border-slate-800 w-fit">
@@ -437,44 +427,64 @@ export const StudentHome: React.FC = () => {
                 </div>
               </div>
 
-              {tutoresList.length === 0 ? (
+              {disponibilidadesLibresHoy.length === 0 ? (
                 <div className="py-8 text-center text-slate-400 text-xs font-mono">
-                  No hay tutores registrados en el sistema.
+                  No hay horarios de tutoría libres agendados para el día de hoy.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {tutoresList.map((doc, idx) => (
-                    <div
-                      key={idx}
-                      onClick={handleBuscarTutorias}
-                      className="bento-card group p-3.5 rounded-lg bg-slate-900/60 border border-slate-800 hover:border-[var(--green-light)] transition-all cursor-pointer relative overflow-hidden"
-                    >
-                      <div className="flex items-center justify-between mb-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <div className={`w-7 h-7 rounded border font-bold text-[11px] flex items-center justify-center ${doc.bg}`}>
-                            {doc.tag}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[320px] overflow-y-auto pr-1">
+                  {disponibilidadesLibresHoy.map((bloque) => {
+                    const docNombre = resolverNombreDocente(bloque) || 'Docente Tutor';
+                    const materia = resolverNombreMateria(bloque);
+                    const hInicio = (bloque.hora_inicio || '').substring(0, 5);
+                    const hFin = (bloque.hora_fin || '').substring(0, 5);
+                    const esVirtual = (bloque.modalidad || '').toUpperCase() === 'VIRTUAL';
+
+                    return (
+                      <div
+                        key={bloque.id}
+                        onClick={() => handleVerDisponibilidadTutor(docNombre)}
+                        className="bento-card group p-3.5 rounded-lg bg-slate-900/60 border border-slate-800 hover:border-[var(--green-light)] transition-all cursor-pointer relative overflow-hidden"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded border font-bold text-[10px] flex items-center justify-center bg-indigo-950 border-indigo-500/50 text-indigo-300">
+                              {obtenerIniciales(docNombre)}
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-white group-hover:text-[var(--green-light)] transition-colors truncate max-w-[140px]">
+                                {docNombre}
+                              </h4>
+                              <p className="text-[10px] text-amber-400 font-semibold truncate max-w-[140px]">{materia}</p>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="text-xs font-bold text-white group-hover:text-[var(--green-light)] transition-colors">
-                              {doc.name}
-                            </h4>
-                            <p className="text-[10px] font-mono text-slate-400">{doc.email}</p>
-                          </div>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${esVirtual ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-blue-950 text-blue-300 border border-blue-800'}`}>
+                            {bloque.modalidad || 'Presencial'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-800/60 text-[10px]">
+                          <span className="text-slate-300 font-mono font-bold">
+                            🕒 {hInicio} - {hFin}
+                          </span>
+                          <span className="font-mono text-[9px] uppercase font-bold text-emerald-400">
+                            ● LIBRE
+                          </span>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-800/60 text-[10px]">
-                        <span className="text-emerald-400 font-mono text-[9px] uppercase font-semibold">● Activo en sistema</span>
-                        <span className="text-slate-300 font-semibold group-hover:translate-x-1 transition-transform flex items-center gap-1">
-                          Consultar horarios <i className="fa-solid fa-chevron-right text-[8px]"></i>
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
               <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                <span>{tutoresList.length} Tutor{tutoresList.length === 1 ? '' : 'es'} Registrado{tutoresList.length === 1 ? '' : 's'}</span>
+                <span>{disponibilidadesLibresHoy.length} Espacio{disponibilidadesLibresHoy.length === 1 ? '' : 's'} Libre{disponibilidadesLibresHoy.length === 1 ? '' : 's'} para hoy</span>
+                <button
+                  onClick={handleBuscarTutorias}
+                  className="text-emerald-400 hover:underline cursor-pointer"
+                >
+                  Ver todos los horarios →
+                </button>
               </div>
             </div>
           </div>
@@ -488,7 +498,7 @@ export const StudentHome: React.FC = () => {
             <span className="text-[var(--green)] text-xs font-bold uppercase tracking-widest">Docentes Asignados</span>
             <h2 className="font-display italic text-2xl sm:text-3xl font-bold mt-0.5">Tutores disponibles</h2>
             <p className="text-slate-600 text-xs sm:text-sm mt-1">
-              Consulta el perfil de los tutores o dirígete a buscar horarios de tutorías disponibles.
+              Consulta el perfil de los tutores y filtra sus horarios disponibles de atención.
             </p>
           </div>
 
@@ -515,10 +525,10 @@ export const StudentHome: React.FC = () => {
                     <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{tutor.desc}</p>
                   </div>
                   <button
-                    onClick={handleBuscarTutorias}
+                    onClick={() => handleVerDisponibilidadTutor(tutor.name)}
                     className="w-full mt-4 sm:mt-5 py-2 rounded-lg bg-[var(--ink)] hover:bg-slate-800 text-white text-[11px] sm:text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    <span>Reservar Tutoría</span>
+                    <span>Ver Disponibilidad</span>
                     <i className="fa-solid fa-arrow-right text-[10px]"></i>
                   </button>
                 </div>

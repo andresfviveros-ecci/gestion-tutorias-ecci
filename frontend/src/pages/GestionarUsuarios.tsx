@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { Loader } from '../components/Loader';
 import { api } from '../api/axios';
@@ -67,6 +67,122 @@ interface ToastState {
 }
 
 type BackendResult = { ok: true } | { ok: false; error: string };
+
+// ---------------------------------------------------------------------------
+// Componente de Desplegable con Buscador Interno
+// ---------------------------------------------------------------------------
+
+interface SearchableSelectProps {
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  options: string[];
+  defaultLabel: string;
+}
+
+const SearchableSelect: React.FC<SearchableSelectProps> = ({
+  label,
+  value,
+  onChange,
+  options,
+  defaultLabel,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Cierra el menú al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredOptions = useMemo(() => {
+    return options.filter((opt) =>
+      opt.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [options, searchTerm]);
+
+  const selectedText = value ? value : defaultLabel;
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <label className="block text-[11px] font-semibold text-slate-600 mb-1">{label}</label>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a] flex items-center justify-between text-left cursor-pointer shadow-xs"
+      >
+        <span className={`truncate ${!value ? 'text-slate-500' : 'text-slate-800 font-medium'}`}>
+          {selectedText}
+        </span>
+        <span className="text-[10px] text-slate-400 ml-2">▼</span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 p-2 max-h-60 flex flex-col space-y-1.5">
+          <div className="relative">
+            <input
+              type="text"
+              autoFocus
+              placeholder="Buscar..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full h-8 pl-7 pr-3 bg-slate-50 border border-slate-200 rounded text-xs outline-none focus:border-[#0d1b2a]"
+            />
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px]">🔍</span>
+          </div>
+
+          <div className="overflow-y-auto flex-1 max-h-40 divide-y divide-slate-50">
+            <button
+              type="button"
+              onClick={() => {
+                onChange('');
+                setIsOpen(false);
+                setSearchTerm('');
+              }}
+              className={`w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-slate-100 transition-colors flex items-center justify-between ${
+                value === '' ? 'font-bold text-[#0d1b2a] bg-slate-50' : 'text-slate-600'
+              }`}
+            >
+              <span>{defaultLabel}</span>
+              {value === '' && <span className="text-emerald-600 font-bold">✓</span>}
+            </button>
+
+            {filteredOptions.length === 0 ? (
+              <div className="px-2.5 py-2 text-[11px] text-slate-400 text-center">
+                Sin coincidencias
+              </div>
+            ) : (
+              filteredOptions.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => {
+                    onChange(opt);
+                    setIsOpen(false);
+                    setSearchTerm('');
+                  }}
+                  className={`w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-slate-100 transition-colors flex items-center justify-between ${
+                    value === opt ? 'font-bold text-[#0d1b2a] bg-slate-50' : 'text-slate-600'
+                  }`}
+                >
+                  <span className="truncate">{opt}</span>
+                  {value === opt && <span className="text-emerald-600 font-bold">✓</span>}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -207,7 +323,7 @@ const loadUsersList = async (): Promise<UserAccount[]> => {
 // Actualizar estado de activación en Django mediante PUT
 const toggleUserActiveInBackend = async (user: UserAccount, newActiveState: boolean): Promise<BackendResult> => {
   if (!user.dbPk) {
-    return { ok: false, error: 'Este usuario no posee una ID numérico válido en el backend.' };
+    return { ok: false, error: 'Este usuario no posee un ID numérico válido en el backend.' };
   }
 
   const nameParts = user.nombre.trim().split(' ');
@@ -216,7 +332,6 @@ const toggleUserActiveInBackend = async (user: UserAccount, newActiveState: bool
 
   const url = `accounts/${user.endpoint}/${user.dbPk}/`;
 
-  // Payload estructurado según los serializers de DRF
   const payload = {
     ...user.rawBackendData,
     username: user.username || user.correo,
@@ -244,7 +359,7 @@ const toggleUserActiveInBackend = async (user: UserAccount, newActiveState: bool
 // Guardar ediciones del perfil en Django mediante PUT
 const saveUserEditInBackend = async (user: UserAccount): Promise<BackendResult> => {
   if (!user.dbPk) {
-    return { ok: false, error: 'Este usuario no posee una ID numérico válido en el backend.' };
+    return { ok: false, error: 'Este usuario no posee un ID numérico válido en el backend.' };
   }
 
   const nameParts = user.nombre.trim().split(' ');
@@ -530,50 +645,32 @@ export const GestionarUsuarios: React.FC = () => {
           </div>
         </div>
 
-        {/* FILTROS */}
-        <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+        {/* FILTROS CON DESPLEGABLES BUSCABORTES */}
+        <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm z-20 relative">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Usuarios</label>
-              <select
-                value={usuarioFilter}
-                onChange={(e) => setUsuarioFilter(e.target.value)}
-                className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-              >
-                <option value="">Todos los usuarios</option>
-                {uniqueUsuarios.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-            </div>
+            <SearchableSelect
+              label="Usuarios"
+              value={usuarioFilter}
+              onChange={setUsuarioFilter}
+              options={uniqueUsuarios}
+              defaultLabel="Todos los usuarios"
+            />
 
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Correo</label>
-              <select
-                value={correoFilter}
-                onChange={(e) => setCorreoFilter(e.target.value)}
-                className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-              >
-                <option value="">Todos los correos</option>
-                {uniqueCorreos.map((email) => (
-                  <option key={email} value={email}>{email}</option>
-                ))}
-              </select>
-            </div>
+            <SearchableSelect
+              label="Correo"
+              value={correoFilter}
+              onChange={setCorreoFilter}
+              options={uniqueCorreos}
+              defaultLabel="Todos los correos"
+            />
 
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Rol</label>
-              <select
-                value={rolFilter}
-                onChange={(e) => setRolFilter(e.target.value)}
-                className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-              >
-                <option value="">Todos los roles</option>
-                {uniqueRoles.map((role) => (
-                  <option key={role} value={role}>{role}</option>
-                ))}
-              </select>
-            </div>
+            <SearchableSelect
+              label="Rol"
+              value={rolFilter}
+              onChange={setRolFilter}
+              options={uniqueRoles}
+              defaultLabel="Todos los roles"
+            />
 
             <div>
               <label className="block text-[11px] font-semibold text-slate-600 mb-1">Actividad</label>
@@ -591,7 +688,7 @@ export const GestionarUsuarios: React.FC = () => {
         </div>
 
         {/* TABLA DE USUARIOS */}
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex-1 flex flex-col min-h-0">
+        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex-1 flex flex-col min-h-0 z-10">
           <div className="overflow-y-auto flex-1">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
@@ -701,12 +798,11 @@ export const GestionarUsuarios: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Correo institucional</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Código institucional</label>
                 <input
-                  type="email"
-                  required
-                  value={editingUser.correo}
-                  onChange={(e) => setEditingUser({ ...editingUser, correo: e.target.value })}
+                  type="text"
+                  value={editingUser.documento}
+                  onChange={(e) => setEditingUser({ ...editingUser, documento: e.target.value })}
                   className="w-full h-10 px-3.5 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
                 />
               </div>
@@ -719,22 +815,6 @@ export const GestionarUsuarios: React.FC = () => {
                   onChange={(e) => setEditingUser({ ...editingUser, telefono: e.target.value })}
                   className="w-full h-10 px-3.5 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Rol</label>
-                <select
-                  value={editingUser.rol}
-                  onChange={(e) =>
-                    setEditingUser({ ...editingUser, rol: e.target.value as UserAccount['rol'] })
-                  }
-                  className="w-full h-10 px-3 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-                >
-                  <option value="Estudiante">Estudiante</option>
-                  <option value="Tutor">Tutor</option>
-                  <option value="Coordinador">Coordinador</option>
-                  <option value="Admin">Admin</option>
-                </select>
               </div>
             </form>
 

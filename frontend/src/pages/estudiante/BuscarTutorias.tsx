@@ -1,11 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../api/axios';
+
+interface TutorBackend {
+  id?: string | number;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  nombre?: string;
+  nombres?: string;
+  apellidos?: string;
+  email?: string;
+}
 
 export interface BloqueBackend {
   id: number | string;
   docente?: number | string | { id?: number | string; nombre?: string; email?: string; first_name?: string; last_name?: string; username?: string } | null;
-  materia?: string | { id?: number | string; nombre?: string; codigo?: string } | null;
+  materia?: string | number | { id?: number | string; nombre?: string; codigo?: string } | null;
   fecha?: string;
   hora_inicio?: string;
   hora_fin?: string;
@@ -24,7 +36,7 @@ export interface TutoriaBackend {
   descripcion?: string;
   estado?: string;
   fecha?: string;
-  materia?: string | { id?: number | string; nombre?: string; codigo?: string } | null;
+  materia?: string | number | { id?: number | string; nombre?: string; codigo?: string } | null;
   docente_nombre?: string;
   docente?: { id?: number | string; first_name?: string; last_name?: string; nombre?: string; email?: string; username?: string } | null;
 }
@@ -58,7 +70,6 @@ interface DetallesTutoria {
   enlaceVirtual: string;
 }
 
-// Extraer docente
 const extraerNombreDocenteObj = (d: unknown): string => {
   if (!d) return '';
   if (typeof d === 'string') return d;
@@ -73,15 +84,6 @@ const extraerNombreDocenteObj = (d: unknown): string => {
   return '';
 };
 
-const obtenerNombreDocente = (b: BloqueBackend): string => {
-  if (b.docente_nombre) return b.docente_nombre;
-  if (b.tutorNombre) return b.tutorNombre;
-  const desdeDocente = extraerNombreDocenteObj(b.docente);
-  if (desdeDocente) return desdeDocente;
-  return '';
-};
-
-// Extraer información completa de materia
 const extraerInfoMateriaCompleta = (target: unknown): { nombre: string; codigo: string } => {
   if (!target) return { nombre: '', codigo: '' };
 
@@ -121,55 +123,19 @@ const extraerInfoMateriaCompleta = (target: unknown): { nombre: string; codigo: 
   return { nombre: '', codigo: '' };
 };
 
-// Obtener detalles de tutoría agendada
-const obtenerDetallesTutoria = (tut: TutoriaBackend, listaBloques: BloqueBackend[]): DetallesTutoria => {
-  let bloqueObj: BloqueBackend | null = null;
-
-  if (typeof tut.bloque === 'object' && tut.bloque !== null) {
-    bloqueObj = tut.bloque;
-  } else if (tut.bloque) {
-    bloqueObj = listaBloques.find((b) => String(b.id) === String(tut.bloque)) || null;
-  }
-
-  const docenteNombre = tut.docente_nombre 
-    || extraerNombreDocenteObj(tut.docente)
-    || (bloqueObj ? obtenerNombreDocente(bloqueObj) : '');
-
-  const fecha = tut.fecha || (bloqueObj ? bloqueObj.fecha || '' : '');
-  const horaInicio = bloqueObj ? bloqueObj.hora_inicio || '' : '';
-  const horaFin = bloqueObj ? bloqueObj.hora_fin || '' : '';
-
-  let matInfo = bloqueObj ? extraerInfoMateriaCompleta(bloqueObj) : { nombre: '', codigo: '' };
-  if (!matInfo.nombre) {
-    matInfo = extraerInfoMateriaCompleta(tut);
-  }
-
-  const modalidad = bloqueObj ? bloqueObj.modalidad || '' : '';
-  const lugar = bloqueObj ? bloqueObj.lugar || '' : '';
-  const enlaceVirtual = bloqueObj ? bloqueObj.enlace_virtual || '' : '';
-
-  return {
-    docenteNombre,
-    fecha,
-    horaInicio,
-    horaFin,
-    materiaNombre: matInfo.nombre,
-    materiaCodigo: matInfo.codigo,
-    modalidad,
-    lugar,
-    enlaceVirtual,
-  };
-};
-
 export const BuscarTutorias: React.FC = () => {
   const { user } = useAuthStore();
+  const location = useLocation();
 
+  const [tutoresApi, setTutoresApi] = useState<TutorBackend[]>([]);
   const [bloques, setBloques] = useState<BloqueBackend[]>([]);
   const [misTutorias, setMisTutorias] = useState<TutoriaBackend[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Filtros
-  const [selectedTutor, setSelectedTutor] = useState<string>('todos');
+  // Inicializar estado del filtro
+  const initialTutor = (location.state as { tutorNombre?: string })?.tutorNombre || 'todos';
+
+  const [selectedTutor, setSelectedTutor] = useState<string>(initialTutor);
   const [selectedMateria, setSelectedMateria] = useState<string>('todas');
   const [selectedModalidad, setSelectedModalidad] = useState<string>('todas');
 
@@ -181,22 +147,56 @@ export const BuscarTutorias: React.FC = () => {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Mapa para resolver ID de tutores a Nombres
+  const tutoresMap = useMemo(() => {
+    const map = new Map<string, string>();
+    tutoresApi.forEach((t) => {
+      const nom = `${t.first_name || t.nombres || ''} ${t.last_name || t.apellidos || ''}`.trim();
+      const fullName = nom || t.nombre || t.username || '';
+      if (t.id !== undefined && fullName) {
+        map.set(String(t.id), fullName);
+      }
+    });
+    return map;
+  }, [tutoresApi]);
+
+  const resolverNombreDocente = (b: BloqueBackend): string => {
+    if (b.docente_nombre) return b.docente_nombre;
+    if (b.tutorNombre) return b.tutorNombre;
+    const desdeObj = extraerNombreDocenteObj(b.docente);
+    if (desdeObj) return desdeObj;
+
+    if (typeof b.docente === 'number' || typeof b.docente === 'string') {
+      const desdeMap = tutoresMap.get(String(b.docente));
+      if (desdeMap) return desdeMap;
+    }
+    return '';
+  };
+
   const refrescarDatos = async () => {
     try {
+      const resTutores = await api.get('/accounts/tutores/').catch(() => null);
+      if (resTutores && resTutores.data) {
+        const rawT = Array.isArray(resTutores.data)
+          ? resTutores.data
+          : resTutores.data.results || [];
+        setTutoresApi(rawT);
+      }
+
       const resBloques = await api.get('/disponibilidad/disponibilidad/').catch(() => null);
       if (resBloques && resBloques.data) {
-        const raw = Array.isArray(resBloques.data)
+        const rawB = Array.isArray(resBloques.data)
           ? resBloques.data
           : resBloques.data.results || [];
-        setBloques(raw);
+        setBloques(rawB);
       }
 
       const resTutorias = await api.get('/tutorias/tutorias/').catch(() => null);
       if (resTutorias && resTutorias.data) {
-        const raw = Array.isArray(resTutorias.data)
+        const rawTut = Array.isArray(resTutorias.data)
           ? resTutorias.data
           : resTutorias.data.results || [];
-        setMisTutorias(raw);
+        setMisTutorias(rawTut);
       }
     } catch (err) {
       console.error('Error al refrescar datos:', err);
@@ -208,20 +208,28 @@ export const BuscarTutorias: React.FC = () => {
 
     const cargarDatosIniciales = async () => {
       try {
+        const resTutores = await api.get('/accounts/tutores/').catch(() => null);
+        if (resTutores && resTutores.data && isMounted) {
+          const rawT = Array.isArray(resTutores.data)
+            ? resTutores.data
+            : resTutores.data.results || [];
+          setTutoresApi(rawT);
+        }
+
         const resBloques = await api.get('/disponibilidad/disponibilidad/').catch(() => null);
         if (resBloques && resBloques.data && isMounted) {
-          const raw = Array.isArray(resBloques.data)
+          const rawB = Array.isArray(resBloques.data)
             ? resBloques.data
             : resBloques.data.results || [];
-          setBloques(raw);
+          setBloques(rawB);
         }
 
         const resTutorias = await api.get('/tutorias/tutorias/').catch(() => null);
         if (resTutorias && resTutorias.data && isMounted) {
-          const raw = Array.isArray(resTutorias.data)
+          const rawTut = Array.isArray(resTutorias.data)
             ? resTutorias.data
             : resTutorias.data.results || [];
-          setMisTutorias(raw);
+          setMisTutorias(rawTut);
         }
       } catch (err) {
         console.error('Error al cargar datos iniciales:', err);
@@ -253,14 +261,22 @@ export const BuscarTutorias: React.FC = () => {
     return setIds;
   }, [misTutorias]);
 
+  // Lista combinada de tutores para el filtro
   const listaTutores = useMemo(() => {
     const setNombres = new Set<string>();
+    tutoresApi.forEach((t) => {
+      const nom = `${t.first_name || t.nombres || ''} ${t.last_name || t.apellidos || ''}`.trim();
+      const fullName = nom || t.nombre || t.username || '';
+      if (fullName) setNombres.add(fullName);
+    });
+
     bloques.forEach((b) => {
-      const nombre = obtenerNombreDocente(b);
+      const nombre = resolverNombreDocente(b);
       if (nombre) setNombres.add(nombre);
     });
+
     return Array.from(setNombres);
-  }, [bloques]);
+  }, [tutoresApi, bloques, tutoresMap]);
 
   const listaMaterias = useMemo(() => {
     const setMaterias = new Set<string>();
@@ -296,21 +312,60 @@ export const BuscarTutorias: React.FC = () => {
         return false;
       }
 
-      const docenteNombre = obtenerNombreDocente(b);
+      const docenteNombre = resolverNombreDocente(b);
       const { nombre: materiaNombre } = extraerInfoMateriaCompleta(b);
 
-      const matchTutor = selectedTutor === 'todos' || docenteNombre === selectedTutor;
-      const matchMateria = selectedMateria === 'todas' || materiaNombre === selectedMateria;
+      const matchTutor = selectedTutor === 'todos' || docenteNombre.toLowerCase() === selectedTutor.toLowerCase();
+      const matchMateria = selectedMateria === 'todas' || materiaNombre.toLowerCase() === selectedMateria.toLowerCase();
       const matchModalidad = selectedModalidad === 'todas' || (b.modalidad && b.modalidad.toLowerCase() === selectedModalidad.toLowerCase());
 
       return matchTutor && matchMateria && matchModalidad;
     });
-  }, [bloques, selectedTutor, selectedMateria, selectedModalidad, idsBloquesReservados]);
+  }, [bloques, selectedTutor, selectedMateria, selectedModalidad, idsBloquesReservados, tutoresMap]);
+
+  const obtenerDetallesTutoriaLocal = (tut: TutoriaBackend): DetallesTutoria => {
+    let bloqueObj: BloqueBackend | null = null;
+
+    if (typeof tut.bloque === 'object' && tut.bloque !== null) {
+      bloqueObj = tut.bloque;
+    } else if (tut.bloque) {
+      bloqueObj = bloques.find((b) => String(b.id) === String(tut.bloque)) || null;
+    }
+
+    const docenteNombre = tut.docente_nombre 
+      || extraerNombreDocenteObj(tut.docente)
+      || (bloqueObj ? resolverNombreDocente(bloqueObj) : '');
+
+    const fecha = tut.fecha || (bloqueObj ? bloqueObj.fecha || '' : '');
+    const horaInicio = bloqueObj ? bloqueObj.hora_inicio || '' : '';
+    const horaFin = bloqueObj ? bloqueObj.hora_fin || '' : '';
+
+    let matInfo = bloqueObj ? extraerInfoMateriaCompleta(bloqueObj) : { nombre: '', codigo: '' };
+    if (!matInfo.nombre) {
+      matInfo = extraerInfoMateriaCompleta(tut);
+    }
+
+    const modalidad = bloqueObj ? bloqueObj.modalidad || '' : '';
+    const lugar = bloqueObj ? bloqueObj.lugar || '' : '';
+    const enlaceVirtual = bloqueObj ? bloqueObj.enlace_virtual || '' : '';
+
+    return {
+      docenteNombre,
+      fecha,
+      horaInicio,
+      horaFin,
+      materiaNombre: matInfo.nombre,
+      materiaCodigo: matInfo.codigo,
+      modalidad,
+      lugar,
+      enlaceVirtual,
+    };
+  };
 
   const misTutoriasProximas = useMemo(() => {
     const todayISO = new Date().toISOString().split('T')[0];
     return misTutorias.filter((tut) => {
-      const detalles = obtenerDetallesTutoria(tut, bloques);
+      const detalles = obtenerDetallesTutoriaLocal(tut);
       const fechaTutoria = detalles.fecha || tut.fecha || '';
       if (!fechaTutoria) return true;
       return fechaTutoria >= todayISO;
@@ -456,12 +511,38 @@ export const BuscarTutorias: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
-            <span className="text-[11px] font-medium text-slate-400">
+          <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center text-[11px]">
+            {selectedTutor !== 'todos' && (
+              <button
+                onClick={() => setSelectedTutor('todos')}
+                className="text-indigo-600 font-semibold hover:underline cursor-pointer"
+              >
+                ← Mostrar todos los tutores
+              </button>
+            )}
+            <span className="font-medium text-slate-400 ml-auto">
               {bloquesFiltrados.length} horario{bloquesFiltrados.length === 1 ? '' : 's'} disponible{bloquesFiltrados.length === 1 ? '' : 's'}
             </span>
           </div>
         </div>
+
+        {/* ALERTA CUANDO UN TUTOR SELECCIONADO NO TIENE HORARIOS */}
+        {selectedTutor !== 'todos' && bloquesFiltrados.length === 0 && (
+          <div className="p-4 bg-amber-50 border border-amber-200/80 rounded-xl text-amber-900 text-xs font-medium flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <i className="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i>
+              <span>
+                El docente <strong>{selectedTutor}</strong> no tiene tutorías ni horarios disponibles creados en este momento.
+              </span>
+            </div>
+            <button
+              onClick={() => setSelectedTutor('todos')}
+              className="px-3 py-1 bg-amber-200/60 hover:bg-amber-200 text-amber-900 rounded-lg font-bold transition-all text-[11px] cursor-pointer"
+            >
+              Ver todos
+            </button>
+          </div>
+        )}
 
         {/* HORARIOS DISPONIBLES */}
         <section className="space-y-4">
@@ -480,7 +561,7 @@ export const BuscarTutorias: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {bloquesFiltrados.map((bloque) => {
-                const docNombre = obtenerNombreDocente(bloque);
+                const docNombre = resolverNombreDocente(bloque) || 'Docente Tutor';
                 const { nombre: materiaNombre, codigo: materiaCodigo } = extraerInfoMateriaCompleta(bloque);
                 const esVirtual = bloque.modalidad?.toUpperCase() === 'VIRTUAL';
 
@@ -492,24 +573,22 @@ export const BuscarTutorias: React.FC = () => {
                     <div>
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          {docNombre && <h3 className="font-bold text-sm text-slate-900">{docNombre}</h3>}
+                          <h3 className="font-bold text-sm text-slate-900">{docNombre}</h3>
                         </div>
                         <div className="text-right">
                           {bloque.fecha && <span className="block text-xs font-semibold text-slate-800">{bloque.fecha}</span>}
                           {(bloque.hora_inicio || bloque.hora_fin) && (
                             <span className="block text-xs font-bold text-slate-900 mt-0.5">
-                              {bloque.hora_inicio} {bloque.hora_inicio && bloque.hora_fin ? '-' : ''} {bloque.hora_fin}
+                              {bloque.hora_inicio?.substring(0, 5)} - {bloque.hora_fin?.substring(0, 5)}
                             </span>
                           )}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 mt-4 flex-wrap">
-                        {materiaNombre && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100/80 text-amber-900 border border-amber-200/60 uppercase">
-                            {materiaCodigo ? `${materiaCodigo} — ` : ''}{materiaNombre}
-                          </span>
-                        )}
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100/80 text-amber-900 border border-amber-200/60 uppercase">
+                          {materiaCodigo ? `${materiaCodigo} — ` : ''}{materiaNombre || 'Tutoría Académica'}
+                        </span>
                         {bloque.modalidad && (
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${esVirtual ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}>
                             {bloque.modalidad}
@@ -558,7 +637,7 @@ export const BuscarTutorias: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {misTutoriasProximas.map((tut) => {
-                const detalles = obtenerDetallesTutoria(tut, bloques);
+                const detalles = obtenerDetallesTutoriaLocal(tut);
                 const esVirtual = detalles.modalidad?.toUpperCase() === 'VIRTUAL';
 
                 return (
@@ -569,9 +648,7 @@ export const BuscarTutorias: React.FC = () => {
                     <div>
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          {detalles.docenteNombre && (
-                            <h3 className="font-bold text-sm text-slate-900">{detalles.docenteNombre}</h3>
-                          )}
+                          <h3 className="font-bold text-sm text-slate-900">{detalles.docenteNombre || 'Docente Tutor'}</h3>
                         </div>
                         <div className="text-right">
                           {detalles.fecha && (
@@ -579,18 +656,16 @@ export const BuscarTutorias: React.FC = () => {
                           )}
                           {(detalles.horaInicio || detalles.horaFin) && (
                             <span className="block text-xs font-bold text-slate-900 mt-0.5">
-                              {detalles.horaInicio} {detalles.horaInicio && detalles.horaFin ? '-' : ''} {detalles.horaFin}
+                              {detalles.horaInicio?.substring(0, 5)} - {detalles.horaFin?.substring(0, 5)}
                             </span>
                           )}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 mt-3 flex-wrap">
-                        {detalles.materiaNombre && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100/80 text-amber-900 border border-amber-200/60 uppercase">
-                            {detalles.materiaCodigo ? `${detalles.materiaCodigo} — ` : ''}{detalles.materiaNombre}
-                          </span>
-                        )}
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100/80 text-amber-900 border border-amber-200/60 uppercase">
+                          {detalles.materiaCodigo ? `${detalles.materiaCodigo} — ` : ''}{detalles.materiaNombre || 'Tutoría Académica'}
+                        </span>
                         {detalles.modalidad && (
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${esVirtual ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}>
                             {detalles.modalidad}
