@@ -1,7 +1,7 @@
 from django.urls import path
-from apps.tutorias.views import TutoRegisterView
-
+from .views import TutoriaView, TutoriaDetailView
 
 urlpatterns = [
-    path('reservar/', TutoRegisterView.as_view(), name='reservar-tutoria'),
+    path('tutorias/', TutoriaView.as_view(), name='tutorias'),
+    path('tutorias/<int:pk>/',TutoriaDetailView.as_view(),name='tutoria-detalle'),
 ]
