@@ -6,6 +6,7 @@ class BloqueDisponibilidadSerializer(serializers.ModelSerializer):
     class Meta:
         model = BloqueDisponibilidad
         fields = [
+            'id'
             'docente',
             'materia',
             'periodo',
@@ -48,6 +49,8 @@ class BloqueDisponibilidadUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = BloqueDisponibilidad
         fields = [
+            'id',
+            'docente',
             'materia',
             'periodo',
             'fecha',
