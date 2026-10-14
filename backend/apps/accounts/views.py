@@ -120,12 +120,12 @@ class TutorView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, format=None):
-        if not request.user.groups.filter(name='Coordinador').exists():
+        if not request.user.groups.filter(name__in=['Coordinador', 'Estudiante']).exists():
             return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
-        users = get_user_model().objects.filter(groups__name='Docente')
+        users = get_user_model().objects.filter(groups__name='Docente', is_active=True).distinct()
         serializer = TutorRegisterSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
+    
     @extend_schema(request=TutorRegisterSerializer)
     def post(self, request, format=None):
         if not request.user.groups.filter(name='Coordinador').exists():

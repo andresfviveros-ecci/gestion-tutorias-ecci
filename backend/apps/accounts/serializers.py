@@ -158,6 +158,7 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
         fields = [
+            'id',
             'username',
             'email',
             'password',
@@ -167,6 +168,7 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
             'telefono',
             'codigo_institucional',
         ]
+        read_only_fields = ['id']
         extra_kwargs = {
             'username': {'required': True, 'allow_blank': False},
             'email': {'required': True},
@@ -201,6 +203,7 @@ class TutorRegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
         fields = [
+            'id',
             'username',
             'email',
             'password',
@@ -209,6 +212,7 @@ class TutorRegisterSerializer(serializers.ModelSerializer):
             'documento',
             'telefono',
         ]
+        read_only_fields = ['id']
         extra_kwargs = {
             'username': {'required': True, 'allow_blank': False},
             'email': {'required': True},
@@ -243,6 +247,7 @@ class CoordinatorSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
         fields = [
+            'id',
             'username',
             'email',
             'password',
@@ -251,6 +256,7 @@ class CoordinatorSerializer(serializers.ModelSerializer):
             'documento',
             'telefono',
         ]
+        read_only_fields = ['id']
         extra_kwargs = {
             'username': {'required': True, 'allow_blank': False},
             'email': {'required': True},
