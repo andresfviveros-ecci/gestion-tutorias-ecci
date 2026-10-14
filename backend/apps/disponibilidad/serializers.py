@@ -6,7 +6,7 @@ class BloqueDisponibilidadSerializer(serializers.ModelSerializer):
     class Meta:
         model = BloqueDisponibilidad
         fields = [
-            'id'
+            'id',
             'docente',
             'materia',
             'periodo',
