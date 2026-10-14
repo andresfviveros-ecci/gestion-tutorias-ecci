@@ -9,7 +9,7 @@ export interface TutoriaBackend {
   tutor_nombre?: string;
   docente_nombre?: string;
   docente?: { nombre?: string; first_name?: string; last_name?: string; email?: string } | string;
-  fecha: string; // Formato YYYY-MM-DD
+  fecha: string;
   hora_inicio: string;
   hora_fin: string;
   modalidad?: string;
@@ -49,7 +49,7 @@ export const MisReservas: React.FC = () => {
   const [tutorias, setTutorias] = useState<TutoriaBackend[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Cargar reservas desde el backend
+  // Cargar reservas del backend
   useEffect(() => {
     let isMounted = true;
 

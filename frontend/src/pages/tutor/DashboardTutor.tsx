@@ -5,22 +5,52 @@ import { api } from '../../api/axios';
 
 export interface TutoriaItem {
   id: number | string;
-  fecha: string; // formato YYYY-MM-DD
-  hora_inicio: string; // formato HH:mm:ss o HH:mm
-  hora_fin: string; // formato HH:mm:ss o HH:mm
-  materia?: string;
+  fecha: string; // YYYY-MM-DD
+  hora_inicio: string; // HH:mm:ss o HH:mm
+  hora_fin: string; // HH:mm:ss o HH:mm
+  materia?: string | { id?: number; nombre?: string; codigo?: string } | null;
   estudiante_id?: number | string;
   estudiante_nombre?: string;
   estudiante_email?: string;
+  estudiante?: { id?: number | string; nombre?: string; email?: string } | null;
   estado?: string;
+  modalidad?: string;
+  cupo_ocupado?: number;
+  cupo_total?: number;
 }
+
+// Helper para obtener YYYY-MM-DD local sin desfase UTC
+const formatLocalDate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Helper para extraer el nombre legible de la materia
+const obtenerNombreMateria = (materia: TutoriaItem['materia']): string => {
+  if (!materia) return 'Tutoría Académica';
+  if (typeof materia === 'string') return materia;
+  if (typeof materia === 'object' && materia.nombre) return materia.nombre;
+  return 'Tutoría Académica';
+};
+
+// Helper para extraer el nombre o correo del estudiante
+const obtenerNombreEstudiante = (item: TutoriaItem): string => {
+  if (item.estudiante_nombre) return item.estudiante_nombre;
+  if (item.estudiante_email) return item.estudiante_email;
+  if (item.estudiante && typeof item.estudiante === 'object') {
+    return item.estudiante.nombre || item.estudiante.email || 'Estudiante asignado';
+  }
+  return 'Sin reservar';
+};
 
 export const DashboardTutor: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   const [tutorias, setTutorias] = useState<TutoriaItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Nombre formateado para el saludo sin errores de TypeScript
+  // Nombre formateado para el saludo
   const userName = useMemo(() => {
     if (!user) return 'TUTOR';
     if (user.first_name) return user.first_name.split(' ')[0];
@@ -44,8 +74,17 @@ export const DashboardTutor: React.FC = () => {
     const fetchTutorias = async () => {
       setLoading(true);
       try {
-        const response = await api.get<TutoriaItem[]>('/accounts/tutorias/');
-        setTutorias(Array.isArray(response.data) ? response.data : []);
+        // Consultar el endpoint de disponibilidades/tutorías
+        const response = await api.get('/disponibilidad/disponibilidad/');
+        
+        let data: TutoriaItem[] = [];
+        if (Array.isArray(response.data)) {
+          data = response.data;
+        } else if ((response.data as unknown as { results: TutoriaItem[] })?.results) {
+          data = (response.data as unknown as { results: TutoriaItem[] }).results;
+        }
+        
+        setTutorias(data);
       } catch (error) {
         console.error('Error al cargar tutorías para el Dashboard:', error);
         setTutorias([]);
@@ -59,14 +98,16 @@ export const DashboardTutor: React.FC = () => {
 
   // --- CÁLCULO DE MÉTRICAS EN TIEMPO REAL ---
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayStr = useMemo(() => formatLocalDate(new Date()), []);
 
   // 1. Tutorías esta semana y cuántas son hoy
   const { tutoriasSemana, tutoriasHoyCount } = useMemo(() => {
     const now = new Date();
     const currentDay = now.getDay();
-    const diffToMonday = now.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
-    const monday = new Date(now.setDate(diffToMonday));
+    const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMonday);
     monday.setHours(0, 0, 0, 0);
 
     const sunday = new Date(monday);
@@ -77,8 +118,10 @@ export const DashboardTutor: React.FC = () => {
     let countHoy = 0;
 
     tutorias.forEach((t) => {
-      if (!t.fecha) return;
-      const tDate = new Date(`${t.fecha}T00:00:00`);
+      if (!t.fecha || t.estado === 'CANCELADO') return;
+      const [year, month, day] = t.fecha.split('-').map(Number);
+      const tDate = new Date(year, month - 1, day);
+
       if (tDate >= monday && tDate <= sunday) {
         countSemana++;
       }
@@ -99,8 +142,10 @@ export const DashboardTutor: React.FC = () => {
     let totalMinutes = 0;
 
     tutorias.forEach((t) => {
-      if (!t.fecha) return;
-      const tDate = new Date(`${t.fecha}T00:00:00`);
+      if (!t.fecha || t.estado === 'CANCELADO') return;
+      const [year, month, day] = t.fecha.split('-').map(Number);
+      const tDate = new Date(year, month - 1, day);
+
       if (tDate.getFullYear() === currentYear && tDate.getMonth() === currentMonth) {
         if (t.hora_inicio && t.hora_fin) {
           const [h1, m1] = t.hora_inicio.split(':').map(Number);
@@ -128,11 +173,17 @@ export const DashboardTutor: React.FC = () => {
     const uniqueStudents = new Set<string>();
 
     tutorias.forEach((t) => {
-      if (!t.fecha) return;
-      const tDate = new Date(`${t.fecha}T00:00:00`);
+      if (!t.fecha || t.estado === 'CANCELADO') return;
+      const [year, month, day] = t.fecha.split('-').map(Number);
+      const tDate = new Date(year, month - 1, day);
+
       if (tDate.getFullYear() === currentYear && tDate.getMonth() === currentMonth) {
         const identifier =
-          t.estudiante_id || t.estudiante_email || t.estudiante_nombre;
+          t.estudiante_id ||
+          t.estudiante_email ||
+          t.estudiante_nombre ||
+          (t.estudiante ? t.estudiante.id || t.estudiante.email : null);
+
         if (identifier) {
           uniqueStudents.add(String(identifier));
         }
@@ -148,7 +199,7 @@ export const DashboardTutor: React.FC = () => {
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
     const hoyTutorias = tutorias.filter((t) => {
-      if (t.fecha !== todayStr) return false;
+      if (t.fecha !== todayStr || t.estado === 'CANCELADO') return false;
       if (!t.hora_inicio) return true;
       const [h, m] = t.hora_inicio.split(':').map(Number);
       const tMinutes = h * 60 + (m || 0);
@@ -166,22 +217,18 @@ export const DashboardTutor: React.FC = () => {
 
   // Lista de próximas tutorías generales
   const proximasTutoriasLista = useMemo(() => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-
     return tutorias
       .filter((t) => {
-        if (!t.fecha) return false;
-        const tDate = new Date(`${t.fecha}T00:00:00`);
-        return tDate >= now;
+        if (!t.fecha || t.estado === 'CANCELADO') return false;
+        return t.fecha >= todayStr;
       })
       .sort((a, b) => {
-        const dateA = new Date(`${a.fecha}T${a.hora_inicio || '00:00'}`);
-        const dateB = new Date(`${b.fecha}T${b.hora_inicio || '00:00'}`);
-        return dateA.getTime() - dateB.getTime();
+        const dateA = `${a.fecha}T${a.hora_inicio || '00:00'}`;
+        const dateB = `${b.fecha}T${b.hora_inicio || '00:00'}`;
+        return dateA.localeCompare(dateB);
       })
       .slice(0, 5);
-  }, [tutorias]);
+  }, [tutorias, todayStr]);
 
   return (
     <div className="p-6 md:p-10 bg-[#f7f5ed] min-h-screen font-body text-slate-800 space-y-6">
@@ -280,9 +327,9 @@ export const DashboardTutor: React.FC = () => {
             Próxima tutoría
           </span>
           <div>
-            <span className="text-xl font-bold text-slate-900 block truncate">
+            <span className="text-base font-bold text-slate-900 block truncate">
               {proximaTutoriaHoy
-                ? `${proximaTutoriaHoy.hora_inicio || ''} - ${proximaTutoriaHoy.materia || 'Tutoría'}`
+                ? `${proximaTutoriaHoy.hora_inicio.substring(0, 5)} - ${obtenerNombreMateria(proximaTutoriaHoy.materia)}`
                 : '-'}
             </span>
             <span className="text-[11px] text-slate-500 font-medium block mt-1">
@@ -311,38 +358,45 @@ export const DashboardTutor: React.FC = () => {
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {proximasTutoriasLista.map((item) => (
-              <div
-                key={item.id}
-                className="py-3.5 flex items-center justify-between hover:bg-slate-50/80 px-2 rounded-lg transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-[#111a2e]/10 text-[#111a2e] font-bold text-xs flex items-center justify-center">
-                    {(item.estudiante_nombre || item.materia || 'T').charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-800">
-                      {item.materia || 'Tutoría Académica'}
-                    </h4>
-                    <p className="text-[11px] text-slate-500">
-                      Estudiante: {item.estudiante_nombre || item.estudiante_email || 'Sin asignar'}
-                    </p>
-                  </div>
-                </div>
+            {proximasTutoriasLista.map((item) => {
+              const nombreMat = obtenerNombreMateria(item.materia);
+              const nombreEst = obtenerNombreEstudiante(item);
+              const hInicio = (item.hora_inicio || '').substring(0, 5);
+              const hFin = (item.hora_fin || '').substring(0, 5);
 
-                <div className="text-right">
-                  <span className="text-xs font-medium text-slate-700 block">
-                    {item.fecha}
-                  </span>
-                  <span className="text-[11px] text-emerald-600 font-semibold">
-                    {item.hora_inicio} - {item.hora_fin || ''}
-                  </span>
+              return (
+                <div
+                  key={item.id}
+                  className="py-3.5 flex items-center justify-between hover:bg-slate-50/80 px-2 rounded-lg transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-[#111a2e]/10 text-[#111a2e] font-bold text-xs flex items-center justify-center">
+                      {nombreMat.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-800">
+                        {nombreMat}
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Estudiante: {nombreEst}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-xs font-medium text-slate-700 block">
+                      {item.fecha}
+                    </span>
+                    <span className="text-[11px] text-emerald-600 font-semibold">
+                      {hInicio} {hFin ? `- ${hFin}` : ''}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </motion.div>
     </div>
   );
-};  
+};

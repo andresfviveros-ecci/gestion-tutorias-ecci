@@ -4,27 +4,36 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useTutorStore } from '../../store/useTutorStore';
 import { api } from '../../api/axios';
 
+interface TutorBackend {
+  id?: string | number;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  nombre?: string;
+  email?: string;
+  correo?: string;
+  documento?: string;
+  telefono?: string;
+}
+
 interface TutorStoreInterface {
-  tutores?: Array<{
-    id?: string | number;
-    nombre: string;
-    correo: string;
-    groups: Array<{ facultyName?: string; subjects: string[] }>;
-  }>;
+  tutores?: TutorBackend[];
   fetchTutores?: () => Promise<void>;
 }
 
 export interface BloqueBackend {
   id: number | string;
-  docente?: number | string | { id?: number | string; nombre?: string; email?: string; first_name?: string; last_name?: string };
+  docente?: number | string | { id?: number | string; nombre?: string; email?: string; first_name?: string; last_name?: string; username?: string } | null;
+  docente_nombre?: string;
+  docente_email?: string;
   materia?: string | { id?: number | string; nombre?: string; codigo?: string } | null;
+  materia_nombre?: string;
   fecha?: string;
   hora_inicio?: string;
   hora_fin?: string;
   modalidad?: string;
   lugar?: string;
   enlace_virtual?: string;
-  docente_nombre?: string;
   tutorNombre?: string;
 }
 
@@ -33,11 +42,16 @@ interface TutorFormatted {
   name: string;
   email: string;
   area: string;
-  career: string;
   desc: string;
   tag: string;
   bg: string;
 }
+
+// Diccionario local en Frontend para traducir las IDs de los usuarios/docentes
+const DOCENTES_MAP: Record<string | number, { name: string; email: string }> = {
+  1: { name: 'Carlos Mendoza', email: 'doc1@ecci.edu.co' },
+  2: { name: 'Juan Soto', email: 'kasda@ecci.edu.co' },
+};
 
 const formatearFechaLarga = (fechaStr?: string): string => {
   if (!fechaStr) return '';
@@ -55,14 +69,24 @@ const formatearFechaLarga = (fechaStr?: string): string => {
   return fechaStr;
 };
 
+// Genera iniciales reales (Ej. "Carlos Mendoza" -> "CM", "Juan Soto" -> "JS")
+const obtenerIniciales = (nombreCompleto: string): string => {
+  if (!nombreCompleto) return 'DT';
+  const partes = nombreCompleto.trim().split(' ').filter(Boolean);
+  if (partes.length === 1) return partes[0].substring(0, 2).toUpperCase();
+  if (partes.length >= 2) return (partes[0][0] + partes[1][0]).toUpperCase();
+  return 'DT';
+};
+
 export const StudentHome: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
 
   const tutorStore = useTutorStore() as unknown as TutorStoreInterface;
-  const tutores = tutorStore.tutores || [];
+  const tutoresStore = tutorStore.tutores || [];
   const fetchTutores = tutorStore.fetchTutores;
 
+  const [tutoresApi, setTutoresApi] = useState<TutorBackend[]>([]);
   const [bloques, setBloques] = useState<BloqueBackend[]>([]);
   const [loading, setLoading] = useState(true);
   const [typedTitle, setTypedTitle] = useState('');
@@ -80,13 +104,25 @@ export const StudentHome: React.FC = () => {
     const cargarDatos = async () => {
       try {
         if (typeof fetchTutores === 'function') {
-          await fetchTutores();
+          await fetchTutores().catch(() => null);
         }
-        const res = await api.get('/disponibilidades/').catch(() => null);
-        if (res && res.data && isMounted) {
-          const rawBloques = Array.isArray(res.data)
-            ? (res.data as BloqueBackend[])
-            : (res.data as { results?: BloqueBackend[] }).results || [];
+
+        // 1. Intentar consultar tutores
+        const resTutores = await api.get('/accounts/tutores/').catch(() => null);
+
+        if (resTutores && resTutores.data && isMounted) {
+          const rawTutores = Array.isArray(resTutores.data)
+            ? resTutores.data
+            : (resTutores.data as { results?: TutorBackend[] }).results || [];
+          setTutoresApi(rawTutores);
+        }
+
+        // 2. Consultar bloques de disponibilidad
+        const resBloques = await api.get('/disponibilidad/disponibilidad/').catch(() => null);
+        if (resBloques && resBloques.data && isMounted) {
+          const rawBloques = Array.isArray(resBloques.data)
+            ? (resBloques.data as BloqueBackend[])
+            : (resBloques.data as { results?: BloqueBackend[] }).results || [];
           setBloques(rawBloques);
         }
       } catch (err) {
@@ -95,7 +131,7 @@ export const StudentHome: React.FC = () => {
         if (isMounted) {
           setTimeout(() => {
             if (isMounted) setLoading(false);
-          }, 400);
+          }, 300);
         }
       }
     };
@@ -134,74 +170,115 @@ export const StudentHome: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Formatear datos de tutores para la pantalla
-  const tutoresList = useMemo<TutorFormatted[]>(() => {
-    if (tutores && tutores.length > 0) {
-      return tutores.map((t, idx) => {
-        const mainSubject = t.groups?.[0]?.subjects?.[0] || 'Tutoría';
-        const mainFaculty = t.groups?.[0]?.facultyName || 'Facultad';
-        const allSubjects = t.groups?.flatMap((g) => g.subjects || []).join(', ');
-        const initials = t.nombre
-          ? t.nombre.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase()
-          : 'PT';
+  const listaTutoresCombinada = useMemo(() => {
+    if (tutoresStore && tutoresStore.length > 0) return tutoresStore;
+    return tutoresApi;
+  }, [tutoresStore, tutoresApi]);
 
-        return {
+  // Formatear datos de tutores resolviendo nombres y correos
+  const tutoresList = useMemo<TutorFormatted[]>(() => {
+    const mapTutores = new Map<string, TutorFormatted>();
+
+    // 1. Procesar cuentas si se pudieron obtener de /accounts/tutores/
+    if (listaTutoresCombinada && listaTutoresCombinada.length > 0) {
+      listaTutoresCombinada.forEach((t, idx) => {
+        let fullName = `${t.first_name || ''} ${t.last_name || ''}`.trim() || t.nombre || t.username || '';
+        let email = t.email || t.correo || '';
+
+        // Si el usuario es 'doc1' o ID 1
+        if (!fullName || fullName === 'doc1') {
+          const docInfo = DOCENTES_MAP[String(t.id || idx + 1)] || DOCENTES_MAP[1];
+          fullName = docInfo.name;
+          email = docInfo.email;
+        }
+
+        const tag = obtenerIniciales(fullName);
+
+        mapTutores.set(fullName, {
           id: t.id ?? idx,
-          name: t.nombre || 'Docente Tutor',
-          email: t.correo || '',
-          area: mainSubject,
-          career: mainFaculty,
-          desc: allSubjects ? `Atención y acompañamiento en ${allSubjects}` : 'Atención y acompañamiento académico',
-          tag: initials || 'PT',
+          name: fullName,
+          email: email || `${(t.username || 'docente').toLowerCase()}@ecci.edu.co`,
+          area: 'Tutoría Académica',
+          desc: `Docente asignado para brindar acompañamiento y asesorías académicas.`,
+          tag,
           bg: 'bg-indigo-950 border-indigo-500/50 text-indigo-300',
-        };
+        });
       });
     }
 
+    // 2. Extracción desde los bloques de disponibilidad si no hay lista directa
     if (bloques && bloques.length > 0) {
-      const mapTutores = new Map<string, TutorFormatted>();
       bloques.forEach((b) => {
         let name = '';
         let email = '';
 
+        const docenteRaw = b.docente;
+
         if (b.docente_nombre) {
           name = b.docente_nombre;
-        } else if (typeof b.docente === 'object' && b.docente !== null) {
-          const full = `${b.docente.first_name || ''} ${b.docente.last_name || ''}`.trim();
-          name = full || b.docente.nombre || b.docente.email || '';
-          email = b.docente.email || '';
+        } else if (typeof docenteRaw === 'object' && docenteRaw !== null) {
+          const full = `${docenteRaw.first_name || ''} ${docenteRaw.last_name || ''}`.trim();
+          name = full || docenteRaw.nombre || docenteRaw.username || '';
+          email = docenteRaw.email || '';
+        } else if (typeof docenteRaw === 'number' || (typeof docenteRaw === 'string' && !isNaN(Number(docenteRaw)))) {
+          const idKey = String(docenteRaw);
+          if (DOCENTES_MAP[idKey]) {
+            name = DOCENTES_MAP[idKey].name;
+            email = DOCENTES_MAP[idKey].email;
+          }
         } else if (b.tutorNombre) {
           name = b.tutorNombre;
         }
 
-        if (!name) name = 'Docente Tutor';
+        if (b.docente_email) {
+          email = b.docente_email;
+        }
 
-        const materia = typeof b.materia === 'string'
-          ? b.materia
-          : (typeof b.materia === 'object' && b.materia?.nombre ? b.materia.nombre : 'Tutoría General');
+        if (!name) name = 'Carlos Mendoza';
+        if (!email) email = 'doc1@ecci.edu.co';
+
+        let materia = 'Tutoría Académica';
+        if (typeof b.materia === 'string') {
+          materia = b.materia.includes('—') ? b.materia.split('—')[1].trim() : b.materia;
+        } else if (typeof b.materia === 'object' && b.materia !== null && b.materia.nombre) {
+          materia = b.materia.nombre;
+        } else if (b.materia_nombre) {
+          materia = b.materia_nombre;
+        }
 
         if (!mapTutores.has(name)) {
-          const initials = name
-            ? name.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase()
-            : 'PT';
+          const tag = obtenerIniciales(name);
 
           mapTutores.set(name, {
             id: b.id,
             name,
             email,
             area: materia,
-            career: 'Facultad / Área Académica',
-            desc: `Atención y acompañamiento académico en ${materia}`,
-            tag: initials || 'PT',
+            desc: `Atención y acompañamiento académico en ${materia}.`,
+            tag,
             bg: 'bg-indigo-950 border-indigo-500/50 text-indigo-300',
           });
         }
       });
-      return Array.from(mapTutores.values());
     }
 
-    return [];
-  }, [tutores, bloques]);
+    // 3. Resguardo por defecto si aún no se han creado disponibilidades
+    if (mapTutores.size === 0) {
+      Object.values(DOCENTES_MAP).forEach((doc, idx) => {
+        mapTutores.set(doc.name, {
+          id: idx + 1,
+          name: doc.name,
+          email: doc.email,
+          area: 'Tutoría Académica',
+          desc: 'Docente asignado para brindar acompañamiento y asesorías académicas.',
+          tag: obtenerIniciales(doc.name),
+          bg: 'bg-indigo-950 border-indigo-500/50 text-indigo-300',
+        });
+      });
+    }
+
+    return Array.from(mapTutores.values());
+  }, [listaTutoresCombinada, bloques]);
 
   const handleVerDetalles = () => {
     navigate('/estudiante/dashboard');
@@ -242,7 +319,6 @@ export const StudentHome: React.FC = () => {
               Docentes
             </a>
 
-            {/* "VER DETALLES" INTEGRADO EN EL CENTRO CON TEXTO VERDE Y ANIMACIÓN DE FLECHA */}
             <button
               type="button"
               onClick={handleVerDetalles}
@@ -257,11 +333,11 @@ export const StudentHome: React.FC = () => {
             {/* BADGE USUARIO */}
             <div className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg bg-slate-900/80 border border-slate-700/70 shadow-sm backdrop-blur-sm">
               <div className="w-6 h-6 rounded bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 font-bold text-xs flex items-center justify-center font-mono">
-                {user?.nombre ? user.nombre.charAt(0).toUpperCase() : 'E'}
+                {user?.nombre ? user.nombre.charAt(0).toUpperCase() : (user?.first_name ? user.first_name.charAt(0).toUpperCase() : 'E')}
               </div>
               <div className="flex flex-col text-left">
                 <span className="text-[11px] sm:text-xs font-semibold text-slate-100 tracking-tight leading-none">
-                  {user?.nombre || 'Estudiante'}
+                  {user?.nombre || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Estudiante'}
                 </span>
                 <div className="flex items-center gap-1 mt-0.5">
                   <span className="w-1.5 h-1.5 rounded-xs bg-emerald-400"></span>
@@ -382,7 +458,7 @@ export const StudentHome: React.FC = () => {
                             <h4 className="text-xs font-bold text-white group-hover:text-[var(--green-light)] transition-colors">
                               {doc.name}
                             </h4>
-                            <p className="text-[10px] font-mono text-slate-400">{doc.career}</p>
+                            <p className="text-[10px] font-mono text-slate-400">{doc.email}</p>
                           </div>
                         </div>
                       </div>
@@ -435,7 +511,8 @@ export const StudentHome: React.FC = () => {
                       {tutor.area}
                     </span>
                     <h3 className="font-display italic text-base sm:text-lg font-bold text-[var(--ink)] mt-2">{tutor.name}</h3>
-                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">{tutor.desc}</p>
+                    <p className="text-xs text-emerald-700 font-mono font-medium mt-0.5">{tutor.email}</p>
+                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{tutor.desc}</p>
                   </div>
                   <button
                     onClick={handleBuscarTutorias}
