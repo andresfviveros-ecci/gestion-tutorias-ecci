@@ -170,7 +170,11 @@ class CoordinatorView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, format=None):
-        return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        if not request.user.groups.filter(name='Coordinador').exists():
+            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        users = get_user_model().objects.filter(groups__name='Coordinador', is_active=True).distinct()
+        serializer = CoordinatorSerializer(users, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(request=CoordinatorSerializer)
     def post(self, request, format=None):
