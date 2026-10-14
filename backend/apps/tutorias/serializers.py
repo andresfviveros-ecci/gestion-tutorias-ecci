@@ -91,12 +91,18 @@ class TutoriaRegisterSerializer(serializers.ModelSerializer):
 
 
 class TutoriaSerializer(serializers.ModelSerializer):
+    docente = serializers.CharField(
+        source='bloque.docente.get_full_name',
+        read_only=True
+    )
+
     class Meta:
         model = Tutoria
         fields = [
             'id',
             'codigo',
             'bloque',
+            'docente',
             'estudiante',
             'tema',
             'descripcion',
@@ -112,6 +118,7 @@ class TutoriaSerializer(serializers.ModelSerializer):
             'id',
             'codigo',
             'bloque',
+            'docente',
             'estudiante',
             'estado',
             'asistencia',
