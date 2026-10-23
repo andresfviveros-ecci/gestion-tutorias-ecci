@@ -1,0 +1,178 @@
+# Integración continua: corre en cada PR hacia main y en cada push a main.
+# Si un job falla, el PR no se debe mergear (marcar los jobs como "required" en
+# Settings > Branches > main > Require status checks).
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Detecta qué parte del repo cambió para no correr todo en cada PR.
+  changes:
+    name: Detectar cambios
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'database/**'
+              - 'docker-compose.yml'
+              - '.github/workflows/**'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/**'
+
+  backend:
+    name: Backend (Django + Postgres)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    # Se corre dentro de un contenedor para que el servicio de Postgres se
+    # resuelva como "db", que es el HOST fijo en backend/config/db.py.
+    container: python:3.10
+    services:
+      db:
+        image: postgres:16
+        env:
+          POSTGRES_DB: tutorias_ecci
+          POSTGRES_USER: tutorias_user
+          POSTGRES_PASSWORD: change_me_secure_password
+        options: >-
+          --health-cmd "pg_isready -U tutorias_user -d tutorias_ecci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('backend/requirements.txt') }}
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      # Hoy hay ~65 avisos (casi todos por "from x import *"). No bloquea
+      # hasta que el equipo los limpie; luego quitar continue-on-error.
+      - name: Ruff (lint)
+        continue-on-error: true
+        run: ruff check . --output-format=github
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: Migraciones pendientes
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Aplicar migraciones
+        run: python manage.py migrate --noinput
+
+      - name: Pruebas
+        run: python manage.py test --verbosity 2
+
+      - name: Generar esquema OpenAPI
+        run: python manage.py spectacular --file openapi.yml
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openapi-schema
+          path: backend/openapi.yml
+
+  frontend:
+    name: Frontend (React + Vite)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Build (tsc + vite)
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+  smoke:
+    name: Prueba de humo (docker compose)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Levantar stack
+        run: docker compose up -d --build --wait
+
+      - name: Migrar
+        run: docker compose exec -T tutorias-django python manage.py migrate --noinput
+
+      - name: Verificar que la API responde
+        run: |
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/schema/)
+            [ "$code" = "200" ] && echo "API OK" && exit 0
+            sleep 2
+          done
+          echo "La API no respondió 200 (último código: $code)"
+          exit 1
+
+      - name: Logs si falla
+        if: failure()
+        run: docker compose logs
+
+      - name: Apagar stack
+        if: always()
+        run: docker compose down -v
+
+  secrets:
+    name: Buscar secretos filtrados
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
