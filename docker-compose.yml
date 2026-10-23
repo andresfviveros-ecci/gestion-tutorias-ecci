@@ -27,7 +27,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: bash -c "python manage.py runserver 0.0.0.0:8000"
+    # Al arrancar aplica migraciones y, si SEED_DEMO=1, carga los datos de prueba
+    # (solo la primera vez; ver backend/apps/accounts/management/commands/datos_prueba.py).
+    command: >
+      bash -c "python manage.py migrate --noinput &&
+      if [ \"$$SEED_DEMO\" = \"1\" ]; then python manage.py datos_prueba; fi &&
+      python manage.py runserver 0.0.0.0:8000"
     volumes:
       - ./backend:/backend
       - /etc/localtime:/etc/localtime:ro
@@ -36,6 +41,7 @@ services:
     environment:
       EMAIL_HOST_USER: ${EMAIL_HOST_USER}
       EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
+      SEED_DEMO: ${SEED_DEMO:-1}
     depends_on:
       db:
         condition: service_healthy
