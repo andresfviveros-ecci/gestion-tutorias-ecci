@@ -51,7 +51,7 @@ Todos los documentos están en la carpeta que les corresponde: lo de backend en 
 | Carpetas `nginx/`, `hooks/`, `config/celery` | No existen | Estructura real del repositorio |
 | `docker compose exec api ...` | El servicio se llama `tutorias-django` | Comandos corregidos |
 | GitFlow con rama `develop` | No hay rama `develop` | Flujo real: ramas `feat/`, `fix/`, `docs/`, `ci/` hacia `main` por PR |
-| Daniel y Juan Esteban en el equipo | Salieron del equipo en octubre de 2026 | Anotado "(hasta octubre de 2026)" |
+| Tabla de equipo con la composición de septiembre | El equipo cambió en octubre de 2026 | Tabla con el equipo actual, incluidos Product Owner y Scrum Master |
 | `docs/` con SRS, casos de uso, diagramas | Esos documentos están en Word/PDF fuera del repo | Aclarado |
 
 ### `backend/README.MD`
@@ -147,11 +147,12 @@ La arquitectura objetivo agrega Nginx como proxy inverso (estáticos + `/api`), 
 | Integrante | Rol |
 |---|---|
 | Andrés Felipe Viveros Albán | Líder Técnico |
-| Daniel Ortiz Bedoya | Backend (hasta octubre de 2026) |
-| Juan Esteban Soto Potes | Frontend (hasta octubre de 2026) |
+| Emely Salazar | Product Owner |
+| Luis Alberto Mainguez | Scrum Master |
+| Juan Diego Posada | Backend |
+| Juan de la Cruz | Frontend |
+| Sebastián Rodríguez Camilo | QA y Calidad |
 | Sebastián Torres Villaquiran | UX/UI |
-| Alejandro | QA y Calidad |
-| Emely, Luis, Johan | Documentación y análisis |
 
 Licencia: proyecto académico con fines educativos. Universidad ECCI, 2026.
 

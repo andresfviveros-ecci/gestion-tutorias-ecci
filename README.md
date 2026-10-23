@@ -241,11 +241,12 @@ Ningún pull request se mezcla con el pipeline de integración continua en rojo.
 | Integrante | Rol |
 |---|---|
 | Andrés Felipe Viveros Albán | Líder Técnico |
-| Daniel Ortiz Bedoya | Backend (hasta octubre de 2026) |
-| Juan Esteban Soto Potes | Frontend (hasta octubre de 2026) |
+| Emely Salazar | Product Owner |
+| Luis Alberto Mainguez | Scrum Master |
+| Juan Diego Posada | Backend |
+| Juan de la Cruz | Frontend |
+| Sebastián Rodríguez Camilo | QA y Calidad |
 | Sebastián Torres Villaquiran | UX/UI |
-| Alejandro | QA y Calidad |
-| Emely, Luis, Johan | Documentación y análisis |
 
 ---
 
