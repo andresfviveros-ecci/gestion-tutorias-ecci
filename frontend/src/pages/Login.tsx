@@ -7,13 +7,14 @@ import gsap from "gsap";
 import { useAuthStore } from "../store/useAuthStore";
 import { api } from "../api/axios";
 import axios from "axios";
+import { esCorreoPermitido, MENSAJE_DOMINIO } from "../config";
 
 const loginSchema = z.object({
   email: z
     .string()
     .email("Correo no válido")
-    .refine((val) => val.endsWith("@ecci.edu.co"), {
-      message: "Debe ser correo institucional @ecci.edu.co",
+    .refine(esCorreoPermitido, {
+      message: MENSAJE_DOMINIO,
     }),
   password: z.string().min(1, "La contraseña es requerida"),
 });
