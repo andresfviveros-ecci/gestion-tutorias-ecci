@@ -21,13 +21,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
+# Los valores por defecto son los de desarrollo local; en un despliegue se
+# definen DJANGO_SECRET_KEY, DJANGO_DEBUG=False y DJANGO_ALLOWED_HOSTS.
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-g%xue)_m@!m==5+j2g-5bsu%=q4*set)^quta607ohwcbjfan9'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-g%xue)_m@!m==5+j2g-5bsu%=q4*set)^quta607ohwcbjfan9')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', '*').split(',')
 
 
 # Application definition
@@ -144,10 +146,11 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+# Origenes separados por coma; docker-compose los arma con FRONTEND_PORT.
+CORS_ALLOWED_ORIGINS = os.getenv(
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:5173,http://127.0.0.1:5173',
+).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
 REST_FRAMEWORK = {

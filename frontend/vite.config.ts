@@ -6,4 +6,15 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
   },
+  server: {
+    // Escucha en todas las interfaces para que funcione dentro de Docker.
+    host: true,
+    port: 5173,
+    strictPort: true,
+    // En Docker sobre Windows los cambios de archivos no llegan como eventos;
+    // con VITE_USE_POLLING=true Vite revisa los archivos periódicamente.
+    watch: {
+      usePolling: process.env.VITE_USE_POLLING === 'true',
+    },
+  },
 });

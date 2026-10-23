@@ -34,8 +34,8 @@ Las versiones fijadas en `requirements.txt` incluyen:
 | Tecnología | Versión o uso |
 | --- | --- |
 | Python | 3.10 |
-| Django | 5.2.17 |
-| Django REST Framework | 3.18.1 |
+| Django | 5.2.18 |
+| Django REST Framework | 3.18.3 |
 | SimpleJWT | 5.5.1 |
 | PostgreSQL | Base de datos, mediante `psycopg` |
 | drf-spectacular | Generación del esquema OpenAPI y Swagger |
@@ -73,9 +73,9 @@ Las aplicaciones contienen modelos, vistas, serializers y rutas según la funcio
 
 Django registra las aplicaciones `accounts`, `catalogo`, `disponibilidad`, `notificaciones`, `reportes` y `tutorias`. El modelo de usuario configurado es `accounts.User`.
 
-La configuración usa español, la zona horaria `America/Bogota` y PostgreSQL. Las solicitudes protegidas se autentican mediante JWT. CORS permite solicitudes desde `http://localhost:5173` y `http://127.0.0.1:5173`.
+La configuración usa español, la zona horaria `America/Bogota` (con `USE_TZ = False`, así que las fechas se guardan sin zona horaria) y PostgreSQL. Las solicitudes protegidas se autentican mediante JWT. CORS toma los orígenes permitidos de la variable `CORS_ALLOWED_ORIGINS`; por defecto, `http://localhost:5173` y `http://127.0.0.1:5173`. Con Docker, docker-compose la arma con `FRONTEND_PORT`.
 
-La raíz `/` redirige a Swagger. La conexión a PostgreSQL está definida en `config/db.py`. Aunque hay un archivo `.env` con valores de base de datos, `settings.py` no lo carga para configurar la conexión; Django utiliza los valores definidos en `config/db.py`.
+La raíz `/` redirige a Swagger. La conexión a PostgreSQL está en `config/db.py` y lee `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST` y `POSTGRES_INTERNAL_PORT`, con los mismos valores por defecto que usa el servicio `db` de docker-compose. `DEBUG`, `SECRET_KEY` y `ALLOWED_HOSTS` también se leen de variables (`DJANGO_DEBUG`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`).
 
 ## Modelo de datos
 
@@ -89,7 +89,7 @@ La raíz `/` redirige a Swagger. La conexión a PostgreSQL está definida en `co
 - `rol`: rol guardado como texto.
 - `foto_url`: dirección de la foto, opcional.
 
-Los serializers de registro asignan los roles `Estudiante`, `Docente` o `Coordinador` y agregan al usuario al grupo de Django con el mismo nombre. Esos grupos deben existir en la base de datos para que el registro funcione.
+Los serializers de registro asignan los roles `Estudiante`, `Docente` o `Coordinador` y agregan al usuario al grupo de Django con el mismo nombre. Esos grupos deben existir en la base de datos para que el registro funcione. El comando `datos_prueba` los crea; no hay todavía una migración de datos que los cree en una base vacía sin datos de prueba.
 
 ### Catálogo académico
 
@@ -144,6 +144,8 @@ El inicio de sesión busca al usuario por correo y valida su contraseña con el 
 
 La recuperación genera un PIN de seis dígitos, lo guarda en caché durante cinco minutos y lo envía al correo. Para el envío se requieren las variables de entorno `EMAIL_HOST_USER` y `EMAIL_HOST_PASSWORD`; el código usa el servidor SMTP de Gmail con TLS. El cambio de contraseña verifica token, PIN y confirmación, y exige al menos ocho caracteres, un número y un carácter especial.
 
+La recuperación solo acepta correos `@ecci.edu.co`, así que no funciona con los usuarios de prueba (`@aulalibre.test`). Es intencional: evita que el sistema envíe correos a direcciones inventadas.
+
 ## Catálogo académico
 
 Las rutas están bajo `/api/catalogo/`. Todas requieren autenticación, pero las vistas no verifican el grupo o rol del usuario.
@@ -174,7 +176,7 @@ Solo el docente propietario puede actualizar o eliminar su bloque. No se puede r
 
 ## Reservas y tutorías
 
-Las rutas están bajo `/api/tutorias/` y requieren autenticación. Las consultas se limitan a las tutorías asociadas al usuario que realiza la solicitud.
+Las rutas están bajo `/api/tutorias/` y requieren autenticación. Las consultas filtran por `estudiante = usuario autenticado`: un estudiante ve sus reservas, pero un docente o un coordinador recibe una lista vacía aunque haya tutorías en sus bloques (ver "Estado actual").
 
 | Método | Ruta | Función |
 | --- | --- | --- |
@@ -201,36 +203,45 @@ drf-spectacular genera el esquema OpenAPI y Swagger UI lo presenta de forma inte
 
 ## Ejecución y migraciones
 
-El `Dockerfile` prepara una imagen basada en Python 3.10, instala las dependencias y copia el backend. El archivo de Docker Compose está en la raíz del proyecto, por lo que estos comandos deben ejecutarse desde esa carpeta, con los servicios levantados. El contenedor de Django se llama `tutorias-django`.
+El `Dockerfile` prepara una imagen basada en Python 3.10, instala las dependencias y copia el backend. El archivo de Docker Compose está en la raíz del proyecto, por lo que estos comandos deben ejecutarse desde esa carpeta, con los servicios levantados. El **servicio** de Django en docker-compose se llama `tutorias-django` (es el nombre que se usa en `docker compose exec`); el **contenedor** se llama `tutorias_ecci`.
+
+Al arrancar, el contenedor aplica las migraciones, carga los datos de prueba si `SEED_DEMO=1` (solo la primera vez) y levanta `runserver`.
 
 Levantar los servicios:
 
 ```bash
-docker-compose up -d
+docker compose up -d --build
+```
+
+Cargar o regenerar los datos de prueba:
+
+```bash
+docker compose exec tutorias-django python manage.py datos_prueba
+docker compose exec tutorias-django python manage.py datos_prueba --reset
 ```
 
 Crear migraciones después de modificar modelos:
 
 ```bash
-docker-compose exec tutorias-django python manage.py makemigrations
+docker compose exec tutorias-django python manage.py makemigrations
 ```
 
 Aplicar las migraciones:
 
 ```bash
-docker-compose exec tutorias-django python manage.py migrate
+docker compose exec tutorias-django python manage.py migrate
 ```
 
 Crear un superusuario:
 
 ```bash
-docker-compose exec tutorias-django python manage.py createsuperuser
+docker compose exec tutorias-django python manage.py createsuperuser
 ```
 
 Verificar la configuración de Django:
 
 ```bash
-docker-compose exec tutorias-django python manage.py check
+docker compose exec tutorias-django python manage.py check
 ```
 
 ## Estado actual y aspectos por revisar
@@ -241,10 +252,22 @@ docker-compose exec tutorias-django python manage.py check
 - La cancelación guarda el estado `CANCELADA`, pero esa opción no aparece entre los estados definidos para `Tutoria` (`CANCELADA_ESTUDIANTE` y `CANCELADA_DOCENTE`). Conviene revisar esta diferencia.
 - Los endpoints del catálogo requieren autenticación, pero no restringen las operaciones de escritura a coordinadores.
 - Los endpoints de disponibilidad permiten crear bloques a cualquier usuario autenticado; el docente se asigna al usuario que realiza la solicitud.
-- El registro depende de que existan previamente los grupos `Estudiante`, `Docente` y `Coordinador`. No se encontró una migración de datos o comando que los cree.
-- `DEBUG` está activado y `ALLOWED_HOSTS` permite cualquier host en la configuración revisada; ambos valores deben revisarse antes de un despliegue.
-- La conexión de PostgreSQL está definida en `config/db.py`, mientras existe un `.env` con valores de base de datos que esa configuración no utiliza actualmente.
+- El registro depende de que existan previamente los grupos `Estudiante`, `Docente` y `Coordinador`. El comando `datos_prueba` los crea, pero no hay una migración de datos: con `SEED_DEMO=0` y una base vacía, el registro falla.
+- `GET /api/tutorias/tutorias/` y el detalle `/api/tutorias/tutorias/<id>/` filtran solo por estudiante. Un docente no ve las tutorías reservadas en sus bloques.
+- Por defecto `DEBUG` está activado y `ALLOWED_HOSTS` permite cualquier host. Para un despliegue hay que definir `DJANGO_DEBUG=False`, `DJANGO_SECRET_KEY` y `DJANGO_ALLOWED_HOSTS`.
+- El código de una tutoría es `TUT-<bloque>-<estudiante>` y es único: si un estudiante cancela y vuelve a reservar el mismo bloque, la segunda reserva choca con el código de la primera.
+- `celery` y `redis` están en `requirements.txt` pero no hay tareas ni configuración que los use.
 
 ## Variables de entorno
 
-Copiar `.env.example` como `.env` en la raíz del proyecto. Los valores de la base de datos sirven tal cual para desarrollo local. Las credenciales del correo del sistema (`EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`) se piden al Scrum Master por un canal privado; nunca se suben al repositorio.
+Copiar `.env.example` como `.env` en la raíz del proyecto. Todos los valores sirven tal cual para desarrollo local. Las credenciales del correo del sistema (`EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`) se piden al Scrum Master por un canal privado; nunca se suben al repositorio.
+
+| Variable | Uso en el backend |
+| --- | --- |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Base de datos (las usan el contenedor `db` y Django) |
+| `POSTGRES_PORT` | Puerto publicado en la máquina; Django siempre usa `db:5432` dentro de Docker |
+| `APP_PORT` | Puerto publicado del backend (por defecto 8000) |
+| `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS` | Modo debug y hosts permitidos |
+| `FRONTEND_PORT` | Se usa para armar `CORS_ALLOWED_ORIGINS` |
+| `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | Correo para recuperación de contraseña |
+| `SEED_DEMO` | `1` carga los datos de prueba al arrancar |
