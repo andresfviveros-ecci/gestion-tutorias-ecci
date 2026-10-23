@@ -11,6 +11,9 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # 26.2 exige Python 3.11; quitar cuando el Dockerfile suba de 3.10.
+      - dependency-name: "django-filter"
+        versions: [">=26.2"]
     groups:
       backend:
         patterns: ["*"]
