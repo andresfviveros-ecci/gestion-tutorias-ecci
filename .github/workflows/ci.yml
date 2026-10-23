@@ -151,13 +151,13 @@ jobs:
       - name: Levantar stack
         run: docker compose up -d --build --wait
 
-      - name: Migrar
-        run: docker compose exec -T tutorias-django python manage.py migrate --noinput
-
+      # El contenedor migra y carga los datos de prueba antes de abrir el
+      # servidor, así que los primeros intentos fallan; "|| true" evita que
+      # bash -e corte el ciclo en el primer error de conexión.
       - name: Verificar que la API responde
         run: |
-          for _ in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/schema/)
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/schema/ || true)
             [ "$code" = "200" ] && echo "API OK" && exit 0
             sleep 2
           done
