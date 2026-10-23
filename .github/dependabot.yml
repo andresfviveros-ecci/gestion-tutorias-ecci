@@ -1,21 +1,35 @@
+# Un PR por ecosistema con todas las actualizaciones menores y de parche.
+# Las versiones mayores se ignoran: rompen compatibilidad (Django 6 pide
+# Python 3.12 y el Dockerfile usa 3.10; Tailwind 4 cambia la configuración)
+# y se hacen a mano en una rama propia.
 version: 2
 updates:
   - package-ecosystem: pip
     directory: /backend
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      backend:
+        patterns: ["*"]
 
   - package-ecosystem: npm
     directory: /frontend
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
-      dev-dependencies:
-        dependency-type: development
+      frontend:
+        patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
