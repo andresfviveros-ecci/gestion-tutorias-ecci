@@ -92,6 +92,12 @@ jobs:
       - name: Aplicar migraciones
         run: python manage.py migrate --noinput
 
+      - name: Datos de prueba (carga, segunda corrida y reset)
+        run: |
+          python manage.py datos_prueba
+          python manage.py datos_prueba
+          python manage.py datos_prueba --reset
+
       - name: Pruebas
         run: python manage.py test --verbosity 2
 
@@ -145,18 +151,26 @@ jobs:
       - name: Levantar stack
         run: docker compose up -d --build --wait
 
-      - name: Migrar
-        run: docker compose exec -T tutorias-django python manage.py migrate --noinput
-
+      # El contenedor migra y carga los datos de prueba antes de abrir el
+      # servidor, así que los primeros intentos fallan; "|| true" evita que
+      # bash -e corte el ciclo en el primer error de conexión.
       - name: Verificar que la API responde
         run: |
-          for _ in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/schema/)
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/schema/ || true)
             [ "$code" = "200" ] && echo "API OK" && exit 0
             sleep 2
           done
           echo "La API no respondió 200 (último código: $code)"
           exit 1
+
+      - name: Login con usuario de prueba
+        run: |
+          code=$(curl -s -o login.json -w '%{http_code}' -H 'Content-Type: application/json' \
+            -d '{"email":"estudiante@aulalibre.test","password":"Aula2026*"}' \
+            http://localhost:8000/api/accounts/login/)
+          echo "HTTP $code"
+          [ "$code" = "200" ]
 
       - name: Logs si falla
         if: failure()
