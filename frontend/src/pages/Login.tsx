@@ -30,15 +30,23 @@ export const Login: React.FC = () => {
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [typedTitle, setTypedTitle] = useState("");
   const [authError, setAuthError] = useState(false);
+
+  // States para la recuperación
   const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryToken, setRecoveryToken] = useState("");
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [recoveryLoading, setRecoveryLoading] = useState(false);
 
+  // States para OTP / Step 2
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [step2Error, setStep2Error] = useState<string | null>(null);
 
+  // States para Nueva Contraseña / Step 3
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [step3Error, setStep3Error] = useState<string | null>(null);
+  const [step3Loading, setStep3Loading] = useState(false);
 
   const panelLeftRef = useRef<HTMLDivElement>(null);
   const formCardRef = useRef<HTMLDivElement>(null);
@@ -78,12 +86,12 @@ export const Login: React.FC = () => {
       gsap.fromTo(
         panelLeftRef.current,
         { x: -50, opacity: 0 },
-        { x: 0, opacity: 1, duration: 0.8, ease: "power2.out" }
+        { x: 0, opacity: 1, duration: 0.8, ease: "power2.out" },
       );
       gsap.fromTo(
         formCardRef.current,
         { y: 30, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.8, delay: 0.2, ease: "power2.out" }
+        { y: 0, opacity: 1, duration: 0.8, delay: 0.2, ease: "power2.out" },
       );
     });
 
@@ -99,33 +107,84 @@ export const Login: React.FC = () => {
     resolver: zodResolver(loginSchema),
   });
 
+  // Helper para procesar errores de axios y evitar HTML crudo de Django (500)
+  const getCleanErrorMessage = (err: unknown): string => {
+    if (axios.isAxiosError(err)) {
+      if (!err.response) {
+        return "No se pudo conectar con el servidor. Verifica tu conexión a internet.";
+      }
+      const status = err.response.status;
+      const data = err.response.data;
+
+      if (status >= 500) {
+        return "Ocurrió un error interno en el servidor (500). Por favor intenta más tarde.";
+      }
+
+      if (typeof data === "string") {
+        if (data.includes("<html") || data.includes("<!DOCTYPE")) {
+          return "Ocurrió un error en el servidor. Inténtalo de nuevo.";
+        }
+        return data;
+      }
+
+      if (data && typeof data === "object") {
+        if (data.detail) return data.detail;
+        if (Array.isArray(data.non_field_errors))
+          return data.non_field_errors[0];
+        const keys = Object.keys(data);
+        if (keys.length > 0) {
+          const firstErr = data[keys[0]];
+          if (Array.isArray(firstErr)) return `${firstErr[0]}`;
+          if (typeof firstErr === "string") return firstErr;
+        }
+      }
+    }
+    return "Ocurrió un error inesperado. Inténtalo de nuevo.";
+  };
+
   const onLoginSubmit = async (data: LoginFormData) => {
     setAuthError(false);
     const loggedUser = await login(data.email, data.password);
 
     if (loggedUser) {
       triggerLoaderAndReset(() => {
-        // Verificar si venía de intentar ingresar a una URL específica
-        const stateFrom = (location.state as { from?: { pathname?: string } })?.from?.pathname;
+        let defaultPath = "/inicio";
+        if (loggedUser.role === "admin") defaultPath = "/dashboard";
+        if (loggedUser.role === "tutor") defaultPath = "/tutor/dashboard";
+
+        const stateFrom = (location.state as { from?: { pathname?: string } })
+          ?.from?.pathname;
 
         if (stateFrom && stateFrom !== "/") {
-          navigate(stateFrom, { replace: true });
-        } else {
-          // Redirección predeterminada según el rol asignado
-          if (loggedUser.role === 'admin') {
-            navigate('/dashboard');
-          } else if (loggedUser.role === 'tutor') {
-            navigate('/tutor/mi-disponibilidad');
-          } else {
-            navigate('/inicio');
+          const isTutorRoute = stateFrom.startsWith("/tutor");
+          const isAdminRoute = [
+            "/dashboard",
+            "/estudiantes",
+            "/tutores",
+            "/coordinadores",
+            "/gestionar-usuarios",
+          ].includes(stateFrom);
+          const isStudentRoute = stateFrom === "/inicio";
+
+          const hasPermission =
+            (loggedUser.role === "tutor" && isTutorRoute) ||
+            (loggedUser.role === "admin" && isAdminRoute) ||
+            (loggedUser.role === "estudiante" && isStudentRoute);
+
+          if (hasPermission) {
+            navigate(stateFrom, { replace: true });
+            return;
           }
         }
+
+        navigate(defaultPath, { replace: true });
       });
     } else {
       setAuthError(true);
     }
   };
 
+  // PASO 1: Enviar correo y guardar el Token retornado
   const handleRecoverySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRecoveryError(null);
@@ -134,22 +193,62 @@ export const Login: React.FC = () => {
 
     try {
       setRecoveryLoading(true);
-      await api.post('/accounts/recovery/', {
+      const res = await api.post("/accounts/recovery/", {
         email: recoveryEmail.trim().toLowerCase(),
       });
       setRecoveryLoading(false);
+
+      if (res.data && res.data.token) {
+        setRecoveryToken(res.data.token);
+      }
       setCurrentView("step2");
     } catch (err: unknown) {
       setRecoveryLoading(false);
-      if (axios.isAxiosError(err) && err.response && err.response.data) {
-        const data = err.response.data;
-        const msg = typeof data === 'string' 
-          ? data 
-          : data.detail || data.non_field_errors?.[0] || 'No existe un usuario activo con este correo.';
-        setRecoveryError(msg);
-      } else {
-        setRecoveryError('Ocurrió un error al conectar con el servidor.');
-      }
+      setRecoveryError(getCleanErrorMessage(err));
+    }
+  };
+
+  // PASO 2: Verificar la entrada del PIN de 6 dígitos
+  const handleOtpSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setStep2Error(null);
+
+    const pinCode = otp.join("");
+    if (pinCode.length < 6) {
+      setStep2Error("Por favor ingresa el código completo de 6 dígitos.");
+      return;
+    }
+
+    if (!recoveryToken) {
+      setStep2Error(
+        "No se encontró el token de recuperación. Vuelve a solicitar el código.",
+      );
+      return;
+    }
+
+    setCurrentView("step3");
+  };
+
+  // PASO 3: Cambiar contraseña llamando a /accounts/recovery/change-password/
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStep3Error(null);
+
+    if (!isPasswordValid) return;
+
+    try {
+      setStep3Loading(true);
+      await api.post("/accounts/recovery/change-password/", {
+        token: recoveryToken,
+        pin: otp.join(""),
+        password: newPassword,
+        password_confirm: confirmPassword,
+      });
+      setStep3Loading(false);
+      setCurrentView("success");
+    } catch (err: unknown) {
+      setStep3Loading(false);
+      setStep3Error(getCleanErrorMessage(err));
     }
   };
 
@@ -166,11 +265,26 @@ export const Login: React.FC = () => {
 
   const handleOtpKeyDown = (
     index: number,
-    e: React.KeyboardEvent<HTMLInputElement>
+    e: React.KeyboardEvent<HTMLInputElement>,
   ) => {
     if (e.key === "Backspace" && !otp[index] && index > 0) {
       otpRefs.current[index - 1]?.focus();
     }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData("text").trim().slice(0, 6);
+    if (!/^\d+$/.test(pastedData)) return;
+
+    const newOtp = [...otp];
+    pastedData.split("").forEach((char, index) => {
+      if (index < 6) newOtp[index] = char;
+    });
+    setOtp(newOtp);
+
+    const nextFocusIndex = Math.min(pastedData.length, 5);
+    otpRefs.current[nextFocusIndex]?.focus();
   };
 
   const hasMin8 = newPassword.length >= 8;
@@ -182,10 +296,13 @@ export const Login: React.FC = () => {
   const resetAllForms = () => {
     resetLoginForm();
     setRecoveryEmail("");
+    setRecoveryToken("");
     setRecoveryError(null);
     setOtp(Array(6).fill(""));
+    setStep2Error(null);
     setNewPassword("");
     setConfirmPassword("");
+    setStep3Error(null);
     setAuthError(false);
   };
 
@@ -240,7 +357,7 @@ export const Login: React.FC = () => {
                     : "bg-[#1f7a5c] text-white border-[#1f7a5c]"
                 }`}
               >
-                {currentView !== "step1" ? "v" : "1"}
+                {currentView !== "step1" ? "✓" : "1"}
               </div>
 
               <div
@@ -260,7 +377,7 @@ export const Login: React.FC = () => {
                       : "bg-white text-slate-400 border-slate-300"
                 }`}
               >
-                {currentView === "step3" ? "v" : "2"}
+                {currentView === "step3" ? "✓" : "2"}
               </div>
 
               <div
@@ -419,7 +536,9 @@ export const Login: React.FC = () => {
                   disabled={recoveryLoading}
                   className="w-full py-3 bg-[#0d1b2a] text-white text-xs font-semibold rounded-md hover:bg-[#1b2a3a] disabled:opacity-50 transition-all"
                 >
-                  {recoveryLoading ? "Enviando código..." : "Enviar código de recuperación"}
+                  {recoveryLoading
+                    ? "Enviando código..."
+                    : "Enviar código de recuperación"}
                 </button>
               </form>
 
@@ -457,13 +576,7 @@ export const Login: React.FC = () => {
                 . Ingrésalo para continuar.
               </p>
 
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setCurrentView("step3");
-                }}
-                className="space-y-5"
-              >
+              <form onSubmit={handleOtpSubmit} className="space-y-5">
                 <div className="flex justify-between gap-2">
                   {otp.map((digit, idx) => (
                     <input
@@ -476,10 +589,17 @@ export const Login: React.FC = () => {
                       value={digit}
                       onChange={(e) => handleOtpChange(idx, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                      onPaste={handleOtpPaste}
                       className="w-11 h-[52px] text-center text-lg font-semibold border border-slate-300 rounded-md bg-[#ffffff] outline-none focus:border-[#0d1b2a] focus:ring-2 focus:ring-[#0d1b2a]/10"
                     />
                   ))}
                 </div>
+
+                {step2Error && (
+                  <span className="text-xs text-red-500 font-medium block text-center">
+                    {step2Error}
+                  </span>
+                )}
 
                 <p className="text-[11px] text-slate-500 text-center">
                   ¿No llegó nada? Revisa spam o reenvía el código.
@@ -513,15 +633,7 @@ export const Login: React.FC = () => {
                 Elige una contraseña segura para tu cuenta institucional.
               </p>
 
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (isPasswordValid) {
-                    setCurrentView("success");
-                  }
-                }}
-                className="space-y-4"
-              >
+              <form onSubmit={handleResetPassword} className="space-y-4">
                 <div className="relative">
                   <input
                     type="password"
@@ -543,7 +655,7 @@ export const Login: React.FC = () => {
                     <span
                       className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${hasMin8 ? "bg-[#1f7a5c] text-white border-[#1f7a5c]" : "border-slate-300"}`}
                     >
-                      v
+                      ✓
                     </span>
                     Mínimo 8 caracteres
                   </div>
@@ -553,7 +665,7 @@ export const Login: React.FC = () => {
                     <span
                       className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${hasNum ? "bg-[#1f7a5c] text-white border-[#1f7a5c]" : "border-slate-300"}`}
                     >
-                      v
+                      ✓
                     </span>
                     Al menos un número
                   </div>
@@ -563,7 +675,7 @@ export const Login: React.FC = () => {
                     <span
                       className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${hasSym ? "bg-[#1f7a5c] text-white border-[#1f7a5c]" : "border-slate-300"}`}
                     >
-                      v
+                      ✓
                     </span>
                     Al menos un símbolo
                   </div>
@@ -592,28 +704,40 @@ export const Login: React.FC = () => {
                   )}
                 </div>
 
+                {step3Error && (
+                  <span className="text-xs text-red-500 font-medium block">
+                    {step3Error}
+                  </span>
+                )}
+
                 <button
                   type="submit"
-                  disabled={!isPasswordValid}
+                  disabled={!isPasswordValid || step3Loading}
                   className="w-full py-3 bg-[#0d1b2a] text-white text-xs font-semibold rounded-md hover:bg-[#1b2a3a] disabled:bg-slate-300 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors"
                 >
-                  Guardar nueva contraseña
+                  {step3Loading ? "Guardando..." : "Guardar nueva contraseña"}
                 </button>
               </form>
             </div>
           )}
-
-          {/* VISTA ÉXITO */}
           {currentView === "success" && (
             <div className="text-center">
               <div className="flex justify-center mb-6">
-                <svg className="checkmark-svg" viewBox="0 0 52 52">
-                  <circle className="checkmark-circle" cx="26" cy="26" r="23" />
-                  <path
-                    className="checkmark-check"
-                    d="M14.1 27.2l7.1 7.2 16.7-16.8"
-                  />
-                </svg>
+                <div className="w-20 h-20 bg-[#1f7a5c]/10 text-[#1f7a5c] rounded-full flex items-center justify-center ring-8 ring-[#1f7a5c]/5">
+                  <svg
+                    className="w-10 h-10"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4.5 12.75l6 6 9-13.5"
+                    />
+                  </svg>
+                </div>
               </div>
 
               <h2 className="font-display italic text-3xl font-semibold text-slate-800 mb-2">
@@ -632,7 +756,7 @@ export const Login: React.FC = () => {
                     setCurrentView("login");
                   });
                 }}
-                className="w-full py-3 bg-[#0d1b2a] text-white text-xs font-semibold rounded-md hover:bg-[#1b2a3a]"
+                className="w-full py-3 bg-[#0d1b2a] text-white text-xs font-semibold rounded-md hover:bg-[#1b2a3a] transition-colors shadow-md"
               >
                 Ir a iniciar sesión
               </button>

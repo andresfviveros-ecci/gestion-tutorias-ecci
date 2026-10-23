@@ -8,9 +8,13 @@ import { Estudiantes } from './pages/Estudiantes';
 import { Tutores } from './pages/Tutores';
 import { Coordinadores } from './pages/Coordinadores';
 import { GestionarUsuarios } from './pages/GestionarUsuarios';
+import { DashboardTutor } from './pages/tutor/DashboardTutor';
 import { MiDisponibilidad } from './pages/tutor/MiDisponibilidad';
 import { Calendario } from './pages/tutor/Calendario';
-import { StudentHome } from './pages/StudentHome';
+import { StudentHome } from './pages/estudiante/StudentHome';
+import { DashboardEstudiante } from './pages/estudiante/DashboardEstudiante';
+import { BuscarTutorias } from './pages/estudiante/BuscarTutorias';
+import { MisReservas } from './pages/estudiante/MisReservas';
 import { Layout } from './components/Layout';
 
 interface ProtectedRouteProps {
@@ -18,7 +22,14 @@ interface ProtectedRouteProps {
   allowedRoles: UserRole[];
 }
 
-// Variantes de animación para Framer Motion
+// Normaliza el rol sin importar si viene de Django como 'Estudiante', 'Docente', 'role' o 'rol'
+const normalizeRole = (role?: string): UserRole => {
+  const r = String(role || '').toLowerCase();
+  if (r.includes('admin') || r.includes('coordinador')) return 'admin';
+  if (r.includes('tutor') || r.includes('docente')) return 'tutor';
+  return 'estudiante';
+};
+
 const cardContainerVariants: Variants = {
   hidden: { opacity: 0, scale: 0.92, y: 30 },
   visible: {
@@ -48,7 +59,7 @@ const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
 
   const handleRedirect = () => {
     if (role === 'admin') navigate('/dashboard');
-    else if (role === 'tutor') navigate('/tutor/mi-disponibilidad');
+    else if (role === 'tutor') navigate('/tutor/dashboard');
     else navigate('/inicio');
   };
 
@@ -57,7 +68,6 @@ const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
 
   return (
     <div className="relative min-h-screen w-full bg-[#f7f5ed] flex items-center justify-center p-4 md:p-8 overflow-hidden font-body">
-      {/* Fondo decorativo con mallas y orbes animados */}
       <motion.div
         animate={{
           scale: [1, 1.15, 1],
@@ -84,17 +94,14 @@ const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
         className="absolute bottom-12 right-12 w-[30rem] h-[30rem] bg-[#0d1b2a]/10 rounded-full blur-3xl pointer-events-none"
       />
 
-      {/* Rejilla de puntos sutíl */}
       <div className="absolute inset-0 bg-[radial-gradient(#0d1b2a_1px,transparent_1px)] [background-size:24px_24px] opacity-10 pointer-events-none" />
 
-      {/* Tarjeta principal estilo 21st.dev / Glassmorphism */}
       <motion.div
         variants={cardContainerVariants}
         initial="hidden"
         animate="visible"
         className="relative z-10 w-full max-w-4xl bg-white/80 backdrop-blur-xl border border-[#0d1b2a]/10 rounded-3xl shadow-[0_20px_50px_rgba(13,27,42,0.08)] overflow-hidden grid grid-cols-1 md:grid-cols-12"
       >
-        {/* Columna Izquierda - Arte Visual e Imagen */}
         <div className="relative md:col-span-5 bg-[#0d1b2a] text-[#f7f5ed] p-8 flex flex-col justify-between overflow-hidden min-h-[260px] md:min-h-full">
           <img
             src="https://images.unsplash.com/photo-1497633762265-9d179a990aa6?q=80&w=1000&auto=format&fit=crop"
@@ -103,7 +110,6 @@ const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#0d1b2a] via-[#0d1b2a]/60 to-transparent pointer-events-none" />
 
-          {/* Logo o Marca superior */}
           <div className="relative z-10 flex items-center gap-2">
             <span className="font-display italic text-2xl font-semibold tracking-wide">Aula Libre</span>
             <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded bg-[#1f7a5c] text-white">
@@ -111,7 +117,6 @@ const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
             </span>
           </div>
 
-          {/* Icono Flotante de candado en 3D/Glass con Framer Motion */}
           <div className="relative z-10 my-auto py-6 flex flex-col items-center">
             <motion.div
               animate={{ y: [-6, 6, -6] }}
@@ -135,15 +140,12 @@ const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
             </motion.div>
           </div>
 
-          {/* Pie informativo */}
           <div className="relative z-10 text-xs text-slate-300 font-medium">
             Módulo restringido por políticas de seguridad institucional.
           </div>
         </div>
 
-        {/* Columna Derecha - Contenido y Acciones */}
         <div className="md:col-span-7 p-8 md:p-12 flex flex-col justify-center bg-white/50">
-          {/* Badge de Estado */}
           <motion.div variants={itemVariants} className="mb-4">
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-700 text-xs font-semibold uppercase tracking-wider">
               <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
@@ -151,7 +153,6 @@ const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
             </span>
           </motion.div>
 
-          {/* Título */}
           <motion.h2
             variants={itemVariants}
             className="font-display italic text-3xl md:text-4xl font-semibold text-[#0d1b2a] mb-4"
@@ -159,7 +160,6 @@ const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
             Zona no autorizada
           </motion.h2>
 
-          {/* Descripción con Badge de Rol */}
           <motion.p variants={itemVariants} className="text-sm text-slate-600 leading-relaxed mb-6">
             Has intentado ingresar a una dirección asignada a un perfil distinto. Tu cuenta se encuentra
             autenticada activamente como:
@@ -174,13 +174,12 @@ const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
             </div>
           </motion.div>
 
-          {/* Botón de Acción Principal con Framer Motion */}
           <motion.div variants={itemVariants}>
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={handleRedirect}
-              className="w-full py-3.5 px-6 bg-[#0d1b2a] hover:bg-[#1b2a3a] text-white text-xs font-semibold rounded-xl shadow-lg shadow-[#0d1b2a]/15 transition-all flex items-center justify-center gap-3 group"
+              className="w-full py-3.5 px-6 bg-[#0d1b2a] hover:bg-[#1b2a3a] text-white text-xs font-semibold rounded-xl shadow-lg shadow-[#0d1b2a]/15 transition-all flex items-center justify-center gap-3 group cursor-pointer"
             >
               <span>Volver a mi Panel Principal</span>
               <svg
@@ -221,14 +220,15 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
     return null;
   }
 
-  // 1. Redirigir al Login si no hay usuario en sesión guardando la ruta intentada
   if (!user) {
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
-  // 2. Si el rol del usuario no está permitido para esta ruta, renderizar la vista animada de Acceso Denegado
-  if (!allowedRoles.includes(user.role)) {
-    return <AccessDeniedView role={user.role} />;
+  const userRole = normalizeRole(user.role || (user as unknown as { rol?: string }).rol);
+  const isAllowed = allowedRoles.map((r) => r.toLowerCase()).includes(userRole);
+
+  if (!isAllowed) {
+    return <AccessDeniedView role={userRole} />;
   }
 
   return <>{children}</>;
@@ -245,13 +245,55 @@ export const App: React.FC = () => {
         <Route
           path="/inicio"
           element={
-            <ProtectedRoute allowedRoles={['estudiante']}>
+            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
               <StudentHome />
             </ProtectedRoute>
           }
         />
+        <Route path="/estudiante" element={<Navigate to="/inicio" replace />} />
+        
+        <Route
+          path="/estudiante/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
+              <Layout>
+                <DashboardEstudiante />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/estudiante/buscar-tutorias"
+          element={
+            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
+              <Layout>
+                <BuscarTutorias />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/estudiante/mis-reservas"
+          element={
+            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
+              <Layout>
+                <MisReservas />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/estudiante/historial"
+          element={
+            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
+              <Layout>
+                <MisReservas />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
 
-        {/* Rutas del Administrador / Coordinador */}
+        {/* Rutas de Administrador / Coordinador */}
         <Route
           path="/dashboard"
           element={
@@ -305,6 +347,16 @@ export const App: React.FC = () => {
 
         {/* Rutas de Tutor / Docente */}
         <Route
+          path="/tutor/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['tutor', 'admin']}>
+              <Layout>
+                <DashboardTutor />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/tutor/mi-disponibilidad"
           element={
             <ProtectedRoute allowedRoles={['tutor', 'admin']}>
@@ -325,7 +377,6 @@ export const App: React.FC = () => {
           }
         />
 
-        {/* Redirección por defecto */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

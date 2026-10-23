@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import LoginView,RecoveryTokenView,StudentView,StudentDetailView,TutorView,TutorDetailView,CoordinatorView,CoordinatorDetailView
+from .views import ChangePasswordView, LoginView,RecoveryTokenView,StudentView,StudentDetailView,TutorView,TutorDetailView,CoordinatorView,CoordinatorDetailView
 
 urlpatterns = [
     # AUTENTICACIÓN
@@ -15,4 +15,5 @@ urlpatterns = [
     # CRUD COORDINADORES
     path('coordinadores/', CoordinatorView.as_view(), name='coordinadores'),
     path('coordinadores/<int:pk>/', CoordinatorDetailView.as_view(), name='coordinador-detail'),
+    path('recovery/change-password/',ChangePasswordView.as_view(),name='change-password'),
 ]

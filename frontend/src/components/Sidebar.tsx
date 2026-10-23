@@ -7,14 +7,20 @@ export const Sidebar: React.FC = () => {
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
 
+  const roleStr = String(user?.role || user?.role || '').toLowerCase();
+  const isAdmin = roleStr.includes('admin') || roleStr.includes('coordinador');
+  const isTutor = roleStr.includes('tutor') || roleStr.includes('docente');
+  const isEstudiante = roleStr.includes('estudiante') || (!isAdmin && !isTutor);
+
   const handleLogout = () => {
     logout();
-    navigate('/');
+    navigate('/', { replace: true, state: {} });
   };
 
   return (
-    <aside className="w-[240px] h-screen sticky top-0 bg-[#111a2e] text-[#cbd5e1] flex flex-col justify-between shrink-0 border-r border-slate-800/60 z-30 overflow-y-auto">
+    <aside className="w-[240px] h-screen sticky top-0 bg-[#111a2e] text-[#cbd5e1] flex flex-col justify-between shrink-0 border-r border-slate-800/60 z-30 overflow-y-auto font-body">
       <div>
+        {/* HEADER BRANDING */}
         <div className="h-16 px-6 flex items-center justify-between border-b border-slate-800/80">
           <span className="font-display italic text-xl font-bold tracking-tight text-white">
             Aula <span className="not-italic text-emerald-400">Libre</span>
@@ -25,7 +31,8 @@ export const Sidebar: React.FC = () => {
         </div>
 
         <div className="py-6 flex flex-col gap-6">
-          {user?.role === 'admin' && (
+          {/* ROL ADMINISTRADOR */}
+          {isAdmin && (
             <>
               <div>
                 <span className="block text-[0.68rem] font-bold tracking-widest text-[#64748b] px-6 mb-2 uppercase">
@@ -116,19 +123,30 @@ export const Sidebar: React.FC = () => {
             </>
           )}
 
-          {user?.role === 'tutor' && (
+          {/* ROL TUTOR / DOCENTE */}
+          {isTutor && (
             <>
               <div>
                 <span className="block text-[0.68rem] font-bold tracking-widest text-[#64748b] px-6 mb-2 uppercase">
                   PANEL
                 </span>
                 <NavLink
-                  to="#"
-                  onClick={(e) => e.preventDefault()}
-                  className="relative flex items-center gap-2.5 px-6 py-2.5 text-[0.85rem] font-medium text-[#94a3b8] hover:text-white hover:bg-white/5 transition-colors cursor-not-allowed opacity-60"
+                  to="/tutor/dashboard"
+                  className={({ isActive }) =>
+                    `relative flex items-center gap-2.5 px-6 py-2.5 text-[0.85rem] font-medium transition-colors ${
+                      isActive
+                        ? 'bg-[#1e2d4a] text-white font-semibold'
+                        : 'text-[#94a3b8] hover:text-white hover:bg-white/5'
+                    }`
+                  }
                 >
-                  <span className="text-[#64748b] font-bold text-xs">•</span>
-                  Dashboard
+                  {({ isActive }) => (
+                    <>
+                      {isActive && <span className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#d9a036]" />}
+                      <span className="text-[#64748b] font-bold text-xs">•</span>
+                      Dashboard
+                    </>
+                  )}
                 </NavLink>
               </div>
 
@@ -136,15 +154,6 @@ export const Sidebar: React.FC = () => {
                 <span className="block text-[0.68rem] font-bold tracking-widest text-[#64748b] px-6 mb-2 uppercase">
                   MI TRABAJO
                 </span>
-
-                <NavLink
-                  to="#"
-                  onClick={(e) => e.preventDefault()}
-                  className="relative flex items-center gap-2.5 px-6 py-2.5 text-[0.85rem] font-medium text-[#94a3b8] hover:text-white hover:bg-white/5 transition-colors cursor-not-allowed opacity-60"
-                >
-                  <span className="text-[#64748b] font-bold text-xs">•</span>
-                  Mis tutorías
-                </NavLink>
 
                 <NavLink
                   to="/tutor/mi-disponibilidad"
@@ -163,15 +172,6 @@ export const Sidebar: React.FC = () => {
                       Mi disponibilidad
                     </>
                   )}
-                </NavLink>
-
-                <NavLink
-                  to="#"
-                  onClick={(e) => e.preventDefault()}
-                  className="relative flex items-center gap-2.5 px-6 py-2.5 text-[0.85rem] font-medium text-[#94a3b8] hover:text-white hover:bg-white/5 transition-colors cursor-not-allowed opacity-60"
-                >
-                  <span className="text-[#64748b] font-bold text-xs">•</span>
-                  Historial
                 </NavLink>
 
                 <NavLink
@@ -195,11 +195,94 @@ export const Sidebar: React.FC = () => {
               </div>
             </>
           )}
+
+          {/* ROL ESTUDIANTE */}
+          {isEstudiante && (
+            <>
+              <div>
+                <span className="block text-[0.68rem] font-bold tracking-widest text-[#64748b] px-6 mb-2 uppercase">
+                  PANEL
+                </span>
+                <NavLink
+                  to="/estudiante/dashboard"
+                  className={({ isActive }) =>
+                    `relative flex items-center gap-2.5 px-6 py-2.5 text-[0.85rem] font-medium transition-colors ${
+                      isActive
+                        ? 'bg-[#1e2d4a] text-white font-semibold'
+                        : 'text-[#94a3b8] hover:text-white hover:bg-white/5'
+                    }`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && <span className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#d9a036]" />}
+                      <span className="text-[#64748b] font-bold text-xs">•</span>
+                      Dashboard
+                    </>
+                  )}
+                </NavLink>
+              </div>
+
+              <div>
+                <span className="block text-[0.68rem] font-bold tracking-widest text-[#64748b] px-6 mb-2 uppercase">
+                  TUTORÍAS
+                </span>
+
+                <NavLink
+                  to="/estudiante/buscar-tutorias"
+                  className={({ isActive }) =>
+                    `relative flex items-center gap-2.5 px-6 py-2.5 text-[0.85rem] font-medium transition-colors ${
+                      isActive
+                        ? 'bg-[#1e2d4a] text-white font-semibold'
+                        : 'text-[#94a3b8] hover:text-white hover:bg-white/5'
+                    }`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && <span className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#d9a036]" />}
+                      <span className="text-[#64748b] font-bold text-xs">•</span>
+                      Consultar horarios
+                    </>
+                  )}
+                </NavLink>
+
+                <NavLink
+                  to="/estudiante/mis-reservas"
+                  className={({ isActive }) =>
+                    `relative flex items-center gap-2.5 px-6 py-2.5 text-[0.85rem] font-medium transition-colors ${
+                      isActive
+                        ? 'bg-[#1e2d4a] text-white font-semibold'
+                        : 'text-[#94a3b8] hover:text-white hover:bg-white/5'
+                    }`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      {isActive && <span className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#d9a036]" />}
+                      <span className="text-[#64748b] font-bold text-xs">•</span>
+                      Mis reservas
+                    </>
+                  )}
+                </NavLink>
+
+                {/* HISTORIAL DESHABILITADO (SIN NAVEGACIÓN NI ACCIÓN AL HACER CLIC) */}
+                <div
+                  className="relative flex items-center gap-2.5 px-6 py-2.5 text-[0.85rem] font-medium text-[#64748b]/50 cursor-not-allowed select-none"
+                  title="Historial no disponible"
+                >
+                  <span className="text-[#64748b]/30 font-bold text-xs">•</span>
+                  <span>Historial</span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
+      {/* SECCIÓN INFERIOR */}
       <div className="border-t border-slate-800/80 p-3 space-y-1">
-        {user?.role === 'admin' && (
+        {isAdmin && (
           <NavLink
             to="/gestionar-usuarios"
             className={({ isActive }) =>
@@ -220,13 +303,30 @@ export const Sidebar: React.FC = () => {
           </NavLink>
         )}
 
+        {/* PÁGINA DE INICIO */}
+        <NavLink
+          to="/estudiante"
+          end
+          className={({ isActive }) =>
+            `flex items-center gap-2.5 px-4 py-2.5 text-[0.82rem] font-medium rounded-md transition-colors cursor-pointer ${
+              isActive
+                ? 'text-white bg-white/10'
+                : 'text-[#94a3b8] hover:text-white hover:bg-white/5'
+            }`
+          }
+        >
+          <i className="fa-solid fa-house text-xs text-emerald-400"></i>
+          <span>Página de inicio</span>
+        </NavLink>
+
+        {/* CERRAR SESIÓN */}
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[0.82rem] font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-md transition-colors"
+          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[0.82rem] font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-md transition-colors cursor-pointer text-left"
         >
           <i className="fa-solid fa-right-from-bracket text-xs"></i>
-          Cerrar sesión
+          <span>Cerrar sesión</span>
         </button>
       </div>
     </aside>

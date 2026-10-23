@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { Loader } from '../components/Loader';
 import { api } from '../api/axios';
 
 interface UserAccount {
   id: string; // ID único para el estado de React
-  dbPk: string; // ID/PK principal en Django (puede ser número o UUID)
-  candidatePks: string[]; // Lista de posibles PKs para probar en la URL
+  dbPk: string; // ID/PK principal en Django (número entero o UUID)
   endpoint: 'estudiantes' | 'tutores' | 'coordinadores';
   username: string;
   documento: string;
@@ -70,10 +69,125 @@ interface ToastState {
 type BackendResult = { ok: true } | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------
+// Componente de Desplegable con Buscador Interno
+// ---------------------------------------------------------------------------
+
+interface SearchableSelectProps {
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  options: string[];
+  defaultLabel: string;
+}
+
+const SearchableSelect: React.FC<SearchableSelectProps> = ({
+  label,
+  value,
+  onChange,
+  options,
+  defaultLabel,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Cierra el menú al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredOptions = useMemo(() => {
+    return options.filter((opt) =>
+      opt.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [options, searchTerm]);
+
+  const selectedText = value ? value : defaultLabel;
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <label className="block text-[11px] font-semibold text-slate-600 mb-1">{label}</label>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a] flex items-center justify-between text-left cursor-pointer shadow-xs"
+      >
+        <span className={`truncate ${!value ? 'text-slate-500' : 'text-slate-800 font-medium'}`}>
+          {selectedText}
+        </span>
+        <span className="text-[10px] text-slate-400 ml-2">▼</span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 p-2 max-h-60 flex flex-col space-y-1.5">
+          <div className="relative">
+            <input
+              type="text"
+              autoFocus
+              placeholder="Buscar..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full h-8 pl-7 pr-3 bg-slate-50 border border-slate-200 rounded text-xs outline-none focus:border-[#0d1b2a]"
+            />
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px]">🔍</span>
+          </div>
+
+          <div className="overflow-y-auto flex-1 max-h-40 divide-y divide-slate-50">
+            <button
+              type="button"
+              onClick={() => {
+                onChange('');
+                setIsOpen(false);
+                setSearchTerm('');
+              }}
+              className={`w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-slate-100 transition-colors flex items-center justify-between ${
+                value === '' ? 'font-bold text-[#0d1b2a] bg-slate-50' : 'text-slate-600'
+              }`}
+            >
+              <span>{defaultLabel}</span>
+              {value === '' && <span className="text-emerald-600 font-bold">✓</span>}
+            </button>
+
+            {filteredOptions.length === 0 ? (
+              <div className="px-2.5 py-2 text-[11px] text-slate-400 text-center">
+                Sin coincidencias
+              </div>
+            ) : (
+              filteredOptions.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => {
+                    onChange(opt);
+                    setIsOpen(false);
+                    setSearchTerm('');
+                  }}
+                  className={`w-full text-left px-2.5 py-1.5 text-xs rounded hover:bg-slate-100 transition-colors flex items-center justify-between ${
+                    value === opt ? 'font-bold text-[#0d1b2a] bg-slate-50' : 'text-slate-600'
+                  }`}
+                >
+                  <span className="truncate">{opt}</span>
+                  {value === opt && <span className="text-emerald-600 font-bold">✓</span>}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // Utilidades
 // ---------------------------------------------------------------------------
 
-// Convierte cualquier error de axios en un mensaje legible para el toast
 const describeError = (err: unknown): { status?: number; data?: unknown; message: string } => {
   if (axios.isAxiosError(err)) {
     const status = err.response?.status;
@@ -83,50 +197,21 @@ const describeError = (err: unknown): { status?: number; data?: unknown; message
       return { status, data, message: 'Sesión no autorizada (401). Vuelve a iniciar sesión.' };
     }
     if (status === 403) {
-      return { status, data, message: 'Sin permisos para esta acción (403).' };
+      return { status, data, message: 'Sin permisos para realizar esta acción (403).' };
     }
     if (status === 404) {
-      return { status, data, message: 'Registro no encontrado (404).' };
+      return { status, data, message: 'Registro no encontrado en el servidor (404).' };
     }
     if (data && typeof data === 'object') {
       return { status, data, message: `Error ${status ?? ''}: ${JSON.stringify(data).slice(0, 140)}` };
-    }
-    if (typeof data === 'string' && data.trim() !== '') {
-      return { status, data, message: `Error ${status ?? ''}: ${data.slice(0, 140)}` };
     }
     return { status, data, message: err.message };
   }
   return { message: String(err) };
 };
 
-// Extrae la FK del usuario (número o UUID) desde el objeto original
-const getUserFk = (raw: Record<string, unknown>): string | number | null => {
-  const candidate = raw.usuario ?? raw.user;
-
-  if (candidate && typeof candidate === 'object') {
-    const obj = candidate as Record<string, unknown>;
-    const uid = obj.id ?? obj.pk;
-    if (typeof uid === 'number' || (typeof uid === 'string' && uid.trim() !== '')) return uid;
-    return null;
-  }
-  if (typeof candidate === 'number') return candidate;
-  if (typeof candidate === 'string' && candidate.trim() !== '' && !candidate.includes('@')) {
-    return candidate;
-  }
-  return null;
-};
-
-// Extrae posibles claves primarias (números o UUID). Descarta emails y textos con espacios.
-const extractCandidatePks = (item: UserBackend): string[] => {
-  const pks: string[] = [];
-
-  const add = (val: unknown) => {
-    if (typeof val !== 'string' && typeof val !== 'number') return;
-    const s = String(val).trim();
-    if (s === '' || s.includes('@') || /\s/.test(s)) return;
-    if (!pks.includes(s)) pks.push(s);
-  };
-
+// Extrae ÚNICAMENTE la ID numérica real (PK de la BD)
+const extractRealDbPk = (item: UserBackend): string => {
   const nestedUser =
     typeof item.usuario === 'object' && item.usuario !== null
       ? item.usuario
@@ -134,72 +219,12 @@ const extractCandidatePks = (item: UserBackend): string[] => {
       ? item.user
       : null;
 
-  // 1. Root id / pk
-  add(item.id);
-  add(item.pk);
+  if (item.id !== undefined && item.id !== null) return String(item.id);
+  if (item.pk !== undefined && item.pk !== null) return String(item.pk);
+  if (nestedUser?.id !== undefined && nestedUser?.id !== null) return String(nestedUser.id);
+  if (nestedUser?.pk !== undefined && nestedUser?.pk !== null) return String(nestedUser.pk);
 
-  // 2. Otros campos de id en la raíz (id_estudiante, estudiante_id, usuario_id, etc.)
-  Object.entries(item as Record<string, unknown>).forEach(([key, value]) => {
-    if (/^(id_.+|.+_id|uuid|.+_pk)$/i.test(key)) add(value);
-  });
-
-  // 3. Nested usuario/user id / pk
-  if (nestedUser) {
-    add(nestedUser.id);
-    add(nestedUser.pk);
-  } else {
-    add(item.usuario);
-    add(item.user);
-  }
-
-  // 4. Último recurso: el back no expone "id" en la lista. Se prueban campos únicos
-  //    que Django podría usar como lookup en la URL (/estudiantes/{documento}/).
-  add(item.documento);
-  add(item.identificacion);
-  add(item.username);
-
-  return pks;
-};
-
-// Intenta PUT con cada PK candidata y cada payload. Se detiene en 401/403 porque
-// reintentar no sirve si el problema es de autenticación o permisos.
-const putWithFallbacks = async (
-  user: UserAccount,
-  payloads: Array<Record<string, unknown>>,
-  label: string
-): Promise<BackendResult> => {
-  if (user.candidatePks.length === 0) {
-    console.error('[ERROR] Usuario sin ID válido para actualizar. Datos crudos:', user.rawBackendData);
-    return {
-      ok: false,
-      error: 'El backend no devolvió un ID para este usuario. Revisa el log [RAW ...] en consola.',
-    };
-  }
-
-  let lastError = 'No se pudo completar la solicitud.';
-
-  for (const pkVal of user.candidatePks) {
-    const url = `accounts/${user.endpoint}/${pkVal}/`;
-
-    for (let i = 0; i < payloads.length; i++) {
-      try {
-        // Exclusivamente PUT (Swagger no soporta PATCH)
-        const res = await api.put(url, payloads[i]);
-        console.log(`[SUCCESS PUT] ${label} en ${url} (payload ${i + 1}):`, res.data);
-        return { ok: true };
-      } catch (err) {
-        const info = describeError(err);
-        console.warn(`[PUT FALLIDO] ${label} en ${url} (payload ${i + 1})`, info.status, info.data);
-        lastError = info.message;
-
-        if (info.status === 401 || info.status === 403) {
-          return { ok: false, error: info.message };
-        }
-      }
-    }
-  }
-
-  return { ok: false, error: lastError };
+  return '';
 };
 
 // Carga inicial de usuarios desde los endpoints de Django
@@ -221,9 +246,10 @@ const loadUsersList = async (): Promise<UserAccount[]> => {
 
     if (res.status !== 'fulfilled') {
       const info = describeError(res.reason);
-      console.warn(`[GET FALLIDO] accounts/${endpointInfo.ep}/`, info.status, info.data);
+      console.warn(`[GET INFO] accounts/${endpointInfo.ep}/:`, info.message);
       return;
     }
+
     if (!res.value?.data) return;
 
     const data = res.value.data;
@@ -233,12 +259,9 @@ const loadUsersList = async (): Promise<UserAccount[]> => {
       ? (data as { results: UserBackend[] }).results
       : [];
 
-    // Log de depuración: muestra cómo llega un usuario desde Django (puedes borrarlo luego)
-    if (rawList.length > 0) {
-      console.log(`[RAW ${endpointInfo.ep}]`, JSON.stringify(rawList[0], null, 2));
-    }
-
     rawList.forEach((item, itemIdx) => {
+      const dbPk = extractRealDbPk(item);
+
       const nestedUser =
         typeof item.usuario === 'object' && item.usuario !== null
           ? item.usuario
@@ -246,19 +269,15 @@ const loadUsersList = async (): Promise<UserAccount[]> => {
           ? item.user
           : null;
 
-      const candidatePks = extractCandidatePks(item);
-      const dbPk = candidatePks[0] || '';
-
       const docVal = String(item.documento || item.identificacion || '').trim();
       const emailVal = String(
         item.email || item.correo || nestedUser?.email || item.username || nestedUser?.username || ''
       )
         .toLowerCase()
         .trim();
-      const usernameVal = String(item.username || nestedUser?.username || emailVal).trim();
 
-      // El endpoint va en la clave para no mezclar usuarios de distintos roles con el mismo correo
-      const dedupeKey = `${endpointInfo.ep}-${emailVal || usernameVal || dbPk || itemIdx}`;
+      const usernameVal = String(item.username || nestedUser?.username || emailVal).trim();
+      const dedupeKey = `${endpointInfo.ep}-${dbPk || emailVal || usernameVal || itemIdx}`;
 
       if (userMap.has(dedupeKey)) return;
 
@@ -279,14 +298,12 @@ const loadUsersList = async (): Promise<UserAccount[]> => {
         else if (rLower.includes('estudiante')) userRole = 'Estudiante';
       }
 
-      // Sin teléfono inventado: si el back no lo envía se deja vacío
       const phone = String(item.telefono || item.phone || '').trim();
       const isActive = item.is_active ?? item.activo ?? nestedUser?.is_active ?? nestedUser?.activo ?? true;
 
       userMap.set(dedupeKey, {
         id: dedupeKey,
         dbPk,
-        candidatePks,
         endpoint: endpointInfo.ep,
         username: usernameVal,
         documento: docVal,
@@ -305,114 +322,79 @@ const loadUsersList = async (): Promise<UserAccount[]> => {
 
 // Actualizar estado de activación en Django mediante PUT
 const toggleUserActiveInBackend = async (user: UserAccount, newActiveState: boolean): Promise<BackendResult> => {
-  const raw = user.rawBackendData || {};
-  const userFk = getUserFk(raw);
-
-  // Variación 1: Payload aplanado con FK usuario
-  const p1 = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
-  delete p1.usuario;
-  delete p1.user;
-  p1.is_active = newActiveState;
-  p1.activo = newActiveState;
-  if (userFk !== null) {
-    p1.usuario = userFk;
-    p1.user = userFk;
+  if (!user.dbPk) {
+    return { ok: false, error: 'Este usuario no posee un ID numérico válido en el backend.' };
   }
 
-  // Variación 2: Payload aplanado estricto sin FK
-  const p2 = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
-  delete p2.usuario;
-  delete p2.user;
-  p2.is_active = newActiveState;
-  p2.activo = newActiveState;
-
-  // Variación 3: Objeto mínimo
-  const p3 = {
-    is_active: newActiveState,
-    activo: newActiveState,
-  };
-
-  // Variación 4: Objeto completo con usuario anidado
-  const p4 = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
-  p4.is_active = newActiveState;
-  p4.activo = newActiveState;
-  if (p4.usuario && typeof p4.usuario === 'object') {
-    (p4.usuario as Record<string, unknown>).is_active = newActiveState;
-  }
-  if (p4.user && typeof p4.user === 'object') {
-    (p4.user as Record<string, unknown>).is_active = newActiveState;
-  }
-
-  return putWithFallbacks(user, [p1, p2, p3, p4], 'Estado');
-};
-
-// Guardar ediciones del perfil/rol en Django mediante PUT
-const saveUserEditInBackend = async (user: UserAccount): Promise<BackendResult> => {
   const nameParts = user.nombre.trim().split(' ');
   const firstName = nameParts[0] || '';
   const lastName = nameParts.slice(1).join(' ') || '';
-  const raw = user.rawBackendData || {};
-  const userFk = getUserFk(raw);
 
-  // Variación 1: Aplanada con FK usuario
-  const p1 = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
-  delete p1.usuario;
-  delete p1.user;
-  p1.nombres = firstName;
-  p1.apellidos = lastName;
-  p1.first_name = firstName;
-  p1.last_name = lastName;
-  p1.email = user.correo;
-  p1.correo = user.correo;
-  p1.rol = user.rol;
-  p1.is_active = user.activo;
-  p1.activo = user.activo;
-  if (user.telefono) {
-    p1.telefono = user.telefono;
-    p1.phone = user.telefono;
-  }
-  if (userFk !== null) {
-    p1.usuario = userFk;
-    p1.user = userFk;
-  }
+  const url = `accounts/${user.endpoint}/${user.dbPk}/`;
 
-  // Variación 2: Objeto plano limpio
-  const p2: Record<string, unknown> = {
+  const payload = {
+    ...user.rawBackendData,
+    username: user.username || user.correo,
+    email: user.correo,
+    correo: user.correo,
     nombres: firstName,
     apellidos: lastName,
     first_name: firstName,
     last_name: lastName,
-    email: user.correo,
-    correo: user.correo,
-    documento: user.documento,
-    rol: user.rol,
-    is_active: user.activo,
-    activo: user.activo,
-  };
-  if (user.telefono) {
-    p2.telefono = user.telefono;
-    p2.phone = user.telefono;
-  }
-
-  // Variación 0: exactamente los campos que devuelve el back en el GET
-  // (username, email, nombres, apellidos, documento, telefono, codigo_institucional)
-  const p0: Record<string, unknown> = {
-    username: (raw.username as string | undefined) ?? user.username ?? user.correo,
-    email: user.correo,
-    nombres: firstName,
-    apellidos: lastName,
     documento: user.documento,
     telefono: user.telefono || null,
+    activo: newActiveState,
+    is_active: newActiveState,
   };
-  if ('codigo_institucional' in raw) {
-    p0.codigo_institucional = raw.codigo_institucional;
+
+  try {
+    await api.put(url, payload);
+    return { ok: true };
+  } catch (err) {
+    const info = describeError(err);
+    return { ok: false, error: info.message };
+  }
+};
+
+// Guardar ediciones del perfil en Django mediante PUT
+const saveUserEditInBackend = async (user: UserAccount): Promise<BackendResult> => {
+  if (!user.dbPk) {
+    return { ok: false, error: 'Este usuario no posee un ID numérico válido en el backend.' };
   }
 
-  return putWithFallbacks(user, [p0, p1, p2], 'Perfil');
+  const nameParts = user.nombre.trim().split(' ');
+  const firstName = nameParts[0] || '';
+  const lastName = nameParts.slice(1).join(' ') || '';
+
+  const url = `accounts/${user.endpoint}/${user.dbPk}/`;
+
+  const payload = {
+    ...user.rawBackendData,
+    username: user.username || user.correo,
+    email: user.correo,
+    correo: user.correo,
+    nombres: firstName,
+    apellidos: lastName,
+    first_name: firstName,
+    last_name: lastName,
+    documento: user.documento,
+    telefono: user.telefono || null,
+    rol: user.rol,
+    activo: user.activo,
+    is_active: user.activo,
+  };
+
+  try {
+    await api.put(url, payload);
+    return { ok: true };
+  } catch (err) {
+    const info = describeError(err);
+    return { ok: false, error: info.message };
+  }
 };
 
 // ---------------------------------------------------------------------------
-// Componente
+// Componente Principal
 // ---------------------------------------------------------------------------
 
 export const GestionarUsuarios: React.FC = () => {
@@ -528,7 +510,7 @@ export const GestionarUsuarios: React.FC = () => {
     if (user.activo) {
       setUserToDeactivate(user);
     } else {
-      // Cambio optimista en interfaz
+      // Cambio optimista
       setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, activo: true } : u)));
 
       setLoading(true);
@@ -552,7 +534,7 @@ export const GestionarUsuarios: React.FC = () => {
     const targetUser = userToDeactivate;
     setUserToDeactivate(null);
 
-    // Cambio optimista en interfaz
+    // Cambio optimista
     setUsers((prev) => prev.map((u) => (u.id === targetUser.id ? { ...u, activo: false } : u)));
 
     setLoading(true);
@@ -578,7 +560,7 @@ export const GestionarUsuarios: React.FC = () => {
     const previousUser = users.find((u) => u.id === targetUser.id);
     closeEditDrawer();
 
-    // Cambio optimista en interfaz
+    // Cambio optimista
     setUsers((prev) => prev.map((u) => (u.id === targetUser.id ? targetUser : u)));
 
     setLoading(true);
@@ -601,7 +583,7 @@ export const GestionarUsuarios: React.FC = () => {
     <div className="w-full flex flex-col bg-[#f7f5ed] h-screen overflow-hidden relative">
       <Loader hidden={!loading} />
 
-      {/* NOTIFICACIÓN TOAST FLOTANTE */}
+      {/* TOAST FLOTANTE */}
       {toast && (
         <div className="fixed top-5 right-5 z-[10000] max-w-sm w-full bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700/80 p-3.5 flex items-center gap-3 transition-all animate-in fade-in slide-in-from-top-5 duration-300">
           <div
@@ -663,50 +645,32 @@ export const GestionarUsuarios: React.FC = () => {
           </div>
         </div>
 
-        {/* FILTROS */}
-        <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm">
+        {/* FILTROS CON DESPLEGABLES BUSCABORTES */}
+        <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm z-20 relative">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Usuarios</label>
-              <select
-                value={usuarioFilter}
-                onChange={(e) => setUsuarioFilter(e.target.value)}
-                className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-              >
-                <option value="">Todos los usuarios</option>
-                {uniqueUsuarios.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-            </div>
+            <SearchableSelect
+              label="Usuarios"
+              value={usuarioFilter}
+              onChange={setUsuarioFilter}
+              options={uniqueUsuarios}
+              defaultLabel="Todos los usuarios"
+            />
 
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Correo</label>
-              <select
-                value={correoFilter}
-                onChange={(e) => setCorreoFilter(e.target.value)}
-                className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-              >
-                <option value="">Todos los correos</option>
-                {uniqueCorreos.map((email) => (
-                  <option key={email} value={email}>{email}</option>
-                ))}
-              </select>
-            </div>
+            <SearchableSelect
+              label="Correo"
+              value={correoFilter}
+              onChange={setCorreoFilter}
+              options={uniqueCorreos}
+              defaultLabel="Todos los correos"
+            />
 
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Rol</label>
-              <select
-                value={rolFilter}
-                onChange={(e) => setRolFilter(e.target.value)}
-                className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-              >
-                <option value="">Todos los roles</option>
-                {uniqueRoles.map((role) => (
-                  <option key={role} value={role}>{role}</option>
-                ))}
-              </select>
-            </div>
+            <SearchableSelect
+              label="Rol"
+              value={rolFilter}
+              onChange={setRolFilter}
+              options={uniqueRoles}
+              defaultLabel="Todos los roles"
+            />
 
             <div>
               <label className="block text-[11px] font-semibold text-slate-600 mb-1">Actividad</label>
@@ -724,7 +688,7 @@ export const GestionarUsuarios: React.FC = () => {
         </div>
 
         {/* TABLA DE USUARIOS */}
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex-1 flex flex-col min-h-0">
+        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex-1 flex flex-col min-h-0 z-10">
           <div className="overflow-y-auto flex-1">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
@@ -785,7 +749,7 @@ export const GestionarUsuarios: React.FC = () => {
                       <td className="py-3.5 px-3 text-right">
                         <button
                           onClick={() => openEditDrawer(u)}
-                          className="p-1.5 rounded border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-[#0d1b2a] transition-colors"
+                          className="p-1.5 rounded border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-[#0d1b2a] transition-colors cursor-pointer"
                           title="Editar usuario"
                         >
                           ✏
@@ -816,7 +780,7 @@ export const GestionarUsuarios: React.FC = () => {
           >
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <h2 className="font-display italic text-2xl font-semibold text-[#0d1b2a]">Editar Usuario</h2>
-              <button onClick={closeEditDrawer} className="text-slate-400 hover:text-slate-600 font-bold text-lg">
+              <button onClick={closeEditDrawer} className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer">
                 ✕
               </button>
             </div>
@@ -834,12 +798,11 @@ export const GestionarUsuarios: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Correo institucional</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Código institucional</label>
                 <input
-                  type="email"
-                  required
-                  value={editingUser.correo}
-                  onChange={(e) => setEditingUser({ ...editingUser, correo: e.target.value })}
+                  type="text"
+                  value={editingUser.documento}
+                  onChange={(e) => setEditingUser({ ...editingUser, documento: e.target.value })}
                   className="w-full h-10 px-3.5 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
                 />
               </div>
@@ -853,36 +816,20 @@ export const GestionarUsuarios: React.FC = () => {
                   className="w-full h-10 px-3.5 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
                 />
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Rol</label>
-                <select
-                  value={editingUser.rol}
-                  onChange={(e) =>
-                    setEditingUser({ ...editingUser, rol: e.target.value as UserAccount['rol'] })
-                  }
-                  className="w-full h-10 px-3 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-                >
-                  <option value="Estudiante">Estudiante</option>
-                  <option value="Tutor">Tutor</option>
-                  <option value="Coordinador">Coordinador</option>
-                  <option value="Admin">Admin</option>
-                </select>
-              </div>
             </form>
 
             <div className="p-6 border-t border-slate-100 flex items-center justify-end gap-3 bg-white">
               <button
                 type="button"
                 onClick={closeEditDrawer}
-                className="px-5 h-10 border border-slate-300 text-slate-700 rounded-md font-semibold text-xs hover:bg-slate-50 transition-colors"
+                className="px-5 h-10 border border-slate-300 text-slate-700 rounded-md font-semibold text-xs hover:bg-slate-50 transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 form="editUserForm"
-                className="px-5 h-10 bg-[#0d1b2a] hover:bg-[#1e2d4a] text-white rounded-md font-semibold text-xs transition-colors"
+                className="px-5 h-10 bg-[#0d1b2a] hover:bg-[#1e2d4a] text-white rounded-md font-semibold text-xs transition-colors cursor-pointer"
               >
                 Guardar cambios
               </button>
@@ -917,14 +864,14 @@ export const GestionarUsuarios: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setUserToDeactivate(null)}
-                className="h-10 border border-slate-300 text-slate-700 rounded-md font-semibold text-xs hover:bg-slate-50 transition-colors"
+                className="h-10 border border-slate-300 text-slate-700 rounded-md font-semibold text-xs hover:bg-slate-50 transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={() => void confirmDeactivation()}
-                className="h-10 bg-rose-600 hover:bg-rose-700 text-white rounded-md font-semibold text-xs transition-colors"
+                className="h-10 bg-rose-600 hover:bg-rose-700 text-white rounded-md font-semibold text-xs transition-colors cursor-pointer"
               >
                 Sí, desactivar
               </button>
