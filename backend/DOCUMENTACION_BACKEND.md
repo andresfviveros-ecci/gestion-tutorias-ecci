@@ -245,15 +245,6 @@ docker-compose exec tutorias-django python manage.py check
 - `DEBUG` está activado y `ALLOWED_HOSTS` permite cualquier host en la configuración revisada; ambos valores deben revisarse antes de un despliegue.
 - La conexión de PostgreSQL está definida en `config/db.py`, mientras existe un `.env` con valores de base de datos que esa configuración no utiliza actualmente.
 
+## Variables de entorno
 
-# variables .env (borrar esta parte luego de creado el .env)
-# .env en la raíz para docker-compose (valores de ejemplo)
-POSTGRES_DB=tutorias_ecci
-POSTGRES_USER=tutorias_user
-POSTGRES_PASSWORD=change_me_secure_password
-POSTGRES_HOST=db
-POSTGRES_PORT=5432
-EMAIL_HOST_USER=aulalibre.sistema@gmail.com
-EMAIL_HOST_PASSWORD=zfzvxrmptualzewm
-
-# PEDIR AL SCRUM ACCESO AL CORREO AULALIBRE
+Copiar `.env.example` como `.env` en la raíz del proyecto. Los valores de la base de datos sirven tal cual para desarrollo local. Las credenciales del correo del sistema (`EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`) se piden al Scrum Master por un canal privado; nunca se suben al repositorio.
