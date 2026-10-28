@@ -5,6 +5,7 @@ import { hoyLocalISO } from '../../utils/date';
 
 export interface TutoriaBackend {
   id: number | string;
+  bloque?: number | string | { id?: number | string } | null;
   materia?: string | { nombre?: string };
   materia_nombre?: string;
   tutor_nombre?: string;
@@ -46,6 +47,31 @@ const formatHora = (horaStr?: string) => {
   return horaStr.substring(0, 5);
 };
 
+const toArray = <T,>(data: unknown): T[] => {
+  if (Array.isArray(data)) return data as T[];
+  if (data && typeof data === 'object' && 'results' in data) {
+    const results = (data as { results: unknown }).results;
+    if (Array.isArray(results)) return results as T[];
+  }
+  return [];
+};
+
+interface BloqueJoin {
+  id: number | string;
+  fecha?: string;
+  hora_inicio?: string;
+  hora_fin?: string;
+  modalidad?: string;
+  lugar?: string;
+  enlace_virtual?: string;
+  materia?: number | string | { id?: number | string; nombre?: string } | null;
+}
+
+interface MateriaJoin {
+  id: number | string;
+  nombre?: string;
+}
+
 export const MisReservas: React.FC = () => {
   const [tutorias, setTutorias] = useState<TutoriaBackend[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,28 +82,61 @@ export const MisReservas: React.FC = () => {
 
     const fetchReservas = async () => {
       try {
-        let response;
-        try {
-          response = await api.get<unknown>('/tutorias/');
-        } catch {
-          response = await api.get<unknown>('/accounts/tutorias/mis-reservas/');
-        }
+        // La tutoria solo guarda el id del bloque (BE-22 pendiente), asi que
+        // se cruzan los datos en el cliente mientras el backend los anida.
+        const [tutoriasRes, bloquesRes, materiasRes] = await Promise.all([
+          api.get<unknown>('/tutorias/tutorias/'),
+          api.get<unknown>('/disponibilidad/disponibilidad/').catch(() => null),
+          api.get<unknown>('/catalogo/materias/').catch(() => null),
+        ]);
 
-        let dataArray: TutoriaBackend[] = [];
+        const dataArray = toArray<TutoriaBackend>(tutoriasRes.data);
+        const bloques = bloquesRes ? toArray<BloqueJoin>(bloquesRes.data) : [];
+        const materias = materiasRes ? toArray<MateriaJoin>(materiasRes.data) : [];
 
-        if (Array.isArray(response.data)) {
-          dataArray = response.data as TutoriaBackend[];
-        } else if (
-          typeof response.data === 'object' &&
-          response.data !== null &&
-          'results' in response.data &&
-          Array.isArray((response.data as { results: unknown }).results)
-        ) {
-          dataArray = (response.data as { results: TutoriaBackend[] }).results;
-        }
+        const bloquesPorId = new Map<string, BloqueJoin>();
+        bloques.forEach((b) => bloquesPorId.set(String(b.id), b));
+
+        const materiasPorId = new Map<string, string>();
+        materias.forEach((m) => {
+          if (m.nombre) materiasPorId.set(String(m.id), m.nombre);
+        });
+
+        const reservasCompletas = dataArray.map((tutoria) => {
+          const bloqueId =
+            typeof tutoria.bloque === 'object' && tutoria.bloque !== null
+              ? tutoria.bloque.id
+              : tutoria.bloque;
+          const bloque = bloqueId !== undefined ? bloquesPorId.get(String(bloqueId)) : undefined;
+
+          if (!bloque) return tutoria;
+
+          const materiaId =
+            typeof bloque.materia === 'object' && bloque.materia !== null
+              ? bloque.materia.id
+              : bloque.materia;
+          const materiaNombre =
+            typeof bloque.materia === 'object' && bloque.materia !== null
+              ? bloque.materia.nombre
+              : materiaId !== undefined
+                ? materiasPorId.get(String(materiaId))
+                : undefined;
+
+          return {
+            ...tutoria,
+            fecha: bloque.fecha || tutoria.fecha || '',
+            hora_inicio: bloque.hora_inicio || tutoria.hora_inicio || '',
+            hora_fin: bloque.hora_fin || tutoria.hora_fin || '',
+            modalidad: bloque.modalidad || tutoria.modalidad,
+            lugar: bloque.lugar || tutoria.lugar,
+            enlace_virtual: bloque.enlace_virtual || tutoria.enlace_virtual,
+            materia_nombre: materiaNombre,
+            tutor_nombre: typeof tutoria.docente === 'string' ? tutoria.docente : tutoria.tutor_nombre,
+          };
+        });
 
         if (isMounted) {
-          setTutorias(dataArray);
+          setTutorias(reservasCompletas);
         }
       } catch (error) {
         console.error('Error al cargar mis reservas:', error);
