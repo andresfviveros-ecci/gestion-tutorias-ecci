@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTutorStore } from '../../store/useTutorStore';
 import { api } from '../../api/axios';
+import { hoyLocalISO } from '../../utils/date';
 
 interface TutorBackend {
   id?: string | number;
@@ -50,15 +51,6 @@ interface TutorFormatted {
   bg: string;
 }
 
-// Obtener la fecha de hoy en formato YYYY-MM-DD
-const getTodayISO = (): string => {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 const formatearFechaLarga = (fechaStr?: string): string => {
   if (!fechaStr) return '';
   const partes = fechaStr.split('-');
@@ -99,7 +91,7 @@ export const StudentHome: React.FC = () => {
   const phrases = ['Asesoría Docente.', 'Tutorías Libres.', 'Espacio Estudiantil.'];
   const typewriterRef = useRef({ phraseIdx: 0, charIdx: 0, isDeleting: false });
 
-  const todayISO = getTodayISO();
+  const todayISO = hoyLocalISO();
   const fechaEscritaTexto = formatearFechaLarga(todayISO);
 
   // Cargar datos

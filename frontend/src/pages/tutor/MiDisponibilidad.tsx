@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Loader } from '../../components/Loader';
 import { useScheduleStore } from '../../store/useScheduleStore';
 import { api } from '../../api/axios';
+import { fechaLocalISO } from '../../utils/date';
 
 // Interfaz para la respuesta de MateriaSerializer (Django)
 export interface MateriaBackend {
@@ -56,14 +57,6 @@ const MESES = [
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
 ];
 
-// Helper para dar formato a fecha local YYYY-MM-DD sin desfase por zona horaria
-const formatLocalDate = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 export const MiDisponibilidad: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -78,7 +71,7 @@ export const MiDisponibilidad: React.FC = () => {
   const [materiaId, setMateriaId] = useState<string | number>('');
   const [periodoId, setPeriodoId] = useState<string | number>('');
 
-  const [fecha, setFecha] = useState(() => formatLocalDate(new Date()));
+  const [fecha, setFecha] = useState(() => fechaLocalISO(new Date()));
   const [horaInicio, setHoraInicio] = useState('');
   const [horaFin, setHoraFin] = useState('');
   const [modalidad, setModalidad] = useState<'VIRTUAL' | 'PRESENCIAL'>('VIRTUAL');
@@ -492,7 +485,7 @@ export const MiDisponibilidad: React.FC = () => {
                 {DIAS_SEMANA.map((dia, index) => {
                   const colDate = new Date(monday);
                   colDate.setDate(monday.getDate() + index);
-                  const colDateStr = formatLocalDate(colDate);
+                  const colDateStr = fechaLocalISO(colDate);
 
                   const daySlots = slotsActuales.filter((s) => s.fecha === colDateStr && s.estado !== 'CANCELADO');
 

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../api/axios';
+import { hoyLocalISO } from '../../utils/date';
 
 interface TutorBackend {
   id?: string | number;
@@ -363,7 +364,7 @@ export const BuscarTutorias: React.FC = () => {
   };
 
   const misTutoriasProximas = useMemo(() => {
-    const todayISO = new Date().toISOString().split('T')[0];
+    const todayISO = hoyLocalISO();
     return misTutorias.filter((tut) => {
       const detalles = obtenerDetallesTutoriaLocal(tut);
       const fechaTutoria = detalles.fecha || tut.fecha || '';

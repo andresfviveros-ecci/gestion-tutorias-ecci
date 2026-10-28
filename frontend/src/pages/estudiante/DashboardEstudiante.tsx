@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../api/axios';
+import { hoyLocalISO } from '../../utils/date';
 
 export interface BloqueBackend {
   id: number | string;
@@ -239,7 +240,7 @@ export const DashboardEstudiante: React.FC = () => {
   const proximaTutoriaDetalle = useMemo(() => {
     if (misReservas.length === 0) return null;
 
-    const todayISO = new Date().toISOString().split('T')[0];
+    const todayISO = hoyLocalISO();
 
     const futuras = misReservas
       .map((tut) => ({

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Loader } from '../../components/Loader';
 import { api } from '../../api/axios';
+import { fechaLocalISO } from '../../utils/date';
 
 export interface MateriaBackend {
   id: number;
@@ -350,7 +351,7 @@ export const Calendario: React.FC = () => {
               {DIAS_SEMANA.map((dia, index) => {
                 const colDate = new Date(monday);
                 colDate.setDate(monday.getDate() + index);
-                const colDateStr = colDate.toISOString().split('T')[0];
+                const colDateStr = fechaLocalISO(colDate);
 
                 const daySlots = slots.filter(
                   (s) => s.fecha === colDateStr && s.estado !== 'CANCELADO'

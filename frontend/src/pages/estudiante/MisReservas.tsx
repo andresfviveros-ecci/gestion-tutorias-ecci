@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '../../api/axios';
+import { hoyLocalISO } from '../../utils/date';
 
 export interface TutoriaBackend {
   id: number | string;
@@ -93,7 +94,7 @@ export const MisReservas: React.FC = () => {
     };
   }, []);
 
-  const hoyISO = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const hoyISO = useMemo(() => hoyLocalISO(), []);
 
   const getMateriaNombre = (item: TutoriaBackend): string => {
     if (typeof item.materia === 'string') return item.materia;
