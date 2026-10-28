@@ -203,12 +203,27 @@ export const Calendario: React.FC = () => {
       return;
     }
 
+    const materiaId = typeof editingSlot.materia === 'object' && editingSlot.materia !== null
+      ? editingSlot.materia.id
+      : Number(editingSlot.materia);
+
+    if (!materiaId) {
+      setErrorMessage('Debes seleccionar una materia.');
+      return;
+    }
+
+    if (!editingSlot.periodo) {
+      setErrorMessage('Este bloque no tiene periodo académico. Contacta al coordinador.');
+      return;
+    }
+
+    if (!editingSlot.cupo_total || Number(editingSlot.cupo_total) < 1) {
+      setErrorMessage('El cupo debe ser mayor que cero.');
+      return;
+    }
+
     setSaving(true);
     try {
-      const materiaId = typeof editingSlot.materia === 'object' && editingSlot.materia !== null
-        ? editingSlot.materia.id
-        : Number(editingSlot.materia);
-
       const docenteId = typeof editingSlot.docente === 'object' && editingSlot.docente !== null
         ? editingSlot.docente.id
         : editingSlot.docente;
@@ -218,17 +233,17 @@ export const Calendario: React.FC = () => {
 
       const payload = {
         docente: docenteId,
-        materia: materiaId || (materias[0]?.id ?? 1),
-        periodo: editingSlot.periodo || 1,
+        materia: materiaId,
+        periodo: editingSlot.periodo,
         fecha: editingSlot.fecha,
         hora_inicio: hStart,
         hora_fin: hEnd,
         modalidad: modVal,
         lugar: isPresencial ? editingSlot.ubicacionOEnlace : '',
         enlace_virtual: !isPresencial ? editingSlot.ubicacionOEnlace : '',
-        cupo_total: editingSlot.cupo_total || 1,
+        cupo_total: Number(editingSlot.cupo_total),
         estado: editingSlot.estado,
-        observaciones: editingSlot.observaciones || '',
+        observaciones: editingSlot.observaciones || null,
       };
 
       await api.put(`/disponibilidad/${editingSlot.id}/actualizar/`, payload);
@@ -244,12 +259,19 @@ export const Calendario: React.FC = () => {
 
   const handleConfirmSuspender = async () => {
     if (!editingSlot) return;
+
+    const materiaId = typeof editingSlot.materia === 'object' && editingSlot.materia !== null
+      ? editingSlot.materia.id
+      : Number(editingSlot.materia);
+
+    if (!materiaId || !editingSlot.periodo || !editingSlot.cupo_total) {
+      setErrorMessage('No se puede suspender: al bloque le faltan datos obligatorios.');
+      setShowConfirmModal(false);
+      return;
+    }
+
     setSaving(true);
     try {
-      const materiaId = typeof editingSlot.materia === 'object' && editingSlot.materia !== null
-        ? editingSlot.materia.id
-        : Number(editingSlot.materia);
-
       const docenteId = typeof editingSlot.docente === 'object' && editingSlot.docente !== null
         ? editingSlot.docente.id
         : editingSlot.docente;
@@ -259,15 +281,15 @@ export const Calendario: React.FC = () => {
 
       await api.put(`/disponibilidad/${editingSlot.id}/actualizar/`, {
         docente: docenteId,
-        materia: materiaId || (materias[0]?.id ?? 1),
-        periodo: editingSlot.periodo || 1,
+        materia: materiaId,
+        periodo: editingSlot.periodo,
         fecha: editingSlot.fecha,
-        hora_inicio: editingSlot.horaInicio || '08:00',
-        hora_fin: editingSlot.horaFin || '09:00',
+        hora_inicio: editingSlot.horaInicio || '',
+        hora_fin: editingSlot.horaFin || '',
         modalidad: modVal,
         lugar: isPresencial ? editingSlot.ubicacionOEnlace || editingSlot.lugar || '' : '',
         enlace_virtual: !isPresencial ? editingSlot.ubicacionOEnlace || editingSlot.enlace_virtual || '' : '',
-        cupo_total: editingSlot.cupo_total || 1,
+        cupo_total: Number(editingSlot.cupo_total),
         estado: 'CANCELADO',
         observaciones: 'Horario suspendido por el docente',
       });
@@ -507,6 +529,20 @@ export const Calendario: React.FC = () => {
                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Cupo máximo</label>
+                <input
+                  type="number"
+                  min={1}
+                  required
+                  value={editingSlot.cupo_total ?? ''}
+                  onChange={(e) =>
+                    setEditingSlot({ ...editingSlot, cupo_total: Number(e.target.value) })
+                  }
+                  className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
+                />
               </div>
 
               <div>
