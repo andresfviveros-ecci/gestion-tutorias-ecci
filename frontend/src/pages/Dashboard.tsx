@@ -72,9 +72,10 @@ export const Dashboard: React.FC = () => {
 
     const loadDashboardData = async () => {
       try {
-        const [studentsRes, tutoresRes, bloquesRes, materiasRes] = await Promise.allSettled([
+        const [studentsRes, tutoresRes, coordinadoresRes, bloquesRes, materiasRes] = await Promise.allSettled([
           api.get<BackendStudent[]>('/accounts/estudiantes/'),
           api.get<BackendTutor[]>('/accounts/tutores/'),
+          api.get<BackendTutor[]>('/accounts/coordinadores/'),
           api.get<BackendBloque[]>('/disponibilidad/disponibilidad/'),
           api.get<BackendMateria[]>('/catalogo/materias/'),
         ]);
@@ -88,6 +89,10 @@ export const Dashboard: React.FC = () => {
         const tutoresList =
           tutoresRes.status === 'fulfilled' && Array.isArray(tutoresRes.value.data)
             ? tutoresRes.value.data
+            : [];
+        const coordinadoresList =
+          coordinadoresRes.status === 'fulfilled' && Array.isArray(coordinadoresRes.value.data)
+            ? coordinadoresRes.value.data
             : [];
         const bloquesList =
           bloquesRes.status === 'fulfilled' && Array.isArray(bloquesRes.value.data)
@@ -133,8 +138,11 @@ export const Dashboard: React.FC = () => {
           const tutorMatch = tutoresList.find(
             (t) => String(t.email || t.correo || '').toLowerCase().trim() === userTarget
           );
+          const coordinadorMatch = coordinadoresList.find(
+            (c) => String(c.email || c.correo || '').toLowerCase().trim() === userTarget
+          );
 
-          const matched = studentMatch || tutorMatch;
+          const matched = studentMatch || tutorMatch || coordinadorMatch;
 
           if (matched) {
             const nom = String(matched.nombres || matched.first_name || '').trim();
