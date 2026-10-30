@@ -1,12 +1,11 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import gsap from "gsap";
+import axios from "axios";
 import { useAuthStore } from "../store/useAuthStore";
 import { api } from "../api/axios";
-import axios from "axios";
 import { esCorreoPermitido, MENSAJE_DOMINIO } from "../config";
 
 const loginSchema = z.object({
@@ -22,15 +21,239 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 type ViewState = "login" | "step1" | "step2" | "step3" | "success";
 
+const inputClass =
+  "h-[54px] w-full rounded-full border border-[#858180] bg-white px-6 text-[14.6px] text-tinta placeholder:text-[#5F5C5B] outline-none transition focus:border-violeta-accion focus:ring-4 focus:ring-violeta-accion/15";
+
+const labelClass = "mb-1.5 block text-[12px] font-semibold text-tinta";
+
+const primaryButtonClass =
+  "flex h-14 w-full items-center justify-center gap-2 rounded-full bg-violeta-accion text-[15.5px] font-semibold text-white shadow-constelacion-violet transition hover:bg-[#4524DB] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50";
+
+const secondaryLinkClass =
+  "text-[13.8px] font-semibold text-tinta transition hover:text-violeta-accion hover:underline";
+
+const AulaLibreLogo: React.FC = () => (
+  <div className="flex items-center gap-3">
+    <svg
+      viewBox="0 0 52 52"
+      className="h-10 w-10 text-tinta sm:h-[52px] sm:w-[52px]"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M34 8H17C11.477 8 7 12.477 7 18V34C7 39.523 11.477 44 17 44H35C40.523 44 45 39.523 45 34V24"
+        stroke="currentColor"
+        strokeWidth="4"
+        strokeLinecap="round"
+      />
+      <circle cx="41" cy="10" r="6.5" fill="#5433EB" />
+    </svg>
+    <span className="text-[32px] font-medium leading-none tracking-[-0.02em] text-tinta sm:text-[42.9px]">
+      Aula Libre
+    </span>
+  </div>
+);
+
+const ArrowRightIcon: React.FC = () => (
+  <svg viewBox="0 0 18 18" className="h-[18px] w-[18px]" fill="none" aria-hidden="true">
+    <path d="M3 9h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M9.5 4.5 14 9l-4.5 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const EyeIcon: React.FC<{ open: boolean }> = ({ open }) => (
+  <svg viewBox="0 0 18 18" className="h-[18px] w-[18px]" fill="none" aria-hidden="true">
+    <path
+      d="M2 9s2.5-4.5 7-4.5S16 9 16 9s-2.5 4.5-7 4.5S2 9 2 9Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="9" cy="9" r="2" stroke="currentColor" strokeWidth="1.4" />
+    {!open && (
+      <path d="m3 15 12-12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    )}
+  </svg>
+);
+
+const LockIcon: React.FC = () => (
+  <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+    <rect x="2.5" y="6" width="9" height="6" rx="2" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>
+);
+
+const GuideRings: React.FC = () => (
+  <div
+    className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden"
+    aria-hidden="true"
+  >
+    <div className="h-[760px] w-[760px] shrink-0 rounded-full border border-tinta/[0.07]" />
+    <div className="absolute h-[1100px] w-[1100px] shrink-0 rounded-full border border-tinta/[0.05]" />
+    <div className="absolute h-[1400px] w-[1400px] shrink-0 rounded-full border border-tinta/[0.035]" />
+  </div>
+);
+
+const FloatingShowcase: React.FC = () => {
+  // Reloj decorativo sincronizado con la hora del equipo
+  const [ahora, setAhora] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setAhora(new Date()), 15000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const horaActual = ahora.toLocaleTimeString("es-CO", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  return (
+  <div
+    className="pointer-events-none absolute inset-0 hidden select-none lg:block"
+    aria-hidden="true"
+  >
+    {/*
+      Posiciones ancladas al centro: se usan como máximo el % del diseño (para
+      pantallas grandes) o una distancia fija al borde de la tarjeta de 440px
+      (para pantallas medianas). Así ningún objeto queda debajo del formulario.
+    */}
+    {/* Estudiante · slot card */}
+    <div
+      className="absolute top-[7%] w-[228px] -rotate-6 rounded-[22px] bg-white p-3 shadow-constelacion-float"
+      style={{ left: "min(11%, calc(50% - 468px))" }}
+    >
+      <div className="rounded-[16px] bg-terracota p-3 text-white">
+        <span className="rounded-full bg-white/25 px-2 py-0.5 text-[9px] font-semibold">
+          Estudiante
+        </span>
+        <p className="mt-2 text-[10px] font-semibold">Lunes 12</p>
+        <div className="flex items-end justify-between">
+          <span className="text-[38px] leading-none tracking-[-0.04em]">15:00</span>
+          <span className="rounded-full bg-white px-2 py-0.5 text-[9px] font-semibold text-tinta">
+            Virtual
+          </span>
+        </div>
+      </div>
+      <p className="mt-2 text-[11px] font-semibold text-tinta">Laura Gómez</p>
+      <div className="mt-2 rounded-full bg-tinta py-1.5 text-center text-[10px] font-semibold text-white">
+        Reservar
+      </div>
+    </div>
+
+    {/* Tutor · calendar */}
+    <div
+      className="absolute top-[6%] w-[248px] rotate-3 rounded-[20px] bg-white p-3 shadow-constelacion-float"
+      style={{ right: "min(11%, calc(50% - 488px))" }}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-tinta">Semana 12-18</span>
+        <span className="rounded-full bg-tinta px-2 py-0.5 text-[9px] font-semibold text-white">
+          Tutor
+        </span>
+      </div>
+      <div className="mt-2 grid grid-cols-4 gap-1.5">
+        {[
+          "bg-terracota", "bg-white border border-faint", "bg-white border border-faint", "bg-salvia",
+          "bg-white border border-faint", "bg-tinta", "bg-white border border-faint", "bg-terracota",
+          "bg-white border border-faint", "bg-salvia", "bg-white border border-faint", "bg-white border border-dashed border-pebble",
+        ].map((tone, i) => (
+          <div key={i} className={`h-9 rounded-[7px] ${tone}`} />
+        ))}
+      </div>
+    </div>
+
+    {/* Horas flotantes */}
+    <div
+      className="absolute top-[34%] -rotate-6 rounded-[14px] bg-tinta px-5 py-2.5 text-[22px] tracking-[-0.03em] text-white shadow-constelacion-float"
+      style={{ left: "min(26%, calc(50% - 322px))" }}
+    >
+      10:00
+    </div>
+    <div
+      className="absolute top-[33%] rotate-3 rounded-[14px] bg-salvia px-5 py-2.5 text-[22px] tracking-[-0.03em] text-tinta shadow-constelacion-float"
+      style={{ right: "min(21%, calc(50% - 318px))" }}
+    >
+      {horaActual}
+    </div>
+
+    {/* Coordinador · user pill */}
+    <div
+      className="absolute top-[46%] w-[252px] -rotate-3 rounded-full bg-white p-2 pr-3.5 shadow-constelacion-float"
+      style={{ left: "min(17%, calc(50% - 492px))" }}
+    >
+      <div className="flex items-center gap-2">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-arena text-[10px] font-semibold text-tinta">
+          E1
+        </div>
+        <div className="min-w-0 flex-1 leading-tight">
+          <span className="inline-block rounded-full bg-tinta px-2 py-[3px] text-[8px] font-semibold leading-none text-white">
+            Coordinador
+          </span>
+          <p className="mt-1.5 truncate text-[10.5px] font-semibold text-tinta">Estudiante1 Prueba</p>
+          <p className="truncate text-[8px] text-muted">est1.prueba@ecci.edu.co</p>
+        </div>
+        <div className="flex h-5 w-9 shrink-0 items-center rounded-full bg-tinta p-0.5">
+          <div className="ml-auto h-4 w-4 rounded-full bg-white" />
+        </div>
+      </div>
+    </div>
+
+    {/* Toast */}
+    <div
+      className="absolute top-[50%] flex rotate-1 items-center gap-2 rounded-full bg-tinta px-4 py-2.5 shadow-constelacion-float"
+      style={{ right: "min(22%, calc(50% - 431px))" }}
+    >
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-violeta-accion text-[12px] font-bold text-white">
+        ✓
+      </span>
+      <span className="text-[11px] font-semibold text-white">¡Reserva Agendada!</span>
+    </div>
+  </div>
+  );
+};
+
+const RecoveryStepper: React.FC<{ step: 1 | 2 | 3 }> = ({ step }) => {
+  const items = [1, 2, 3] as const;
+
+  return (
+    <div className="mb-6 flex items-center justify-center">
+      {items.map((item, index) => (
+        <React.Fragment key={item}>
+          {index > 0 && (
+            <div
+              className={`mx-2 h-px w-10 transition-colors ${
+                step > index ? "bg-exito" : "bg-faint"
+              }`}
+            />
+          )}
+          <div
+            className={`flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-semibold transition-all ${
+              step === item
+                ? "border-violeta-accion bg-violeta-accion text-white"
+                : step > item
+                  ? "border-exito bg-exito text-white"
+                  : "border-faint bg-white text-pebble"
+            }`}
+          >
+            {step > item ? "✓" : item}
+          </div>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+};
+
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const login = useAuthStore((state) => state.login);
 
   const [currentView, setCurrentView] = useState<ViewState>("login");
-  const [loaderVisible, setLoaderVisible] = useState(true);
-  const [typedTitle, setTypedTitle] = useState("");
   const [authError, setAuthError] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // States para la recuperación
   const [recoveryEmail, setRecoveryEmail] = useState("");
@@ -48,56 +271,6 @@ export const Login: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [step3Error, setStep3Error] = useState<string | null>(null);
   const [step3Loading, setStep3Loading] = useState(false);
-
-  const panelLeftRef = useRef<HTMLDivElement>(null);
-  const formCardRef = useRef<HTMLDivElement>(null);
-
-  const fullText = "Aula Libre";
-
-  const typeWriterEffect = () => {
-    setTypedTitle("");
-    let i = 0;
-    const interval = setInterval(() => {
-      if (i < fullText.length) {
-        setTypedTitle(fullText.substring(0, i + 1));
-        i++;
-      } else {
-        clearInterval(interval);
-      }
-    }, 120);
-  };
-
-  const triggerLoaderAndReset = (callback?: () => void) => {
-    setLoaderVisible(true);
-    setTypedTitle("");
-    setTimeout(() => {
-      setLoaderVisible(false);
-      if (callback) callback();
-      setTimeout(typeWriterEffect, 300);
-    }, 2200);
-  };
-
-  useEffect(() => {
-    setTimeout(() => {
-      setLoaderVisible(false);
-      setTimeout(typeWriterEffect, 300);
-    }, 2200);
-
-    const ctx = gsap.context(() => {
-      gsap.fromTo(
-        panelLeftRef.current,
-        { x: -50, opacity: 0 },
-        { x: 0, opacity: 1, duration: 0.8, ease: "power2.out" },
-      );
-      gsap.fromTo(
-        formCardRef.current,
-        { y: 30, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.8, delay: 0.2, ease: "power2.out" },
-      );
-    });
-
-    return () => ctx.revert();
-  }, []);
 
   const {
     register,
@@ -148,38 +321,36 @@ export const Login: React.FC = () => {
     const loggedUser = await login(data.email, data.password);
 
     if (loggedUser) {
-      triggerLoaderAndReset(() => {
-        let defaultPath = "/inicio";
-        if (loggedUser.role === "admin") defaultPath = "/dashboard";
-        if (loggedUser.role === "tutor") defaultPath = "/tutor/dashboard";
+      let defaultPath = "/inicio";
+      if (loggedUser.role === "admin") defaultPath = "/dashboard";
+      if (loggedUser.role === "tutor") defaultPath = "/tutor/dashboard";
 
-        const stateFrom = (location.state as { from?: { pathname?: string } })
-          ?.from?.pathname;
+      const stateFrom = (location.state as { from?: { pathname?: string } })
+        ?.from?.pathname;
 
-        if (stateFrom && stateFrom !== "/") {
-          const isTutorRoute = stateFrom.startsWith("/tutor");
-          const isAdminRoute = [
-            "/dashboard",
-            "/estudiantes",
-            "/tutores",
-            "/coordinadores",
-            "/gestionar-usuarios",
-          ].includes(stateFrom);
-          const isStudentRoute = stateFrom === "/inicio";
+      if (stateFrom && stateFrom !== "/") {
+        const isTutorRoute = stateFrom.startsWith("/tutor");
+        const isAdminRoute = [
+          "/dashboard",
+          "/estudiantes",
+          "/tutores",
+          "/coordinadores",
+          "/gestionar-usuarios",
+        ].includes(stateFrom);
+        const isStudentRoute = stateFrom === "/inicio";
 
-          const hasPermission =
-            (loggedUser.role === "tutor" && isTutorRoute) ||
-            (loggedUser.role === "admin" && isAdminRoute) ||
-            (loggedUser.role === "estudiante" && isStudentRoute);
+        const hasPermission =
+          (loggedUser.role === "tutor" && isTutorRoute) ||
+          (loggedUser.role === "admin" && isAdminRoute) ||
+          (loggedUser.role === "estudiante" && isStudentRoute);
 
-          if (hasPermission) {
-            navigate(stateFrom, { replace: true });
-            return;
-          }
+        if (hasPermission) {
+          navigate(stateFrom, { replace: true });
+          return;
         }
+      }
 
-        navigate(defaultPath, { replace: true });
-      });
+      navigate(defaultPath, { replace: true });
     } else {
       setAuthError(true);
     }
@@ -305,167 +476,98 @@ export const Login: React.FC = () => {
     setConfirmPassword("");
     setStep3Error(null);
     setAuthError(false);
+    setShowPassword(false);
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-[#f7f5ed] font-body overflow-hidden">
-      {/* LOADER OVERLAY */}
-      <div
-        className={`fixed inset-0 z-[9999] flex items-center justify-center bg-[#0d1b2a]/85 backdrop-blur-[14px] transition-all duration-500 ${
-          loaderVisible
-            ? "opacity-100 visible"
-            : "opacity-0 invisible pointer-events-none"
-        }`}
-      >
-        <svg
-          className="w-[260px] h-[60px] overflow-visible"
-          viewBox="0 0 240 60"
-        >
-          <text x="50%" y="42" textAnchor="middle" className="loader-text">
-            Aula Libre
-          </text>
-        </svg>
-      </div>
+    <div className="relative min-h-screen w-full overflow-hidden bg-mist font-constelacion text-tinta">
+      <GuideRings />
+      <FloatingShowcase />
 
-      {/* PANEL IZQUIERDO */}
-      <div
-        ref={panelLeftRef}
-        className="relative hidden md:flex md:w-[55%] bg-[#0d1b2a] text-[#f7f5ed] flex-col justify-center p-16 overflow-hidden"
-      >
-        <img
-          src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=1200&auto=format&fit=crop"
-          alt="Fondo Tutorías"
-          className="absolute inset-0 w-full h-full object-cover object-[center_90%] opacity-20 grayscale pointer-events-none [mask-image:linear-gradient(to_top,rgba(0,0,0,1)_0%,rgba(0,0,0,0)_80%)]"
-        />
-        <div className="relative z-10 min-h-[4.5rem]">
-          <h1 className="font-display italic text-4xl md:text-5xl font-semibold">
-            <span>{typedTitle}</span>
-            <span className="animate-blink ml-1">|</span>
-          </h1>
-        </div>
-      </div>
+      <main className="relative z-10 mx-auto flex min-h-screen w-full max-w-[520px] flex-col items-center justify-center gap-6 px-4 py-10">
+        <AulaLibreLogo />
 
-      {/* PANEL DERECHO - FORMULARIOS */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-[#f7f5ed]">
-        <div ref={formCardRef} className="w-full max-w-[380px]">
-          {/* STEPPER DE RECUPERACIÓN */}
+        <section className="w-full max-w-[440px] rounded-[32px] bg-white px-6 py-8 shadow-constelacion-card sm:px-8">
           {["step1", "step2", "step3"].includes(currentView) && (
-            <div className="flex items-center justify-center mb-8">
-              <div
-                className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-semibold transition-all ${
-                  currentView === "step1"
-                    ? "bg-[#0d1b2a] text-white border-[#0d1b2a]"
-                    : "bg-[#1f7a5c] text-white border-[#1f7a5c]"
-                }`}
-              >
-                {currentView !== "step1" ? "✓" : "1"}
-              </div>
-
-              <div
-                className={`flex-1 max-w-[50px] h-[1px] mx-2 transition-colors ${
-                  ["step2", "step3"].includes(currentView)
-                    ? "bg-[#1f7a5c]"
-                    : "bg-slate-200"
-                }`}
-              />
-
-              <div
-                className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-semibold transition-all ${
-                  currentView === "step2"
-                    ? "bg-[#0d1b2a] text-white border-[#0d1b2a]"
-                    : currentView === "step3"
-                      ? "bg-[#1f7a5c] text-white border-[#1f7a5c]"
-                      : "bg-white text-slate-400 border-slate-300"
-                }`}
-              >
-                {currentView === "step3" ? "✓" : "2"}
-              </div>
-
-              <div
-                className={`flex-1 max-w-[50px] h-[1px] mx-2 transition-colors ${
-                  currentView === "step3" ? "bg-[#1f7a5c]" : "bg-slate-200"
-                }`}
-              />
-
-              <div
-                className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-semibold transition-all ${
-                  currentView === "step3"
-                    ? "bg-[#0d1b2a] text-white border-[#0d1b2a]"
-                    : "bg-white text-slate-400 border-slate-300"
-                }`}
-              >
-                3
-              </div>
-            </div>
+            <RecoveryStepper
+              step={currentView === "step1" ? 1 : currentView === "step2" ? 2 : 3}
+            />
           )}
 
           {/* VISTA LOGIN */}
           {currentView === "login" && (
             <div>
-              <h2 className="font-display italic text-3xl font-semibold text-slate-800 mb-2">
+              <h1 className="text-center text-[26.8px] font-medium leading-[33px] tracking-[-0.02em] text-tinta">
                 Inicia sesión
-              </h2>
-              <p className="text-xs text-slate-500 mb-8 leading-relaxed">
+              </h1>
+              <p className="mt-2 text-center text-[13.4px] leading-[21px] text-[#5F5C5B]">
                 Usa tu correo institucional para acceder al panel según tu rol
               </p>
 
-              <form
-                onSubmit={handleSubmit(onLoginSubmit)}
-                className="space-y-5"
-              >
-                <div className="relative">
+              <form onSubmit={handleSubmit(onLoginSubmit)} className="mt-6 space-y-4">
+                <div>
+                  <label htmlFor="emailLogin" className={labelClass}>
+                    Correo Institucional
+                  </label>
                   <input
                     type="email"
                     id="emailLogin"
-                    placeholder=" "
+                    placeholder="nombre@ecci.edu.co"
+                    autoComplete="email"
                     {...register("email")}
-                    className={`peer w-full h-[52px] pt-5 pb-1 px-3.5 text-sm bg-white border rounded-md outline-none transition-all ${
+                    className={`${inputClass} ${
                       errors.email || authError
-                        ? "border-red-500 ring-2 ring-red-500/10"
-                        : "border-slate-300 focus:border-[#0d1b2a] focus:ring-2 focus:ring-[#0d1b2a]/10"
+                        ? "border-peligro focus:border-peligro focus:ring-peligro/15"
+                        : ""
                     }`}
                   />
-                  <label
-                    htmlFor="emailLogin"
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none transition-all peer-focus:top-2 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:uppercase peer-focus:text-[#0d1b2a] peer-[:not(:placeholder-shown)]:top-2 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:font-semibold peer-[:not(:placeholder-shown)]:uppercase"
-                  >
-                    Correo Institucional
-                  </label>
                   {errors.email && (
-                    <span className="text-[11px] text-red-500 font-medium mt-1 block">
+                    <p className="mt-1 pl-4 text-[11px] font-medium text-peligro">
                       {errors.email.message}
-                    </span>
+                    </p>
                   )}
                 </div>
 
-                <div className="relative">
-                  <input
-                    type="password"
-                    id="passwordLogin"
-                    placeholder=" "
-                    {...register("password")}
-                    className={`peer w-full h-[52px] pt-5 pb-1 px-3.5 text-sm bg-white border rounded-md outline-none transition-all ${
-                      errors.password || authError
-                        ? "border-red-500 ring-2 ring-red-500/10"
-                        : "border-slate-300 focus:border-[#0d1b2a] focus:ring-2 focus:ring-[#0d1b2a]/10"
-                    }`}
-                  />
-                  <label
-                    htmlFor="passwordLogin"
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none transition-all peer-focus:top-2 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:uppercase peer-focus:text-[#0d1b2a] peer-[:not(:placeholder-shown)]:top-2 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:font-semibold peer-[:not(:placeholder-shown)]:uppercase"
-                  >
+                <div>
+                  <label htmlFor="passwordLogin" className={labelClass}>
                     Contraseña
                   </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      id="passwordLogin"
+                      autoComplete="current-password"
+                      {...register("password")}
+                      className={`${inputClass} pr-16 ${
+                        errors.password || authError
+                          ? "border-peligro focus:border-peligro focus:ring-peligro/15"
+                          : ""
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((value) => !value)}
+                      aria-label={
+                        showPassword ? "Ocultar contraseña" : "Mostrar contraseña"
+                      }
+                      className="absolute right-1.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-[#F2F4F5] text-tinta transition hover:bg-faint"
+                    >
+                      <EyeIcon open={showPassword} />
+                    </button>
+                  </div>
                   {errors.password && (
-                    <span className="text-[11px] text-red-500 font-medium mt-1 block">
+                    <p className="mt-1 pl-4 text-[11px] font-medium text-peligro">
                       {errors.password.message}
-                    </span>
+                    </p>
                   )}
                 </div>
 
-                <div className="flex justify-between items-center text-xs text-slate-600">
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" className="rounded text-[#0d1b2a]" />
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <label className="flex cursor-pointer items-center gap-2 text-[13.7px] text-tinta">
+                    <input
+                      type="checkbox"
+                      className="h-5 w-5 cursor-pointer rounded-[2.5px] border border-[#858180] accent-[#5433EB]"
+                    />
                     Recordarme
                   </label>
                   <button
@@ -474,23 +576,21 @@ export const Login: React.FC = () => {
                       setRecoveryError(null);
                       setCurrentView("step1");
                     }}
-                    className="text-[#0d1b2a] font-medium hover:underline"
+                    className={secondaryLinkClass}
                   >
                     ¿Olvidaste tu contraseña?
                   </button>
                 </div>
 
                 {authError && (
-                  <span className="text-xs text-red-500 font-medium block">
+                  <div className="rounded-2xl bg-peligro/10 px-4 py-2.5 text-[12px] font-medium text-peligro">
                     Correo o contraseña incorrectos
-                  </span>
+                  </div>
                 )}
 
-                <button
-                  type="submit"
-                  className="w-full py-3 bg-[#0d1b2a] text-white text-xs font-semibold rounded-md hover:bg-[#1b2a3a] transition-colors shadow-md"
-                >
+                <button type="submit" className={primaryButtonClass}>
                   Iniciar sesión
+                  <ArrowRightIcon />
                 </button>
               </form>
             </div>
@@ -499,55 +599,55 @@ export const Login: React.FC = () => {
           {/* VISTA STEP 1: SOLICITAR RECUPERACIÓN */}
           {currentView === "step1" && (
             <div>
-              <h2 className="font-display italic text-3xl font-semibold text-slate-800 mb-2">
+              <h2 className="text-center text-[26.8px] font-medium leading-[33px] tracking-[-0.02em] text-tinta">
                 ¿Olvidaste tu contraseña?
               </h2>
-              <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+              <p className="mt-2 text-center text-[13.4px] leading-[21px] text-[#5F5C5B]">
                 Ingresa tu correo institucional y te enviaremos un código para
                 recuperar el acceso.
               </p>
 
-              <form onSubmit={handleRecoverySubmit} className="space-y-5">
-                <div className="relative">
+              <form onSubmit={handleRecoverySubmit} className="mt-6 space-y-4">
+                <div>
+                  <label htmlFor="recoveryEmail" className={labelClass}>
+                    Correo Institucional
+                  </label>
                   <input
+                    id="recoveryEmail"
                     type="email"
                     required
                     value={recoveryEmail}
                     onChange={(e) => setRecoveryEmail(e.target.value)}
-                    placeholder=" "
-                    className={`peer w-full h-[52px] pt-5 pb-1 px-3.5 text-sm bg-white border rounded-md outline-none ${
+                    placeholder="nombre@ecci.edu.co"
+                    className={`${inputClass} ${
                       recoveryError
-                        ? "border-red-500 ring-2 ring-red-500/10"
-                        : "border-slate-300 focus:border-[#0d1b2a]"
+                        ? "border-peligro focus:border-peligro focus:ring-peligro/15"
+                        : ""
                     }`}
                   />
-                  <label className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none transition-all peer-focus:top-2 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:uppercase peer-focus:text-[#0d1b2a] peer-[:not(:placeholder-shown)]:top-2 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:font-semibold peer-[:not(:placeholder-shown)]:uppercase">
-                    Correo Institucional
-                  </label>
                 </div>
 
                 {recoveryError && (
-                  <span className="text-xs text-red-500 font-medium block">
+                  <div className="rounded-2xl bg-peligro/10 px-4 py-2.5 text-[12px] font-medium text-peligro">
                     {recoveryError}
-                  </span>
+                  </div>
                 )}
 
                 <button
                   type="submit"
                   disabled={recoveryLoading}
-                  className="w-full py-3 bg-[#0d1b2a] text-white text-xs font-semibold rounded-md hover:bg-[#1b2a3a] disabled:opacity-50 transition-all"
+                  className={primaryButtonClass}
                 >
-                  {recoveryLoading
-                    ? "Enviando código..."
-                    : "Enviar código de recuperación"}
+                  {recoveryLoading ? "Enviando código..." : "Enviar código de recuperación"}
+                  <ArrowRightIcon />
                 </button>
               </form>
 
-              <div className="text-center mt-6">
+              <div className="mt-5 text-center">
                 <button
                   type="button"
                   onClick={() => setCurrentView("login")}
-                  className="text-xs text-slate-600 hover:text-[#0d1b2a] font-medium"
+                  className="text-[12.5px] font-medium text-muted transition hover:text-tinta"
                 >
                   Volver a iniciar sesión
                 </button>
@@ -558,26 +658,18 @@ export const Login: React.FC = () => {
           {/* VISTA STEP 2: INGRESAR CÓDIGO/PIN */}
           {currentView === "step2" && (
             <div>
-              <button
-                type="button"
-                onClick={() => setCurrentView("step1")}
-                className="text-xs text-slate-500 hover:text-slate-800 mb-4 block"
-              >
-                Volver
-              </button>
-
-              <h2 className="font-display italic text-3xl font-semibold text-slate-800 mb-2">
+              <h2 className="text-center text-[26.8px] font-medium leading-[33px] tracking-[-0.02em] text-tinta">
                 Revisa tu correo
               </h2>
-              <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+              <p className="mt-2 text-center text-[13.4px] leading-[21px] text-[#5F5C5B]">
                 Enviamos un código de 6 dígitos a{" "}
-                <strong className="text-slate-700">
+                <strong className="font-semibold text-tinta">
                   {recoveryEmail || "usuario@ecci.edu.co"}
                 </strong>
                 . Ingrésalo para continuar.
               </p>
 
-              <form onSubmit={handleOtpSubmit} className="space-y-5">
+              <form onSubmit={handleOtpSubmit} className="mt-6 space-y-5">
                 <div className="flex justify-between gap-2">
                   {otp.map((digit, idx) => (
                     <input
@@ -586,147 +678,154 @@ export const Login: React.FC = () => {
                         otpRefs.current[idx] = el;
                       }}
                       type="text"
+                      inputMode="numeric"
                       maxLength={1}
                       value={digit}
                       onChange={(e) => handleOtpChange(idx, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                       onPaste={handleOtpPaste}
-                      className="w-11 h-[52px] text-center text-lg font-semibold border border-slate-300 rounded-md bg-[#ffffff] outline-none focus:border-[#0d1b2a] focus:ring-2 focus:ring-[#0d1b2a]/10"
+                      className="h-[54px] w-full max-w-[54px] rounded-full border border-[#858180] bg-white text-center text-[18px] font-semibold text-tinta outline-none transition focus:border-violeta-accion focus:ring-4 focus:ring-violeta-accion/15"
                     />
                   ))}
                 </div>
 
                 {step2Error && (
-                  <span className="text-xs text-red-500 font-medium block text-center">
+                  <div className="rounded-2xl bg-peligro/10 px-4 py-2.5 text-center text-[12px] font-medium text-peligro">
                     {step2Error}
-                  </span>
+                  </div>
                 )}
 
-                <p className="text-[11px] text-slate-500 text-center">
+                <p className="text-center text-[11px] text-muted">
                   ¿No llegó nada? Revisa spam o reenvía el código.
                 </p>
 
-                <button
-                  type="submit"
-                  className="w-full py-3 bg-[#0d1b2a] text-white text-xs font-semibold rounded-md hover:bg-[#1b2a3a]"
-                >
+                <button type="submit" className={primaryButtonClass}>
                   Verificar código
+                  <ArrowRightIcon />
                 </button>
               </form>
+
+              <div className="mt-5 text-center">
+                <button
+                  type="button"
+                  onClick={() => setCurrentView("step1")}
+                  className="text-[12.5px] font-medium text-muted transition hover:text-tinta"
+                >
+                  Volver
+                </button>
+              </div>
             </div>
           )}
 
           {/* VISTA STEP 3: NUEVA CONTRASEÑA */}
           {currentView === "step3" && (
             <div>
-              <button
-                type="button"
-                onClick={() => setCurrentView("step2")}
-                className="text-xs text-slate-500 hover:text-slate-800 mb-4 block"
-              >
-                Volver
-              </button>
-
-              <h2 className="font-display italic text-3xl font-semibold text-slate-800 mb-2">
+              <h2 className="text-center text-[26.8px] font-medium leading-[33px] tracking-[-0.02em] text-tinta">
                 Crea una nueva contraseña
               </h2>
-              <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+              <p className="mt-2 text-center text-[13.4px] leading-[21px] text-[#5F5C5B]">
                 Elige una contraseña segura para tu cuenta institucional.
               </p>
 
-              <form onSubmit={handleResetPassword} className="space-y-4">
-                <div className="relative">
+              <form onSubmit={handleResetPassword} className="mt-6 space-y-4">
+                <div>
+                  <label htmlFor="newPassword" className={labelClass}>
+                    Nueva contraseña
+                  </label>
                   <input
+                    id="newPassword"
                     type="password"
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder=" "
-                    className="peer w-full h-[52px] pt-5 pb-1 px-3.5 text-sm bg-white border border-slate-300 rounded-md outline-none focus:border-[#0d1b2a]"
+                    className={inputClass}
                   />
-                  <label className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none transition-all peer-focus:top-2 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:uppercase peer-focus:text-[#0d1b2a] peer-[:not(:placeholder-shown)]:top-2 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:font-semibold peer-[:not(:placeholder-shown)]:uppercase">
-                    Nueva contraseña
-                  </label>
                 </div>
 
                 <div className="space-y-1.5 py-1">
-                  <div
-                    className={`text-[11px] flex items-center gap-1.5 ${hasMin8 ? "text-[#1f7a5c]" : "text-slate-400"}`}
-                  >
-                    <span
-                      className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${hasMin8 ? "bg-[#1f7a5c] text-white border-[#1f7a5c]" : "border-slate-300"}`}
+                  {[
+                    { ok: hasMin8, text: "Mínimo 8 caracteres" },
+                    { ok: hasNum, text: "Al menos un número" },
+                    { ok: hasSym, text: "Al menos un símbolo" },
+                  ].map((rule) => (
+                    <div
+                      key={rule.text}
+                      className={`flex items-center gap-1.5 text-[11px] ${
+                        rule.ok ? "text-exito" : "text-muted"
+                      }`}
                     >
-                      ✓
-                    </span>
-                    Mínimo 8 caracteres
-                  </div>
-                  <div
-                    className={`text-[11px] flex items-center gap-1.5 ${hasNum ? "text-[#1f7a5c]" : "text-slate-400"}`}
-                  >
-                    <span
-                      className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${hasNum ? "bg-[#1f7a5c] text-white border-[#1f7a5c]" : "border-slate-300"}`}
-                    >
-                      ✓
-                    </span>
-                    Al menos un número
-                  </div>
-                  <div
-                    className={`text-[11px] flex items-center gap-1.5 ${hasSym ? "text-[#1f7a5c]" : "text-slate-400"}`}
-                  >
-                    <span
-                      className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] ${hasSym ? "bg-[#1f7a5c] text-white border-[#1f7a5c]" : "border-slate-300"}`}
-                    >
-                      ✓
-                    </span>
-                    Al menos un símbolo
-                  </div>
+                      <span
+                        className={`flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[9px] ${
+                          rule.ok
+                            ? "border-exito bg-exito text-white"
+                            : "border-pebble"
+                        }`}
+                      >
+                        ✓
+                      </span>
+                      {rule.text}
+                    </div>
+                  ))}
                 </div>
 
-                <div className="relative">
+                <div>
+                  <label htmlFor="confirmPassword" className={labelClass}>
+                    Confirmar contraseña
+                  </label>
                   <input
+                    id="confirmPassword"
                     type="password"
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder=" "
-                    className={`peer w-full h-[52px] pt-5 pb-1 px-3.5 text-sm bg-white border rounded-md outline-none ${
+                    className={`${inputClass} ${
                       confirmPassword.length > 0 && !isMatch
-                        ? "border-red-500"
-                        : "border-slate-300 focus:border-[#0d1b2a]"
+                        ? "border-peligro focus:border-peligro focus:ring-peligro/15"
+                        : ""
                     }`}
                   />
-                  <label className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none transition-all peer-focus:top-2 peer-focus:translate-y-0 peer-focus:text-[10px] peer-focus:font-semibold peer-focus:uppercase peer-focus:text-[#0d1b2a] peer-[:not(:placeholder-shown)]:top-2 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-[10px] peer-[:not(:placeholder-shown)]:font-semibold peer-[:not(:placeholder-shown)]:uppercase">
-                    Confirmar contraseña
-                  </label>
                   {confirmPassword.length > 0 && !isMatch && (
-                    <span className="text-[11px] text-red-500 block mt-1">
+                    <p className="mt-1 pl-4 text-[11px] font-medium text-peligro">
                       Las contraseñas no coinciden
-                    </span>
+                    </p>
                   )}
                 </div>
 
                 {step3Error && (
-                  <span className="text-xs text-red-500 font-medium block">
+                  <div className="rounded-2xl bg-peligro/10 px-4 py-2.5 text-[12px] font-medium text-peligro">
                     {step3Error}
-                  </span>
+                  </div>
                 )}
 
                 <button
                   type="submit"
                   disabled={!isPasswordValid || step3Loading}
-                  className="w-full py-3 bg-[#0d1b2a] text-white text-xs font-semibold rounded-md hover:bg-[#1b2a3a] disabled:bg-slate-300 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors"
+                  className={primaryButtonClass}
                 >
                   {step3Loading ? "Guardando..." : "Guardar nueva contraseña"}
+                  <ArrowRightIcon />
                 </button>
               </form>
+
+              <div className="mt-5 text-center">
+                <button
+                  type="button"
+                  onClick={() => setCurrentView("step2")}
+                  className="text-[12.5px] font-medium text-muted transition hover:text-tinta"
+                >
+                  Volver
+                </button>
+              </div>
             </div>
           )}
+
+          {/* VISTA SUCCESS */}
           {currentView === "success" && (
             <div className="text-center">
-              <div className="flex justify-center mb-6">
-                <div className="w-20 h-20 bg-[#1f7a5c]/10 text-[#1f7a5c] rounded-full flex items-center justify-center ring-8 ring-[#1f7a5c]/5">
+              <div className="mb-6 flex justify-center">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-exito/10 text-exito ring-8 ring-exito/5">
                   <svg
-                    className="w-10 h-10"
+                    className="h-10 w-10"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="3"
@@ -741,10 +840,10 @@ export const Login: React.FC = () => {
                 </div>
               </div>
 
-              <h2 className="font-display italic text-3xl font-semibold text-slate-800 mb-2">
+              <h2 className="text-[26.8px] font-medium leading-[33px] tracking-[-0.02em] text-tinta">
                 Contraseña actualizada
               </h2>
-              <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+              <p className="mt-2 text-[13.4px] leading-[21px] text-[#5F5C5B]">
                 Ya puedes iniciar sesión con tu nueva contraseña. Te
                 recomendamos no compartirla con nadie.
               </p>
@@ -752,19 +851,23 @@ export const Login: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  triggerLoaderAndReset(() => {
-                    resetAllForms();
-                    setCurrentView("login");
-                  });
+                  resetAllForms();
+                  setCurrentView("login");
                 }}
-                className="w-full py-3 bg-[#0d1b2a] text-white text-xs font-semibold rounded-md hover:bg-[#1b2a3a] transition-colors shadow-md"
+                className={`${primaryButtonClass} mt-6`}
               >
                 Ir a iniciar sesión
+                <ArrowRightIcon />
               </button>
             </div>
           )}
+        </section>
+
+        <div className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[11.6px] text-[#5F5C5B] shadow-sm">
+          <LockIcon />
+          Universidad ECCI · Sede Cali
         </div>
-      </div>
+      </main>
     </div>
   );
 };
