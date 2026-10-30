@@ -15,8 +15,9 @@ export default {
         greenCustom: "#1f7a5c",
 
         // --- Sistema "Constelación" (rediseño) ---
-        mist: "#F4F1F5",
+        mist: "#F2F4F5",
         tinta: "#1C1A1E",
+        carbon: "#332F2D",
         "slate-ink": "#3E3A44",
         muted: "#6B6672",
         pebble: "#B9B3BD",
@@ -26,7 +27,7 @@ export default {
         "violeta-profundo": "#3F22C4",
         "violeta-tinta": "#2A1B5E",
         "violet-wash": "#C6B5F3",
-        terracota: "#C27F5B",
+        terracota: "#C9775A",
         arena: "#D8C3A5",
         salvia: "#A9BFA8",
         cacao: "#8A6A4F",
