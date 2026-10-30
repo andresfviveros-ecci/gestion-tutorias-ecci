@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -95,7 +95,22 @@ const GuideRings: React.FC = () => (
   </div>
 );
 
-const FloatingShowcase: React.FC = () => (
+const FloatingShowcase: React.FC = () => {
+  // Reloj decorativo sincronizado con la hora del equipo
+  const [ahora, setAhora] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setAhora(new Date()), 15000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const horaActual = ahora.toLocaleTimeString("es-CO", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  return (
   <div
     className="pointer-events-none absolute inset-0 hidden select-none lg:block"
     aria-hidden="true"
@@ -161,27 +176,27 @@ const FloatingShowcase: React.FC = () => (
       className="absolute top-[33%] rotate-3 rounded-[14px] bg-salvia px-5 py-2.5 text-[22px] tracking-[-0.03em] text-tinta shadow-constelacion-float"
       style={{ right: "min(21%, calc(50% - 318px))" }}
     >
-      18:00
+      {horaActual}
     </div>
 
     {/* Coordinador · user pill */}
     <div
-      className="absolute top-[46%] hidden w-[300px] -rotate-3 rounded-full bg-white p-2 pr-4 shadow-constelacion-float xl:block"
-      style={{ left: "min(17%, calc(50% - 540px))" }}
+      className="absolute top-[46%] w-[252px] -rotate-3 rounded-full bg-white p-2 pr-3.5 shadow-constelacion-float"
+      style={{ left: "min(17%, calc(50% - 492px))" }}
     >
-      <div className="flex items-center gap-2.5">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-arena text-[10px] font-semibold text-tinta">
+      <div className="flex items-center gap-2">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-arena text-[10px] font-semibold text-tinta">
           E1
         </div>
         <div className="min-w-0 flex-1 leading-tight">
           <span className="inline-block rounded-full bg-tinta px-2 py-[3px] text-[8px] font-semibold leading-none text-white">
             Coordinador
           </span>
-          <p className="mt-1.5 truncate text-[11px] font-semibold text-tinta">Estudiante1 Prueba</p>
+          <p className="mt-1.5 truncate text-[10.5px] font-semibold text-tinta">Estudiante1 Prueba</p>
           <p className="truncate text-[8px] text-muted">est1.prueba@ecci.edu.co</p>
         </div>
-        <div className="flex h-6 w-11 shrink-0 items-center rounded-full bg-tinta p-0.5">
-          <div className="ml-auto h-5 w-5 rounded-full bg-white" />
+        <div className="flex h-5 w-9 shrink-0 items-center rounded-full bg-tinta p-0.5">
+          <div className="ml-auto h-4 w-4 rounded-full bg-white" />
         </div>
       </div>
     </div>
@@ -197,7 +212,8 @@ const FloatingShowcase: React.FC = () => (
       <span className="text-[11px] font-semibold text-white">¡Reserva Agendada!</span>
     </div>
   </div>
-);
+  );
+};
 
 const RecoveryStepper: React.FC<{ step: 1 | 2 | 3 }> = ({ step }) => {
   const items = [1, 2, 3] as const;
