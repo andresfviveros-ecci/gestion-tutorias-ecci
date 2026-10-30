@@ -97,11 +97,19 @@ const GuideRings: React.FC = () => (
 
 const FloatingShowcase: React.FC = () => (
   <div
-    className="pointer-events-none absolute inset-0 hidden select-none xl:block"
+    className="pointer-events-none absolute inset-0 hidden select-none lg:block"
     aria-hidden="true"
   >
+    {/*
+      Posiciones ancladas al centro: se usan como máximo el % del diseño (para
+      pantallas grandes) o una distancia fija al borde de la tarjeta de 440px
+      (para pantallas medianas). Así ningún objeto queda debajo del formulario.
+    */}
     {/* Estudiante · slot card */}
-    <div className="absolute left-[11%] top-[7%] w-[228px] -rotate-6 rounded-[22px] bg-white p-3 shadow-constelacion-float">
+    <div
+      className="absolute top-[7%] w-[228px] -rotate-6 rounded-[22px] bg-white p-3 shadow-constelacion-float"
+      style={{ left: "min(11%, calc(50% - 468px))" }}
+    >
       <div className="rounded-[16px] bg-terracota p-3 text-white">
         <span className="rounded-full bg-white/25 px-2 py-0.5 text-[9px] font-semibold">
           Estudiante
@@ -121,7 +129,10 @@ const FloatingShowcase: React.FC = () => (
     </div>
 
     {/* Tutor · calendar */}
-    <div className="absolute right-[11%] top-[6%] w-[248px] rotate-3 rounded-[20px] bg-white p-3 shadow-constelacion-float">
+    <div
+      className="absolute top-[6%] w-[248px] rotate-3 rounded-[20px] bg-white p-3 shadow-constelacion-float"
+      style={{ right: "min(11%, calc(50% - 488px))" }}
+    >
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-semibold text-tinta">Semana 12-18</span>
         <span className="rounded-full bg-tinta px-2 py-0.5 text-[9px] font-semibold text-white">
@@ -140,15 +151,24 @@ const FloatingShowcase: React.FC = () => (
     </div>
 
     {/* Horas flotantes */}
-    <div className="absolute left-[26%] top-[30%] -rotate-6 rounded-[14px] bg-tinta px-5 py-2.5 text-[22px] tracking-[-0.03em] text-white shadow-constelacion-float">
+    <div
+      className="absolute top-[34%] -rotate-6 rounded-[14px] bg-tinta px-5 py-2.5 text-[22px] tracking-[-0.03em] text-white shadow-constelacion-float"
+      style={{ left: "min(26%, calc(50% - 322px))" }}
+    >
       10:00
     </div>
-    <div className="absolute right-[21%] top-[33%] rotate-3 rounded-[14px] bg-salvia px-5 py-2.5 text-[22px] tracking-[-0.03em] text-tinta shadow-constelacion-float">
+    <div
+      className="absolute top-[33%] rotate-3 rounded-[14px] bg-salvia px-5 py-2.5 text-[22px] tracking-[-0.03em] text-tinta shadow-constelacion-float"
+      style={{ right: "min(21%, calc(50% - 318px))" }}
+    >
       18:00
     </div>
 
     {/* Coordinador · user pill */}
-    <div className="absolute left-[17%] top-[46%] w-[300px] -rotate-3 rounded-full bg-white p-2 pr-4 shadow-constelacion-float">
+    <div
+      className="absolute top-[46%] hidden w-[300px] -rotate-3 rounded-full bg-white p-2 pr-4 shadow-constelacion-float xl:block"
+      style={{ left: "min(17%, calc(50% - 540px))" }}
+    >
       <div className="flex items-center gap-2.5">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-arena text-[10px] font-semibold text-tinta">
           E1
@@ -167,7 +187,10 @@ const FloatingShowcase: React.FC = () => (
     </div>
 
     {/* Toast */}
-    <div className="absolute right-[22%] top-[50%] flex rotate-1 items-center gap-2 rounded-full bg-tinta px-4 py-2.5 shadow-constelacion-float">
+    <div
+      className="absolute top-[50%] flex rotate-1 items-center gap-2 rounded-full bg-tinta px-4 py-2.5 shadow-constelacion-float"
+      style={{ right: "min(22%, calc(50% - 431px))" }}
+    >
       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-violeta-accion text-[12px] font-bold text-white">
         ✓
       </span>
