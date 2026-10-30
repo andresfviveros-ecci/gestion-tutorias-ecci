@@ -28,7 +28,7 @@ export const Login: React.FC = () => {
   const login = useAuthStore((state) => state.login);
 
   const [currentView, setCurrentView] = useState<ViewState>("login");
-  const [loaderVisible, setLoaderVisible] = useState(true);
+  const [loaderVisible, setLoaderVisible] = useState(false);
   const [typedTitle, setTypedTitle] = useState("");
   const [authError, setAuthError] = useState(false);
 
@@ -68,20 +68,14 @@ export const Login: React.FC = () => {
   };
 
   const triggerLoaderAndReset = (callback?: () => void) => {
-    setLoaderVisible(true);
+    setLoaderVisible(false);
     setTypedTitle("");
-    setTimeout(() => {
-      setLoaderVisible(false);
-      if (callback) callback();
-      setTimeout(typeWriterEffect, 300);
-    }, 2200);
+    if (callback) callback();
+    typeWriterEffect();
   };
 
   useEffect(() => {
-    setTimeout(() => {
-      setLoaderVisible(false);
-      setTimeout(typeWriterEffect, 300);
-    }, 2200);
+    const typeTimer = setTimeout(typeWriterEffect, 0);
 
     const ctx = gsap.context(() => {
       gsap.fromTo(
@@ -96,7 +90,10 @@ export const Login: React.FC = () => {
       );
     });
 
-    return () => ctx.revert();
+    return () => {
+      clearTimeout(typeTimer);
+      ctx.revert();
+    };
   }, []);
 
   const {

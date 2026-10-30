@@ -4,11 +4,10 @@ import { Loader } from '../components/Loader';
 import { api } from '../api/axios';
 
 interface DashboardStats {
-  tutoriasMes: number;
-  estudiantesActivos: number;
-  tutoresActivos: number;
-  materiaMasDemandada: string;
-  porcentajeDemandada: string;
+  estudiantesRegistrados: number;
+  tutoresRegistrados: number;
+  bloquesDisponibles: number;
+  materiasActivas: number;
 }
 
 interface StudentItem {
@@ -33,30 +32,25 @@ interface BackendStudent {
   correo?: string;
 }
 
-interface BackendStats {
-  tutorias_mes?: number;
-  tutoriasMes?: number;
-  estudiantes_activos?: number;
-  estudiantesActivos?: number;
-  totalEstudiantes?: number;
-  tutores_activos?: number;
-  tutoresActivos?: number;
-  totalTutores?: number;
-  materia_mas_demandada?: string;
-  materiaMasDemandada?: string;
-  porcentaje_demandada?: string;
-  porcentajeDemandada?: string;
-}
-
-interface UserBackendItem {
+interface BackendTutor {
   id?: string | number;
-  username?: string;
-  email?: string;
   nombre?: string;
   nombres?: string;
   apellidos?: string;
   first_name?: string;
   last_name?: string;
+  email?: string;
+  correo?: string;
+}
+
+interface BackendBloque {
+  id?: string | number;
+  estado?: string;
+}
+
+interface BackendMateria {
+  id?: string | number;
+  activa?: boolean;
 }
 
 export const Dashboard: React.FC = () => {
@@ -65,11 +59,10 @@ export const Dashboard: React.FC = () => {
   const [userFullName, setUserFullName] = useState<string>('');
 
   const [stats, setStats] = useState<DashboardStats>({
-    tutoriasMes: 0,
-    estudiantesActivos: 0,
-    tutoresActivos: 0,
-    materiaMasDemandada: '-',
-    porcentajeDemandada: '0%',
+    estudiantesRegistrados: 0,
+    tutoresRegistrados: 0,
+    bloquesDisponibles: 0,
+    materiasActivas: 0,
   });
 
   const [recentStudents, setRecentStudents] = useState<StudentItem[]>([]);
@@ -79,109 +72,84 @@ export const Dashboard: React.FC = () => {
 
     const loadDashboardData = async () => {
       try {
-        const [statsRes, studentsRes, usersRes] = await Promise.allSettled([
-          api.get<BackendStats>('/accounts/dashboard-stats/'),
+        const [studentsRes, tutoresRes, coordinadoresRes, bloquesRes, materiasRes] = await Promise.allSettled([
           api.get<BackendStudent[]>('/accounts/estudiantes/'),
-          api.get<UserBackendItem[]>('/accounts/usuarios/'),
+          api.get<BackendTutor[]>('/accounts/tutores/'),
+          api.get<BackendTutor[]>('/accounts/coordinadores/'),
+          api.get<BackendBloque[]>('/disponibilidad/disponibilidad/'),
+          api.get<BackendMateria[]>('/catalogo/materias/'),
         ]);
 
         if (!isMounted) return;
 
-        // 1. Métricas
-        if (statsRes.status === 'fulfilled' && statsRes.value.data) {
-          const d = statsRes.value.data;
-          setStats({
-            tutoriasMes: d.tutoriasMes ?? d.tutorias_mes ?? 0,
-            estudiantesActivos: d.estudiantesActivos ?? d.estudiantes_activos ?? d.totalEstudiantes ?? 0,
-            tutoresActivos: d.tutoresActivos ?? d.tutores_activos ?? d.totalTutores ?? 0,
-            materiaMasDemandada: d.materiaMasDemandada || d.materia_mas_demandada || '-',
-            porcentajeDemandada: d.porcentajeDemandada || d.porcentaje_demandada || '0%',
-          });
-        }
+        const studentsList =
+          studentsRes.status === 'fulfilled' && Array.isArray(studentsRes.value.data)
+            ? studentsRes.value.data
+            : [];
+        const tutoresList =
+          tutoresRes.status === 'fulfilled' && Array.isArray(tutoresRes.value.data)
+            ? tutoresRes.value.data
+            : [];
+        const coordinadoresList =
+          coordinadoresRes.status === 'fulfilled' && Array.isArray(coordinadoresRes.value.data)
+            ? coordinadoresRes.value.data
+            : [];
+        const bloquesList =
+          bloquesRes.status === 'fulfilled' && Array.isArray(bloquesRes.value.data)
+            ? bloquesRes.value.data
+            : [];
+        const materiasList =
+          materiasRes.status === 'fulfilled' && Array.isArray(materiasRes.value.data)
+            ? materiasRes.value.data
+            : [];
 
-        // 2. Mapeo de estudiantes recientes
-        let studentsList: BackendStudent[] = [];
-        if (studentsRes.status === 'fulfilled' && Array.isArray(studentsRes.value.data)) {
-          studentsList = studentsRes.value.data;
-          const mappedStudents: StudentItem[] = studentsList.map((st) => {
-            const combinedName = `${st.nombres || st.first_name || ''} ${st.apellidos || st.last_name || ''}`.trim();
-            const finalName = combinedName || st.fullName || st.nombre || 'Estudiante';
-            const docVal = String(st.documento || st.identificacion || st.idNumber || st.codigo_estudiantil || st.id || '—');
+        // 1. Métricas calculadas con los datos que sí existen en la API
+        setStats({
+          estudiantesRegistrados: studentsList.length,
+          tutoresRegistrados: tutoresList.length,
+          bloquesDisponibles: bloquesList.filter(
+            (b) => (b.estado || '').toUpperCase() === 'DISPONIBLE'
+          ).length,
+          materiasActivas: materiasList.filter((m) => m.activa !== false).length,
+        });
 
-            return {
-              fullName: finalName,
-              idNumber: docVal,
-              email: st.email || st.correo || '',
-            };
-          });
+        // 2. Mapeo de estudiantes
+        const mappedStudents: StudentItem[] = studentsList.map((st) => {
+          const combinedName = `${st.nombres || st.first_name || ''} ${st.apellidos || st.last_name || ''}`.trim();
+          const finalName = combinedName || st.fullName || st.nombre || 'Estudiante';
+          const docVal = String(st.documento || st.identificacion || st.idNumber || st.codigo_estudiantil || st.id || '—');
 
-          setRecentStudents(mappedStudents);
+          return {
+            fullName: finalName,
+            idNumber: docVal,
+            email: st.email || st.correo || '',
+          };
+        });
 
-          if (statsRes.status !== 'fulfilled') {
-            setStats((prev) => ({
-              ...prev,
-              estudiantesActivos: mappedStudents.length,
-            }));
+        setRecentStudents(mappedStudents);
+
+        // 3. Nombre real del usuario: se busca por correo en estudiantes y tutores
+        const userTarget = String(user?.correo || '').toLowerCase().trim();
+
+        if (userTarget) {
+          const studentMatch = studentsList.find(
+            (st) => String(st.email || st.correo || '').toLowerCase().trim() === userTarget
+          );
+          const tutorMatch = tutoresList.find(
+            (t) => String(t.email || t.correo || '').toLowerCase().trim() === userTarget
+          );
+          const coordinadorMatch = coordinadoresList.find(
+            (c) => String(c.email || c.correo || '').toLowerCase().trim() === userTarget
+          );
+
+          const matched = studentMatch || tutorMatch || coordinadorMatch;
+
+          if (matched) {
+            const nom = String(matched.nombres || matched.first_name || '').trim();
+            const ape = String(matched.apellidos || matched.last_name || '').trim();
+            const full = `${nom} ${ape}`.trim() || String(matched.nombre || '').trim();
+            if (full) setUserFullName(full);
           }
-        }
-
-        // 3. Búsqueda inteligente y flexible del nombre real
-        const userTarget = String(user?.correo || user?.id || user?.nombre || '').toLowerCase().trim();
-        const prefixTarget = userTarget.split('@')[0];
-        const alphaTarget = prefixTarget.replace(/[^a-z]/g, '');
-
-        let usersList: UserBackendItem[] = [];
-        if (usersRes.status === 'fulfilled' && Array.isArray(usersRes.value.data)) {
-          usersList = usersRes.value.data;
-        }
-
-        let foundName = '';
-
-        // Intento 1: Coincidencia en la lista de usuarios
-        for (const u of usersList) {
-          const uEmail = String(u.email || '').toLowerCase().trim();
-          const uUsername = String(u.username || '').toLowerCase().trim();
-          const nom = String(u.nombres || u.first_name || '').trim();
-          const ape = String(u.apellidos || u.last_name || '').trim();
-          const full = `${nom} ${ape}`.trim() || String(u.nombre || '').trim();
-
-          if (full) {
-            if (uEmail === userTarget || uUsername === userTarget || uEmail.split('@')[0] === prefixTarget) {
-              foundName = full;
-              break;
-            }
-            if (alphaTarget.length >= 3 && (uEmail.includes(alphaTarget) || uUsername.includes(alphaTarget))) {
-              foundName = full;
-              break;
-            }
-          }
-        }
-
-        // Intento 2: Coincidencia inteligente en la lista de estudiantes
-        if (!foundName) {
-          for (const st of studentsList) {
-            const stEmail = String(st.email || st.correo || '').toLowerCase().trim();
-            const nom = String(st.nombres || st.first_name || '').trim();
-            const ape = String(st.apellidos || st.last_name || '').trim();
-            const full = `${nom} ${ape}`.trim() || String(st.fullName || st.nombre || '').trim();
-
-            if (full) {
-              const compactFull = full.toLowerCase().replace(/[^a-z]/g, '');
-              if (
-                stEmail === userTarget ||
-                stEmail.split('@')[0] === prefixTarget ||
-                (alphaTarget.length >= 3 && compactFull.includes(alphaTarget)) ||
-                (alphaTarget.length >= 3 && stEmail.includes(alphaTarget))
-              ) {
-                foundName = full;
-                break;
-              }
-            }
-          }
-        }
-
-        if (foundName) {
-          setUserFullName(foundName);
         }
       } catch (error) {
         console.error('Error al obtener información del Dashboard:', error);
@@ -243,31 +211,27 @@ export const Dashboard: React.FC = () => {
       {/* TARJETAS DE MÉTRICAS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-5 border border-slate-200 rounded-lg shadow-sm">
-          <span className="text-[11px] text-slate-500 block mb-2">Tutorías dictadas este mes</span>
-          <div className="text-3xl font-bold text-[#0d1b2a] mb-1">{stats.tutoriasMes}</div>
-          <span className="text-[11px] font-medium text-emerald-600">+0% vs. mes anterior</span>
+          <span className="text-[11px] text-slate-500 block mb-2">Estudiantes registrados</span>
+          <div className="text-3xl font-bold text-[#0d1b2a] mb-1">{stats.estudiantesRegistrados}</div>
+          <span className="text-[11px] font-medium text-slate-500">En el sistema</span>
         </div>
 
         <div className="bg-white p-5 border border-slate-200 rounded-lg shadow-sm">
-          <span className="text-[11px] text-slate-500 block mb-2">Estudiantes activos</span>
-          <div className="text-3xl font-bold text-[#0d1b2a] mb-1">
-            {stats.estudiantesActivos || recentStudents.length}
-          </div>
-          <span className="text-[11px] font-medium text-emerald-600">
-            +{stats.estudiantesActivos || recentStudents.length} esta semana
-          </span>
+          <span className="text-[11px] text-slate-500 block mb-2">Tutores registrados</span>
+          <div className="text-3xl font-bold text-[#0d1b2a] mb-1">{stats.tutoresRegistrados}</div>
+          <span className="text-[11px] font-medium text-slate-500">En el sistema</span>
         </div>
 
         <div className="bg-white p-5 border border-slate-200 rounded-lg shadow-sm">
-          <span className="text-[11px] text-slate-500 block mb-2">Tutores activos</span>
-          <div className="text-3xl font-bold text-[#0d1b2a] mb-1">{stats.tutoresActivos}</div>
-          <span className="text-[11px] font-medium text-amber-600">0 con baja disponibilidad</span>
+          <span className="text-[11px] text-slate-500 block mb-2">Bloques disponibles</span>
+          <div className="text-3xl font-bold text-[#0d1b2a] mb-1">{stats.bloquesDisponibles}</div>
+          <span className="text-[11px] font-medium text-emerald-600">Listos para reservar</span>
         </div>
 
         <div className="bg-white p-5 border border-slate-200 rounded-lg shadow-sm">
-          <span className="text-[11px] text-slate-500 block mb-2">Materia más demandada</span>
-          <div className="text-3xl font-bold text-[#0d1b2a] mb-1">{stats.materiaMasDemandada}</div>
-          <span className="text-[11px] font-medium text-amber-600">{stats.porcentajeDemandada} de las reservas</span>
+          <span className="text-[11px] text-slate-500 block mb-2">Materias activas</span>
+          <div className="text-3xl font-bold text-[#0d1b2a] mb-1">{stats.materiasActivas}</div>
+          <span className="text-[11px] font-medium text-slate-500">En el catálogo</span>
         </div>
       </div>
 

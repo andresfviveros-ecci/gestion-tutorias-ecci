@@ -176,7 +176,7 @@ export const Estudiantes: React.FC = () => {
         last_name: lastName.trim(),
         documento: documento.trim(),
         telefono: telefono.trim(),
-        codigo_institucional: codigoInstitucional.trim(),
+        codigo_institucional: codigoInstitucional.trim() || null,
       };
 
       await api.post('/accounts/estudiantes/', payload);
