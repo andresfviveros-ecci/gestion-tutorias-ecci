@@ -4,6 +4,22 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def dejar_un_periodo_activo(apps, schema_editor):
+    """Si hay varios periodos activos, deja activo solo el más reciente (por
+    fecha de inicio) y avisa cuáles se desactivaron; sin esto la restricción
+    falla con IntegrityError."""
+    PeriodoAcademico = apps.get_model('catalogo', 'PeriodoAcademico')
+    activos = list(PeriodoAcademico.objects.filter(activo=True).order_by('-fecha_inicio', '-id'))
+    if len(activos) < 2:
+        return
+    sobrantes = activos[1:]
+    PeriodoAcademico.objects.filter(pk__in=[p.pk for p in sobrantes]).update(activo=False)
+    print(
+        f'\n  Había {len(activos)} periodos activos. Queda activo {activos[0].codigo}; '
+        f'se desactivaron: {", ".join(p.codigo for p in sobrantes)}.'
+    )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -12,6 +28,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(dejar_un_periodo_activo, migrations.RunPython.noop),
         migrations.AddConstraint(
             model_name='periodoacademico',
             constraint=models.UniqueConstraint(condition=models.Q(('activo', True)), fields=('activo',), name='ux_periodo_un_activo'),
