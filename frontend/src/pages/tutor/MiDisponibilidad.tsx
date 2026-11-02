@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Loader } from '../../components/Loader';
-import { useScheduleStore } from '../../store/useScheduleStore';
 import { api } from '../../api/axios';
+import { fechaLocalISO } from '../../utils/date';
 
 // Interfaz para la respuesta de MateriaSerializer (Django)
 export interface MateriaBackend {
@@ -45,32 +45,15 @@ export interface BloqueDisponibilidadBackend {
   materiaNombre?: string;
 }
 
-interface ScheduleStoreInterface {
-  slots?: BloqueDisponibilidadBackend[];
-  fetchSlots?: () => Promise<void>;
-}
-
 const DIAS_SEMANA = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo'] as const;
 const MESES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
 ];
 
-// Helper para dar formato a fecha local YYYY-MM-DD sin desfase por zona horaria
-const formatLocalDate = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 export const MiDisponibilidad: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-
-  const scheduleStore = useScheduleStore() as unknown as ScheduleStoreInterface;
-  const storeSlots = scheduleStore?.slots || [];
-  const fetchSlots = scheduleStore?.fetchSlots;
 
   // ESTADOS CONECTADOS A LOS MODELOS DE DJANGO
   const [materias, setMaterias] = useState<MateriaBackend[]>([]);
@@ -78,11 +61,12 @@ export const MiDisponibilidad: React.FC = () => {
   const [materiaId, setMateriaId] = useState<string | number>('');
   const [periodoId, setPeriodoId] = useState<string | number>('');
 
-  const [fecha, setFecha] = useState(() => formatLocalDate(new Date()));
+  const [fecha, setFecha] = useState(() => fechaLocalISO(new Date()));
   const [horaInicio, setHoraInicio] = useState('');
   const [horaFin, setHoraFin] = useState('');
   const [modalidad, setModalidad] = useState<'VIRTUAL' | 'PRESENCIAL'>('VIRTUAL');
   const [ubicacionOEnlace, setUbicacionOEnlace] = useState('');
+  const [cupoTotal, setCupoTotal] = useState('1');
   const [observaciones, setObservaciones] = useState('');
 
   const [localSlots, setLocalSlots] = useState<BloqueDisponibilidadBackend[]>([]);
@@ -120,9 +104,8 @@ export const MiDisponibilidad: React.FC = () => {
           }
         }
       } catch (pErr) {
-        console.warn('Endpoint de periodos no disponible, asignando periodo predeterminado.', pErr);
-        setPeriodos([{ id: 1, codigo: '2026-2', activo: true }]);
-        setPeriodoId((prev) => prev || 1);
+        console.warn('No se pudieron cargar los periodos académicos.', pErr);
+        setPeriodos([]);
       }
 
       // 3. Cargar Bloques de Disponibilidad desde la API
@@ -133,16 +116,12 @@ export const MiDisponibilidad: React.FC = () => {
           : (resBloques.data as { results?: BloqueDisponibilidadBackend[] }).results || [];
         setLocalSlots(rawBloques);
       }
-
-      if (typeof fetchSlots === 'function') {
-        await fetchSlots().catch(() => null);
-      }
     } catch (err) {
       console.error('Error al conectar con la API de Django:', err);
     } finally {
       setLoading(false);
     }
-  }, [fetchSlots]);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -159,10 +138,8 @@ export const MiDisponibilidad: React.FC = () => {
     };
   }, [cargarCatalogos]);
 
-  // COMBINAR Y PRIORIZAR BLOQUES OBTENIDOS DE LA BASE DE DATOS
-  const slotsActuales = useMemo(() => {
-    return localSlots.length > 0 ? localSlots : storeSlots;
-  }, [localSlots, storeSlots]);
+  // BLOQUES CARGADOS DESDE LA BASE DE DATOS
+  const slotsActuales = useMemo(() => localSlots, [localSlots]);
 
   const getWeekRange = (offset = 0) => {
     const now = new Date();
@@ -213,6 +190,16 @@ export const MiDisponibilidad: React.FC = () => {
       return;
     }
 
+    if (!periodoId) {
+      setErrorMessage('No hay un periodo académico disponible. Contacta al coordinador.');
+      return;
+    }
+
+    if (!cupoTotal || Number(cupoTotal) < 1) {
+      setErrorMessage('El cupo debe ser mayor que cero.');
+      return;
+    }
+
     if (!fecha || !horaInicio || !horaFin || !ubicacionOEnlace.trim()) {
       setErrorMessage('Por favor completa todos los campos requeridos.');
       return;
@@ -228,15 +215,15 @@ export const MiDisponibilidad: React.FC = () => {
     try {
       const payload = {
         materia: Number(materiaId),
-        periodo: periodoId ? Number(periodoId) : 1,
+        periodo: Number(periodoId),
         fecha: fecha,
         hora_inicio: horaInicio,
         hora_fin: horaFin,
         modalidad: modalidad,
         lugar: modalidad === 'PRESENCIAL' ? ubicacionOEnlace.trim() : '',
         enlace_virtual: modalidad === 'VIRTUAL' ? ubicacionOEnlace.trim() : '',
-        cupo_total: 1,
-        observaciones: observaciones || 'Disponibilidad agregada por el docente',
+        cupo_total: Number(cupoTotal),
+        observaciones: observaciones.trim() || null,
       };
 
       await api.post('/disponibilidad/disponibilidad/', payload);
@@ -383,6 +370,24 @@ export const MiDisponibilidad: React.FC = () => {
                 </div>
 
                 <div>
+                  <label className="block font-semibold text-slate-700 mb-1.5">Cupo máximo de estudiantes</label>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={cupoTotal}
+                    onChange={(e) => setCupoTotal(e.target.value)}
+                    className="w-full h-10 px-3.5 bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
+                  />
+                </div>
+
+                {periodos.length === 0 && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                    No hay periodos académicos cargados. Sin periodo no se puede publicar la disponibilidad.
+                  </p>
+                )}
+
+                <div>
                   <label className="block font-semibold text-slate-700 mb-1.5">Modalidad</label>
                   <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-lg border border-slate-200">
                     <button
@@ -439,7 +444,7 @@ export const MiDisponibilidad: React.FC = () => {
               <div className="pt-3 shrink-0">
                 <button
                   type="submit"
-                  disabled={submitting || materias.length === 0}
+                  disabled={submitting || materias.length === 0 || periodos.length === 0}
                   className="w-full h-10 bg-[#0d1b2a] hover:bg-[#1e2d4a] text-white font-semibold rounded-md transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {submitting ? 'Publicando...' : 'Publicar'}
@@ -492,7 +497,7 @@ export const MiDisponibilidad: React.FC = () => {
                 {DIAS_SEMANA.map((dia, index) => {
                   const colDate = new Date(monday);
                   colDate.setDate(monday.getDate() + index);
-                  const colDateStr = formatLocalDate(colDate);
+                  const colDateStr = fechaLocalISO(colDate);
 
                   const daySlots = slotsActuales.filter((s) => s.fecha === colDateStr && s.estado !== 'CANCELADO');
 
