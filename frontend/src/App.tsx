@@ -12,7 +12,7 @@ import { DashboardTutor } from './pages/tutor/DashboardTutor';
 import { MiDisponibilidad } from './pages/tutor/MiDisponibilidad';
 import { Calendario } from './pages/tutor/Calendario';
 import { StudentHome } from './pages/estudiante/StudentHome';
-import { DashboardEstudiante } from './pages/estudiante/DashboardEstudiante';
+import { StudentPanel } from './pages/estudiante/StudentPanel';
 import { BuscarTutorias } from './pages/estudiante/BuscarTutorias';
 import { MisReservas } from './pages/estudiante/MisReservas';
 import { Layout } from './components/Layout';
@@ -256,9 +256,7 @@ export const App: React.FC = () => {
           path="/estudiante/dashboard"
           element={
             <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
-              <Layout>
-                <DashboardEstudiante />
-              </Layout>
+              <StudentPanel />
             </ProtectedRoute>
           }
         />
