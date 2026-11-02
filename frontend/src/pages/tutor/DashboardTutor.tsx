@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../api/axios';
+import { fechaLocalISO } from '../../utils/date';
 
 export interface TutoriaItem {
   id: number | string;
@@ -18,14 +19,6 @@ export interface TutoriaItem {
   cupo_ocupado?: number;
   cupo_total?: number;
 }
-
-// Helper para obtener YYYY-MM-DD local sin desfase UTC
-const formatLocalDate = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
 
 // Helper para extraer el nombre legible de la materia
 const obtenerNombreMateria = (materia: TutoriaItem['materia']): string => {
@@ -98,7 +91,7 @@ export const DashboardTutor: React.FC = () => {
 
   // --- CÁLCULO DE MÉTRICAS EN TIEMPO REAL ---
 
-  const todayStr = useMemo(() => formatLocalDate(new Date()), []);
+  const todayStr = useMemo(() => fechaLocalISO(new Date()), []);
 
   // 1. Tutorías esta semana y cuántas son hoy
   const { tutoriasSemana, tutoriasHoyCount } = useMemo(() => {

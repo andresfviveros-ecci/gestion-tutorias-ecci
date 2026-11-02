@@ -320,15 +320,32 @@ const loadUsersList = async (): Promise<UserAccount[]> => {
   return Array.from(userMap.values());
 };
 
+// Recupera nombres y apellidos tal como vienen del backend. Solo se parte el
+// nombre visible si el administrador lo edito en el formulario.
+const getNombrePartes = (user: UserAccount): { firstName: string; lastName: string } => {
+  const raw = user.rawBackendData;
+  const rawFirst = String(raw.first_name ?? raw.nombres ?? '').trim();
+  const rawLast = String(raw.last_name ?? raw.apellidos ?? '').trim();
+  const original = `${rawFirst} ${rawLast}`.trim();
+
+  if (original && user.nombre.trim() === original) {
+    return { firstName: rawFirst, lastName: rawLast };
+  }
+
+  const nameParts = user.nombre.trim().split(/\s+/);
+  return {
+    firstName: nameParts[0] || '',
+    lastName: nameParts.slice(1).join(' '),
+  };
+};
+
 // Actualizar estado de activación en Django mediante PUT
 const toggleUserActiveInBackend = async (user: UserAccount, newActiveState: boolean): Promise<BackendResult> => {
   if (!user.dbPk) {
     return { ok: false, error: 'Este usuario no posee un ID numérico válido en el backend.' };
   }
 
-  const nameParts = user.nombre.trim().split(' ');
-  const firstName = nameParts[0] || '';
-  const lastName = nameParts.slice(1).join(' ') || '';
+  const { firstName, lastName } = getNombrePartes(user);
 
   const url = `accounts/${user.endpoint}/${user.dbPk}/`;
 
@@ -362,9 +379,7 @@ const saveUserEditInBackend = async (user: UserAccount): Promise<BackendResult> 
     return { ok: false, error: 'Este usuario no posee un ID numérico válido en el backend.' };
   }
 
-  const nameParts = user.nombre.trim().split(' ');
-  const firstName = nameParts[0] || '';
-  const lastName = nameParts.slice(1).join(' ') || '';
+  const { firstName, lastName } = getNombrePartes(user);
 
   const url = `accounts/${user.endpoint}/${user.dbPk}/`;
 
