@@ -248,3 +248,37 @@ class PermisosUsuariosTests(APITestCase):
         self.client.force_authenticate(self.estudiante)
         response = self.client.get(f'/api/accounts/coordinadores/{self.coordinador.id}/')
         self.assertEqual(response.status_code, 403)
+
+    def test_coordinador_no_toca_al_superusuario(self):
+        admin = crear_usuario('Coordinador')
+        admin.is_superuser = True
+        admin.save(update_fields=['is_superuser'])
+        url = f'/api/accounts/coordinadores/{admin.id}/'
+
+        datos = {
+            'username': admin.username, 'email': admin.email, 'password': 'Robada2026*',
+            'first_name': 'X', 'last_name': 'Y', 'documento': admin.documento, 'telefono': '3001234567',
+        }
+        self.assertEqual(self.client.put(url, datos, format='json').status_code, 403)
+        self.assertEqual(self.client.delete(url).status_code, 403)
+        admin.refresh_from_db()
+        self.assertTrue(admin.check_password(CLAVE))
+
+        # Otro superusuario sí puede.
+        self.coordinador.is_superuser = True
+        self.coordinador.save(update_fields=['is_superuser'])
+        self.assertEqual(self.client.delete(url).status_code, 204)
+
+    def test_nadie_se_borra_a_si_mismo(self):
+        crear_usuario('Coordinador')
+        response = self.client.delete(f'/api/accounts/coordinadores/{self.coordinador.id}/')
+        self.assertEqual(response.status_code, 400)
+
+    def test_no_se_borra_al_ultimo_coordinador(self):
+        # Quien borra ya está inactivo (p. ej. con una sesión abierta), así
+        # que "otro" es el único coordinador activo que queda.
+        otro = crear_usuario('Coordinador')
+        get_user_model().objects.filter(pk=self.coordinador.pk).update(is_active=False)
+        response = self.client.delete(f'/api/accounts/coordinadores/{otro.id}/')
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(get_user_model().objects.filter(pk=otro.pk).exists())
