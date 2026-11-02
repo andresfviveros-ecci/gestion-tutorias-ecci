@@ -10,5 +10,5 @@ psycopg[binary]==3.3.6
 pytest==8.4.2
 pytest-django==4.14.0
 pytest-cov==7.1.0
-ruff==0.17.1
+ruff==0.17.3
 django-import-export==4.4.3
