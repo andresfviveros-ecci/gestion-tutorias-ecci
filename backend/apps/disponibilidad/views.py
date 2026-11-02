@@ -4,6 +4,7 @@ from apps.accounts.permisos import LecturaODocente
 from rest_framework.response import Response
 
 from apps.disponibilidad.models import BloqueDisponibilidad
+from apps.tutorias.services import bloque_iniciado
 from .serializers import BloqueDisponibilidadSerializer
 from .services import cancelar_bloque
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -123,6 +124,13 @@ class DisponibilidadUpdateView(views.APIView):
     @extend_schema(responses={200: dict, 204: None})
     def delete(self, request, pk, format=None):
         disponibilidad = self.get_propia(request, pk)
+
+        # Un bloque que ya empezó es historial: cambiarlo alteraría los reportes.
+        if bloque_iniciado(disponibilidad):
+            return Response(
+                {'detail': 'Este bloque ya inició o terminó, así que no se puede eliminar ni cancelar.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Sin tutorías se borra. Con tutorías se cancela: las reservas
         # activas pasan a CANCELADA_DOCENTE y se avisa a cada estudiante.

@@ -184,9 +184,14 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    # Por IP; se aplica a las vistas que declaran throttle_scope.
+    # La IP sale de REMOTE_ADDR y no de X-Forwarded-For, que lo manda el
+    # cliente: si no, basta cambiar el header para saltarse el límite.
+    'NUM_PROXIES': 0,
+    # Por IP; se aplica a las vistas que declaran throttle_scope. Cada vista
+    # tiene su scope para que una no agote los intentos de la otra.
     'DEFAULT_THROTTLE_RATES': {
         'recovery': os.getenv('THROTTLE_RECOVERY', '5/hour'),
+        'change_password': os.getenv('THROTTLE_CHANGE_PASSWORD', '10/hour'),
     },
 }
 
