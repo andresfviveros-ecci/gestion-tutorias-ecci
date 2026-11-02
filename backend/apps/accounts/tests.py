@@ -15,8 +15,8 @@ CHANGE_URL = '/api/accounts/recovery/change-password/'
 REFRESH_URL = '/api/accounts/token/refresh/'
 LOGOUT_URL = '/api/accounts/logout/'
 ESTUDIANTES_URL = '/api/accounts/estudiantes/'
-# Clave que usa ScopedRateThrottle para el scope 'recovery' desde el cliente de pruebas.
-THROTTLE_KEY = 'throttle_recovery_127.0.0.1'
+# Clave que usa ScopedRateThrottle para el scope 'change_password' desde el cliente de pruebas.
+THROTTLE_KEY = 'throttle_change_password_127.0.0.1'
 
 CLAVE = 'Clave2026*'
 NUEVA_CLAVE = 'Nueva2026*'
@@ -41,7 +41,9 @@ class SeguridadSesionTests(APITestCase):
         cache.clear()
 
     def pedir_recuperacion(self, email='coordinador@ecci.edu.co'):
-        response = self.client.post(RECOVERY_URL, {'email': email}, format='json')
+        # El correo sale en on_commit; en la prueba hay que ejecutarlo a mano.
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(RECOVERY_URL, {'email': email}, format='json')
         self.assertEqual(response.status_code, 200, response.data)
         return response.data['token']
 
@@ -68,7 +70,7 @@ class SeguridadSesionTests(APITestCase):
     def test_recuperacion_completa_cambia_la_clave(self):
         token = self.pedir_recuperacion()
         self.assertEqual(len(mail.outbox), 1)
-        pin = cache.get(clave_pin(RecoveryToken(token)['jti']))
+        pin = cache.get(clave_pin(RecoveryToken(token)['jti']))['pin']
         self.assertIn(pin, mail.outbox[0].body)
 
         response = self.cambiar_clave(token, pin)
@@ -81,7 +83,7 @@ class SeguridadSesionTests(APITestCase):
     # BE-02
     def test_pin_se_invalida_tras_cinco_fallos(self):
         token = self.pedir_recuperacion()
-        pin = cache.get(clave_pin(RecoveryToken(token)['jti']))
+        pin = cache.get(clave_pin(RecoveryToken(token)['jti']))['pin']
         incorrecto = f'{(int(pin) + 1) % 1_000_000:06d}'
         for _ in range(MAX_INTENTOS_PIN):
             cache.delete(THROTTLE_KEY)
@@ -99,15 +101,45 @@ class SeguridadSesionTests(APITestCase):
         response = self.client.post(RECOVERY_URL, {'email': self.user.email}, format='json')
         self.assertEqual(response.status_code, 429)
 
+    def test_limite_no_se_salta_con_x_forwarded_for(self):
+        for i in range(5):
+            self.client.post(RECOVERY_URL, {'email': self.user.email}, format='json',
+                             HTTP_X_FORWARDED_FOR=f'10.0.0.{i}')
+        response = self.client.post(RECOVERY_URL, {'email': self.user.email}, format='json',
+                                    HTTP_X_FORWARDED_FOR='10.0.0.99')
+        self.assertEqual(response.status_code, 429)
+
+    def test_recuperacion_y_cambio_tienen_limites_separados(self):
+        for _ in range(5):
+            token = self.pedir_recuperacion()
+        # recovery/ ya llegó al límite, pero change-password/ sigue atendiendo.
+        self.assertEqual(self.cambiar_clave(token, '000000').status_code, 400)
+
     # BE-24
     def test_recuperacion_no_revela_si_el_correo_existe(self):
-        existe = self.client.post(RECOVERY_URL, {'email': self.user.email}, format='json')
-        no_existe = self.client.post(RECOVERY_URL, {'email': 'nadie@ecci.edu.co'}, format='json')
+        with self.captureOnCommitCallbacks(execute=True):
+            existe = self.client.post(RECOVERY_URL, {'email': self.user.email}, format='json')
+            no_existe = self.client.post(RECOVERY_URL, {'email': 'nadie@ecci.edu.co'}, format='json')
         self.assertEqual(existe.status_code, no_existe.status_code)
         self.assertEqual(existe.data['message'], no_existe.data['message'])
         self.assertIn('token', no_existe.data)
+        # El JWT se puede decodificar: los dos deben traer los mismos claims.
+        self.assertEqual(
+            set(RecoveryToken(existe.data['token']).payload),
+            set(RecoveryToken(no_existe.data['token']).payload)
+        )
+        self.assertNotIn('email', RecoveryToken(existe.data['token']).payload)
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(self.cambiar_clave(no_existe.data['token'], '123456').status_code, 400)
+
+    def test_cambiar_la_clave_cierra_las_sesiones(self):
+        login = self.client.post(LOGIN_URL, {'email': self.user.email, 'password': CLAVE}, format='json')
+        token = self.pedir_recuperacion()
+        pin = cache.get(clave_pin(RecoveryToken(token)['jti']))['pin']
+        self.assertEqual(self.cambiar_clave(token, pin).status_code, 200)
+
+        response = self.client.post(REFRESH_URL, {'refresh': login.data['refresh']}, format='json')
+        self.assertEqual(response.status_code, 401)
 
     # BE-03
     def test_refresh_renueva_y_rota_el_token(self):
