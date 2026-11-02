@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status, views
@@ -56,9 +57,16 @@ class DisponibilidadUpdateView(views.APIView):
         serializer = BloqueDisponibilidadSerializer(self.get_disponibilidad(pk))
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @transaction.atomic
     def actualizar(self, request, pk, partial):
+        self.get_propia(request, pk)
+        # La fila queda bloqueada hasta guardar: si un estudiante reserva
+        # mientras tanto, save() no devuelve cupo_ocupado ni estado atrás.
+        bloque = BloqueDisponibilidad.objects.select_for_update(of=('self',)).select_related(
+            'docente', 'materia', 'periodo'
+        ).get(pk=pk)
         serializer = BloqueDisponibilidadSerializer(
-            self.get_propia(request, pk),
+            bloque,
             data=request.data,
             partial=partial,
             context={'request': request}

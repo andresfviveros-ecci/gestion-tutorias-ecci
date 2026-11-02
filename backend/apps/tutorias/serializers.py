@@ -7,7 +7,7 @@ from rest_framework import serializers
 from apps.disponibilidad.models import BloqueDisponibilidad
 from apps.tutorias.models import Cancelacion, Tutoria
 
-from .services import bloque_iniciado, puede_cancelar, puede_editar
+from .services import bloque_iniciado, notificar_reserva, puede_cancelar, puede_editar
 
 
 class TutoriaRegisterSerializer(serializers.ModelSerializer):
@@ -101,6 +101,7 @@ class TutoriaRegisterSerializer(serializers.ModelSerializer):
             bloque.estado = 'COMPLETO'
 
         bloque.save(update_fields=['cupo_ocupado', 'estado'])
+        notificar_reserva(tutoria)
 
         return tutoria
 

@@ -61,6 +61,10 @@ BASE_APPS = [
 ]
 
 THIRD_PARTY_APPS = [
+    # rest_framework y rest_framework_simplejwt van aquí para que Django
+    # cargue sus traducciones: sin ellos los mensajes salen en inglés.
+    'rest_framework',
+    'rest_framework_simplejwt',
     'import_export',
     'corsheaders',
     'drf_spectacular',
@@ -160,7 +164,7 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER or 'no-responder@ecci.edu.co'
 # contraseña. Es la misma lista que usa el frontend (VITE_EMAIL_DOMAINS).
 EMAIL_DOMAINS = [
     dominio.strip().lower()
-    for dominio in os.getenv('EMAIL_DOMAINS', 'ecci.edu.co').split(',')
+    for dominio in os.getenv('EMAIL_DOMAINS', 'ecci.edu.co,aulalibre.test').split(',')
     if dominio.strip()
 ]
 

@@ -1,5 +1,6 @@
 import re
 import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -15,8 +16,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .tokens import RecoveryToken
 
-# Intentos fallidos de PIN antes de invalidar la recuperación (BE-02).
+# Intentos fallidos de PIN antes de invalidar la recuperación (BE-02), y
+# cuánto dura el bloqueo de la cuenta después del último fallo.
 MAX_INTENTOS_PIN = 5
+BLOQUEO_PIN = timedelta(minutes=15)
 
 
 def validar_clave(password):
@@ -46,8 +49,9 @@ def clave_pin(jti):
     return f'password_recovery_{jti}'
 
 
-def clave_intentos(jti):
-    return f'password_recovery_intentos_{jti}'
+def clave_intentos(user_id):
+    # Por usuario y no por token: pedir un token nuevo no reinicia la cuenta.
+    return f'password_recovery_intentos_{user_id}'
 
 
 def cerrar_sesiones(user):
@@ -69,6 +73,10 @@ class LoginSerializers(serializers.Serializer):
         ).first()
         # BE-23: authenticate() descarta a los inactivos y el mensaje nunca
         # llegaba. Se revisa la clave primero para no revelar cuentas.
+        if not user:
+            # Se calcula un hash igual, para que el tiempo de respuesta no
+            # delate qué correos tienen cuenta.
+            get_user_model()().set_password(password)
         if not user or not user.check_password(password):
             raise serializers.ValidationError(
                 'Credenciales invalidas.'
@@ -102,9 +110,12 @@ class ChangePasswordSerializer(serializers.Serializer):
             jti = token['jti']
             # El usuario va en la caché junto al PIN, no en el token (BE-24).
             guardado = cache.get(clave_pin(jti))
+            if guardado and cache.get(clave_intentos(guardado['user_id']), 0) >= MAX_INTENTOS_PIN:
+                cache.delete(clave_pin(jti))
+                guardado = None
             if not guardado or not secrets.compare_digest(guardado['pin'].encode(), attrs['pin'].encode()):
                 if guardado:
-                    self._registrar_intento_fallido(jti)
+                    self._registrar_intento_fallido(jti, guardado['user_id'])
                 raise serializers.ValidationError(
                     'Código de recuperación incorrecto o expirado.'
                 )
@@ -129,18 +140,19 @@ class ChangePasswordSerializer(serializers.Serializer):
         attrs['jti'] = jti
         return attrs
 
-    def _registrar_intento_fallido(self, jti):
-        clave = clave_intentos(jti)
-        cache.add(clave, 0, timeout=RecoveryToken.lifetime.total_seconds())
+    def _registrar_intento_fallido(self, jti, user_id):
+        clave = clave_intentos(user_id)
+        cache.add(clave, 0, timeout=BLOQUEO_PIN.total_seconds())
         if cache.incr(clave) >= MAX_INTENTOS_PIN:
-            cache.delete_many([clave_pin(jti), clave])
+            # El contador se queda: bloquea también los tokens que pida después.
+            cache.delete(clave_pin(jti))
 
     def save(self, **kwargs):
         user = self.validated_data['user']
         jti = self.validated_data['jti']
         user.set_password(self.validated_data['password'])
         user.save()
-        cache.delete_many([clave_pin(jti), clave_intentos(jti)])
+        cache.delete_many([clave_pin(jti), clave_intentos(user.id)])
         cerrar_sesiones(user)
         return user
     
@@ -249,6 +261,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
     def validate_password(self, value):
         validar_clave(value)
+        return value
+
+    def validate_is_active(self, value):
+        request = self.context.get('request')
+        if not value and request and self.instance is not None and self.instance.pk == request.user.pk:
+            raise serializers.ValidationError('No puedes desactivar tu propia cuenta.')
         return value
 
     def validate(self, attrs):

@@ -152,14 +152,17 @@ def eliminar_o_desactivar(request, user):
 
 
 class UsuarioListView(generics.ListCreateAPIView):
-    """Listado (paginado con ?page=) y alta de usuarios de un grupo."""
+    """Listado (paginado con ?page=, filtro ?is_active=) y alta de usuarios
+    de un grupo. La coordinación ve también a los inactivos, para poder
+    reactivarlos; con solo_activos, los demás grupos solo ven los activos."""
     permission_classes = [EsCoordinador]
+    filterset_fields = ['is_active']
     grupo = None
     solo_activos = False
 
     def get_queryset(self):
         users = get_user_model().objects.filter(groups__name=self.grupo)
-        if self.solo_activos:
+        if self.solo_activos and not self.request.user.groups.filter(name='Coordinador').exists():
             users = users.filter(is_active=True)
         return users.distinct().order_by('id')
 
@@ -176,7 +179,9 @@ class UsuarioDetailView(views.APIView):
     def actualizar(self, request, pk, partial):
         user = self.get_user(pk)
         proteger_usuario(request, user)
-        serializer = self.serializer_class(user, data=request.data, partial=partial)
+        serializer = self.serializer_class(
+            user, data=request.data, partial=partial, context={'request': request}
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)

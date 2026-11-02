@@ -418,3 +418,134 @@ class ContratoApiTests(APITestCase):
         self.assertEqual(invalido.status_code, 400)
         self.assertEqual(set(invalido.data['errors']), {'email', 'password'})
         self.assertTrue(invalido.data['detail'])
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class RevisionCuentasTests(APITestCase):
+    """Pendientes de la revisión de #49, #50 y #52."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.coordinador = crear_usuario('Coordinador')
+        cls.docente = crear_usuario('Docente')
+        cls.estudiante = crear_usuario('Estudiante')
+
+    def setUp(self):
+        cache.clear()
+
+    def pedir_token(self, email):
+        with self.captureOnCommitCallbacks(execute=True):
+            token = self.client.post(RECOVERY_URL, {'email': email}, format='json').data['token']
+        return token, cache.get(clave_pin(RecoveryToken(token)['jti']))['pin']
+
+    def cambiar(self, token, pin):
+        cache.delete('throttle_change_password_127.0.0.1')
+        return self.client.post(CHANGE_URL, {
+            'token': token, 'pin': pin, 'password': 'Nueva2026*', 'password_confirm': 'Nueva2026*',
+        }, format='json')
+
+    # 2.2: intentos por usuario
+    def test_un_token_nuevo_no_reinicia_los_intentos(self):
+        token, pin = self.pedir_token(self.estudiante.email)
+        incorrecto = f'{(int(pin) + 1) % 1_000_000:06d}'
+        for _ in range(MAX_INTENTOS_PIN):
+            self.assertEqual(self.cambiar(token, incorrecto).status_code, 400)
+
+        cache.delete('throttle_recovery_127.0.0.1')
+        token, pin = self.pedir_token(self.estudiante.email)
+        self.assertEqual(self.cambiar(token, pin).status_code, 400)
+        self.estudiante.refresh_from_db()
+        self.assertTrue(self.estudiante.check_password(CLAVE))
+
+    # 2.2: tiempo del login
+    def test_login_con_correo_inexistente_calcula_un_hash(self):
+        User = get_user_model()
+        original = User.set_password
+        llamadas = []
+
+        def espia(user, clave):
+            llamadas.append(clave)
+            return original(user, clave)
+
+        User.set_password = espia
+        try:
+            response = self.client.post(LOGIN_URL, {'email': 'nadie@ecci.edu.co', 'password': CLAVE}, format='json')
+        finally:
+            User.set_password = original
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(llamadas, [CLAVE])
+
+    # 3.2: grupos y superusuario
+    def test_la_migracion_crea_los_grupos(self):
+        nombres = set(Group.objects.values_list('name', flat=True))
+        self.assertTrue({'Estudiante', 'Docente', 'Coordinador'} <= nombres)
+
+    def test_superusuario_sin_grupo_pasa_los_permisos(self):
+        admin = get_user_model().objects.create_superuser('raiz', 'raiz@ecci.edu.co', CLAVE)
+        self.client.force_authenticate(admin)
+        self.assertEqual(self.client.get(ESTUDIANTES_URL).status_code, 200)
+
+    # 3.2 y 5.2: inactivos visibles para la coordinación
+    def test_coordinacion_ve_y_filtra_inactivos(self):
+        inactivo = crear_usuario('Docente')
+        get_user_model().objects.filter(pk=inactivo.pk).update(is_active=False)
+
+        self.client.force_authenticate(self.coordinador)
+        ids = {u['id'] for u in self.client.get('/api/accounts/tutores/').data}
+        self.assertIn(inactivo.id, ids)
+        datos = self.client.get('/api/accounts/tutores/', {'is_active': 'false'}).data
+        self.assertEqual([u['id'] for u in datos], [inactivo.id])
+        self.assertEqual(self.client.get(ESTUDIANTES_URL, {'is_active': 'true'}).data[0]['is_active'], True)
+
+        # El estudiante solo ve docentes activos.
+        self.client.force_authenticate(self.estudiante)
+        ids = {u['id'] for u in self.client.get('/api/accounts/tutores/').data}
+        self.assertNotIn(inactivo.id, ids)
+
+    def test_reactivar_un_docente(self):
+        get_user_model().objects.filter(pk=self.docente.pk).update(is_active=False)
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.patch(f'/api/accounts/tutores/{self.docente.id}/', {'is_active': True}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data['is_active'])
+
+    # 5.2: un coordinador no se desactiva a sí mismo
+    def test_coordinador_no_se_desactiva(self):
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.patch(
+            f'/api/accounts/coordinadores/{self.coordinador.id}/', {'is_active': False}, format='json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('is_active', response.data['errors'])
+
+
+class ContratoErroresTests(APITestCase):
+    """Pendientes de la revisión de #53: mensajes en español y forma de errors."""
+
+    def test_token_invalido_en_espanol(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer abc.def.ghi')
+        response = self.client.get('/api/accounts/me/')
+        self.assertEqual(response.status_code, 401)
+        self.assertNotIn('Given token', response.data['detail'])
+
+    def test_pagina_invalida_en_espanol(self):
+        self.client.force_authenticate(crear_usuario('Docente'))
+        response = self.client.get('/api/disponibilidad/disponibilidad/', {'page': 999})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data['detail'], 'Página inválida.')
+
+    def test_errors_siempre_trae_listas(self):
+        from rest_framework.exceptions import ValidationError
+
+        from config.api import manejar_excepcion
+        response = manejar_excepcion(ValidationError({'bloque_id': 'No disponible.'}), {})
+        self.assertEqual(response.data['errors'], {'bloque_id': ['No disponible.']})
+
+    def test_choque_de_restriccion_responde_400(self):
+        from django.db import IntegrityError
+
+        from config.api import manejar_excepcion
+        error = IntegrityError('duplicate key value violates unique constraint "ux_user_email_ci"')
+        response = manejar_excepcion(error, {})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('email', response.data['errors'])
