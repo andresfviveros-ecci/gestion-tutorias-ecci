@@ -1,3 +1,10 @@
+from contextlib import redirect_stdout
+from datetime import date, timedelta
+from io import StringIO
+
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.test import TransactionTestCase
 from rest_framework.test import APITestCase
 
 from apps.accounts.pruebas import (
@@ -92,3 +99,29 @@ class PermisosCatalogoTests(APITestCase):
         self.client.force_authenticate(self.coordinador)
         response = self.client.delete(f'/api/catalogo/periodos/{self.periodo.id}/')
         self.assertEqual(response.status_code, 409)
+
+
+class MigracionPeriodoActivoTests(TransactionTestCase):
+    """catalogo/0002 no falla si la base ya tiene varios periodos activos."""
+
+    antes = [('catalogo', '0001_initial')]
+    despues = [('catalogo', '0002_periodo_un_activo')]
+
+    def tearDown(self):
+        # Deja la base en la última migración para las demás pruebas.
+        MigrationExecutor(connection).migrate(MigrationExecutor(connection).loader.graph.leaf_nodes())
+
+    def test_deja_activo_solo_el_mas_reciente(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.antes)
+        Periodo = executor.loader.project_state(self.antes).apps.get_model('catalogo', 'PeriodoAcademico')
+        for codigo, inicio in (('2025-2', date(2025, 7, 1)), ('2026-1', date(2026, 1, 15)), ('2026-2', date(2026, 7, 1))):
+            Periodo.objects.create(codigo=codigo, fecha_inicio=inicio, fecha_fin=inicio + timedelta(days=150), activo=True)
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        with redirect_stdout(StringIO()):
+            executor.migrate(self.despues)
+
+        Periodo = executor.loader.project_state(self.despues).apps.get_model('catalogo', 'PeriodoAcademico')
+        self.assertEqual(list(Periodo.objects.filter(activo=True).values_list('codigo', flat=True)), ['2026-2'])

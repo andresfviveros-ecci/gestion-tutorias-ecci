@@ -1,9 +1,11 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status, views
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -79,14 +81,15 @@ class RecoveryTokenView(views.APIView):
 
         # Solo se envía el correo si el usuario existe, pero la respuesta es
         # igual en ambos casos para no revelar qué correos están registrados.
+        # Un fallo del correo tampoco cambia la respuesta.
         if user:
-            send_mail(
+            transaction.on_commit(lambda: send_mail(
                 'Recuperación de contraseña',
                 f'Tu código de recuperación es: {pin}',
                 settings.DEFAULT_FROM_EMAIL,
                 [user.email],
-                fail_silently=False,
-            )
+                fail_silently=True,
+            ))
 
         return Response(
             {
@@ -101,7 +104,7 @@ class RecoveryTokenView(views.APIView):
 class ChangePasswordView(views.APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = 'recovery'
+    throttle_scope = 'change_password'
 
     @extend_schema(request=ChangePasswordSerializer, responses={200: MensajeSerializer})
     def post(self, request, format=None):
@@ -114,9 +117,29 @@ class ChangePasswordView(views.APIView):
             status=status.HTTP_200_OK
         )
 
-def eliminar_o_desactivar(user):
+def proteger_usuario(request, user, borrar=False):
+    """Reglas para editar o borrar cuentas desde los CRUD de usuarios:
+    solo un superusuario toca a otro superusuario, nadie se borra a sí
+    mismo y siempre queda al menos un coordinador activo."""
+    if user.is_superuser and not request.user.is_superuser:
+        raise PermissionDenied('Solo un superusuario puede editar o eliminar a otro superusuario.')
+    if not borrar:
+        return
+    if user.pk == request.user.pk:
+        raise ValidationError('No puedes eliminar tu propia cuenta.')
+    if user.groups.filter(name='Coordinador').exists():
+        otros = get_user_model().objects.filter(
+            groups__name='Coordinador',
+            is_active=True
+        ).exclude(pk=user.pk)
+        if not otros.exists():
+            raise ValidationError('No se puede eliminar al último coordinador activo.')
+
+
+def eliminar_o_desactivar(request, user):
     """Borra el usuario si no tiene historial. Si tiene tutorías o bloques
     (BE-14) lo desactiva, para no perder ese historial ni responder 500."""
+    proteger_usuario(request, user, borrar=True)
     if user.tutorias.exists() or user.disponibilidades.exists():
         user.is_active = False
         user.save(update_fields=['is_active'])
@@ -151,7 +174,9 @@ class UsuarioDetailView(views.APIView):
         return get_object_or_404(get_user_model(), pk=pk, groups__name=self.grupo)
 
     def actualizar(self, request, pk, partial):
-        serializer = self.serializer_class(self.get_user(pk), data=request.data, partial=partial)
+        user = self.get_user(pk)
+        proteger_usuario(request, user)
+        serializer = self.serializer_class(user, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -168,7 +193,7 @@ class UsuarioDetailView(views.APIView):
 
     @extend_schema(responses={200: inline_serializer('UsuarioDesactivado', {'detail': serializers.CharField()}), 204: None})
     def delete(self, request, pk, format=None):
-        return eliminar_o_desactivar(self.get_user(pk))
+        return eliminar_o_desactivar(request, self.get_user(pk))
 
 
 """ API PARA CRUD ESTUDIANTE"""

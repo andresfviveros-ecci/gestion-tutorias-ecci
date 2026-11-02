@@ -110,3 +110,14 @@ class BloqueDisponibilidadSerializer(serializers.ModelSerializer):
             )
 
         return attrs
+
+    def update(self, instance, validated_data):
+        bloque = super().update(instance, validated_data)
+        # Si cambia cupo_total, el estado se recalcula con el cupo ocupado.
+        # Un bloque cancelado o cerrado se queda como está.
+        if bloque.estado in ('DISPONIBLE', 'COMPLETO'):
+            estado = 'DISPONIBLE' if bloque.cupo_ocupado < bloque.cupo_total else 'COMPLETO'
+            if estado != bloque.estado:
+                bloque.estado = estado
+                bloque.save(update_fields=['estado'])
+        return bloque

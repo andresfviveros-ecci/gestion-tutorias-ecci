@@ -1,10 +1,12 @@
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status, views
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.accounts.permisos import LecturaODocente
 from apps.disponibilidad.models import BloqueDisponibilidad
+from apps.tutorias.services import bloque_iniciado
 
 from .filters import BloqueDisponibilidadFilter
 from .serializers import BloqueDisponibilidadSerializer
@@ -91,6 +93,10 @@ class DisponibilidadUpdateView(views.APIView):
     )
     def delete(self, request, pk, format=None):
         disponibilidad = self.get_propia(request, pk)
+
+        # Un bloque que ya empezó es historial: cambiarlo alteraría los reportes.
+        if bloque_iniciado(disponibilidad):
+            raise ValidationError('Este bloque ya inició o terminó, así que no se puede eliminar ni cancelar.')
 
         # Sin tutorías se borra. Con tutorías se cancela: las reservas
         # activas pasan a CANCELADA_DOCENTE y se avisa a cada estudiante.

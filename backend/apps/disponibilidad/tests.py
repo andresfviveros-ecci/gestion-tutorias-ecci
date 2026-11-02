@@ -167,6 +167,30 @@ class ReglasDisponibilidadTests(APITestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, [self.estudiante.email])
 
+    def test_no_se_borra_un_bloque_que_ya_empezo(self):
+        bloque = crear_bloque(self.docente, self.periodo, self.materia,
+                              fecha=date.today() - timedelta(days=2), cupo_ocupado=1)
+        tutoria = crear_tutoria(bloque, self.estudiante)
+        response = self.client.delete(f'/api/disponibilidad/{bloque.id}/actualizar/')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('bloque ya inició', response.data['detail'])
+        bloque.refresh_from_db()
+        tutoria.refresh_from_db()
+        self.assertEqual(bloque.estado, 'DISPONIBLE')
+        self.assertEqual(tutoria.estado, 'RESERVADA')
+
+    def test_subir_el_cupo_vuelve_a_dejar_disponible(self):
+        bloque = crear_bloque(self.docente, self.periodo, self.materia,
+                              cupo_total=1, cupo_ocupado=1, estado='COMPLETO')
+        response = self.client.patch(f'/api/disponibilidad/{bloque.id}/actualizar/', {'cupo_total': 3}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['estado'], 'DISPONIBLE')
+
+    def test_bajar_el_cupo_hasta_el_ocupado_deja_completo(self):
+        bloque = crear_bloque(self.docente, self.periodo, self.materia, cupo_total=3, cupo_ocupado=2)
+        response = self.client.patch(f'/api/disponibilidad/{bloque.id}/actualizar/', {'cupo_total': 2}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['estado'], 'COMPLETO')
 
 class ListadoBloquesTests(APITestCase):
     """PR5: BE-27 (rango por defecto y filtros) y paginación opcional."""
