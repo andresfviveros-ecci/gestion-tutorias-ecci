@@ -1,14 +1,25 @@
-from rest_framework.response import Response
-from rest_framework import status, views
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from .serializers import *
 from django.core.mail import send_mail
-from drf_spectacular.utils import extend_schema
 from django.shortcuts import get_object_or_404
-from rest_framework.permissions import AllowAny
-from .permisos import EsCoordinador, EsCoordinadorOEstudiante
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import generics, serializers, status, views
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+
+from .permisos import EsCoordinador, EsCoordinadorOEstudiante
+from .serializers import (
+    ChangePasswordSerializer,
+    CoordinatorSerializer,
+    LoginSerializers,
+    MeSerializer,
+    RecoveryTokenSerializer,
+    StudentRegisterSerializer,
+    TutorRegisterSerializer,
+)
+
+MensajeSerializer = inline_serializer('Mensaje', {'message': serializers.CharField()})
 
 
 """ API PARA INICIAR SESION"""
@@ -16,6 +27,14 @@ from rest_framework.throttling import ScopedRateThrottle
 class LoginView(views.APIView):
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        request=LoginSerializers,
+        responses={200: inline_serializer('Sesion', {
+            'access': serializers.CharField(),
+            'refresh': serializers.CharField(),
+            'groups': serializers.ListField(child=serializers.ListField()),
+        })}
+    )
     def post(self, request, format=None):
         serializer = LoginSerializers(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -27,6 +46,15 @@ class LoginView(views.APIView):
         }, status=status.HTTP_200_OK)
 
 
+""" API DEL USUARIO EN SESION """
+@extend_schema(tags=['Autenticación'])
+class MeView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: MeSerializer})
+    def get(self, request, format=None):
+        return Response(MeSerializer(request.user).data, status=status.HTTP_200_OK)
+
 
 """ API PARA RECUPERAR CONTRASEÑA """
 @extend_schema(tags=['Autenticación'])
@@ -35,6 +63,13 @@ class RecoveryTokenView(views.APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'recovery'
 
+    @extend_schema(
+        request=RecoveryTokenSerializer,
+        responses={200: inline_serializer('RecuperacionIniciada', {
+            'message': serializers.CharField(),
+            'token': serializers.CharField(),
+        })}
+    )
     def post(self, request, format=None):
         serializer = RecoveryTokenSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -68,6 +103,7 @@ class ChangePasswordView(views.APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'recovery'
 
+    @extend_schema(request=ChangePasswordSerializer, responses={200: MensajeSerializer})
     def post(self, request, format=None):
         serializer = ChangePasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -90,6 +126,19 @@ def eliminar_o_desactivar(user):
         )
     user.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class UsuarioListView(generics.ListCreateAPIView):
+    """Listado (paginado con ?page=) y alta de usuarios de un grupo."""
+    permission_classes = [EsCoordinador]
+    grupo = None
+    solo_activos = False
+
+    def get_queryset(self):
+        users = get_user_model().objects.filter(groups__name=self.grupo)
+        if self.solo_activos:
+            users = users.filter(is_active=True)
+        return users.distinct().order_by('id')
 
 
 class UsuarioDetailView(views.APIView):
@@ -117,26 +166,16 @@ class UsuarioDetailView(views.APIView):
     def patch(self, request, pk, format=None):
         return self.actualizar(request, pk, partial=True)
 
+    @extend_schema(responses={200: inline_serializer('UsuarioDesactivado', {'detail': serializers.CharField()}), 204: None})
     def delete(self, request, pk, format=None):
         return eliminar_o_desactivar(self.get_user(pk))
 
 
 """ API PARA CRUD ESTUDIANTE"""
 @extend_schema(tags=['Estudiantes'])
-class StudentView(views.APIView):
-    permission_classes = [EsCoordinador]
-
-    def get(self, request, format=None):
-        users = get_user_model().objects.filter(groups__name='Estudiante')
-        serializer = StudentRegisterSerializer(users, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    @extend_schema(request=StudentRegisterSerializer)
-    def post(self, request, format=None):
-        serializer = StudentRegisterSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+class StudentView(UsuarioListView):
+    grupo = 'Estudiante'
+    serializer_class = StudentRegisterSerializer
 
 
 @extend_schema(tags=['Estudiantes'])
@@ -147,25 +186,16 @@ class StudentDetailView(UsuarioDetailView):
 
 """ API PARA REGISTRAR TUTORES/DOCENTE """
 @extend_schema(tags=['Docentes'])
-class TutorView(views.APIView):
+class TutorView(UsuarioListView):
+    grupo = 'Docente'
+    solo_activos = True
+    serializer_class = TutorRegisterSerializer
 
     def get_permissions(self):
         # Los estudiantes también listan docentes para reservar.
         if self.request.method == 'GET':
             return [EsCoordinadorOEstudiante()]
         return [EsCoordinador()]
-
-    def get(self, request, format=None):
-        users = get_user_model().objects.filter(groups__name='Docente', is_active=True).distinct()
-        serializer = TutorRegisterSerializer(users, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    
-    @extend_schema(request=TutorRegisterSerializer)
-    def post(self, request, format=None):
-        serializer = TutorRegisterSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(tags=['Docentes'])
@@ -176,20 +206,10 @@ class TutorDetailView(UsuarioDetailView):
 
 """ API PARA CRUD COORDINADORES"""
 @extend_schema(tags=['Coordinadores'])
-class CoordinatorView(views.APIView):
-    permission_classes = [EsCoordinador]
-
-    def get(self, request, format=None):
-        users = get_user_model().objects.filter(groups__name='Coordinador', is_active=True).distinct()
-        serializer = CoordinatorSerializer(users, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    @extend_schema(request=CoordinatorSerializer)
-    def post(self, request, format=None):
-        serializer = CoordinatorSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+class CoordinatorView(UsuarioListView):
+    grupo = 'Coordinador'
+    solo_activos = True
+    serializer_class = CoordinatorSerializer
 
 
 @extend_schema(tags=['Coordinadores'])

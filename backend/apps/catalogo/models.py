@@ -1,6 +1,8 @@
-from django.db import models
 from django.conf import settings
+from django.db import models
+
 from apps.models import BaseModel
+
 
 class ProgramaAcademico(BaseModel):
     codigo = models.CharField(max_length=20, unique=True, verbose_name='codigo')

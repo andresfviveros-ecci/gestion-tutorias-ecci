@@ -1,15 +1,17 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import views, status
-from rest_framework.response import Response
-from apps.accounts.permisos import EsDocente, LecturaOEstudiante
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import generics, serializers, status, views
 from rest_framework.exceptions import ValidationError
-from drf_spectacular.utils import extend_schema
+from rest_framework.response import Response
 
+from apps.accounts.permisos import EsDocente, LecturaOEstudiante
 from apps.tutorias.models import Tutoria
+
+from .filters import TutoriaFilter
 from .serializers import (
+    CancelacionSerializer,
     TutoriaRegisterSerializer,
     TutoriaSerializer,
-    CancelacionSerializer,
 )
 from .services import cancelar_tutoria, puede_editar
 
@@ -18,21 +20,25 @@ RELACIONES_LECTURA = ('bloque__docente', 'bloque__materia', 'estudiante')
 
 
 @extend_schema(tags=['Tutorías'])
-class TutoriaView(views.APIView):
+class TutoriaView(generics.ListAPIView):
+    """Tutorías del estudiante en sesión; filtros en TutoriaFilter."""
     permission_classes = [LecturaOEstudiante]
+    serializer_class = TutoriaSerializer
+    filterset_class = TutoriaFilter
 
-    @extend_schema(responses={200: TutoriaSerializer(many=True)})
-    def get(self, request, format=None):
-        tutorias = Tutoria.objects.filter(
-            estudiante=request.user
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):  # generación del esquema
+            return Tutoria.objects.none()
+        return Tutoria.objects.filter(
+            estudiante=self.request.user
         ).select_related(*RELACIONES_LECTURA)
-
-        serializer = TutoriaSerializer(tutorias, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(
         request=TutoriaRegisterSerializer,
-        responses={201: TutoriaSerializer}
+        responses={201: inline_serializer('TutoriaReservada', {
+            'message': serializers.CharField(),
+            'tutoria': TutoriaSerializer(),
+        })}
     )
     def post(self, request, format=None):
         serializer = TutoriaRegisterSerializer(
@@ -50,27 +56,24 @@ class TutoriaView(views.APIView):
 
 
 @extend_schema(tags=['Tutorías'])
-class TutoriasRecibidasView(views.APIView):
+class TutoriasRecibidasView(generics.ListAPIView):
     """Tutorías reservadas en los bloques del docente en sesión (BE-19)."""
     permission_classes = [EsDocente]
+    serializer_class = TutoriaSerializer
+    filterset_class = TutoriaFilter
 
-    @extend_schema(responses={200: TutoriaSerializer(many=True)})
-    def get(self, request, format=None):
-        tutorias = Tutoria.objects.filter(
-            bloque__docente=request.user
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):  # generación del esquema
+            return Tutoria.objects.none()
+        return Tutoria.objects.filter(
+            bloque__docente=self.request.user
         ).select_related(*RELACIONES_LECTURA).order_by('bloque__fecha', 'bloque__hora_inicio')
-
-        estado = request.query_params.get('estado')
-        if estado:
-            tutorias = tutorias.filter(estado=estado)
-
-        serializer = TutoriaSerializer(tutorias, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 @extend_schema(tags=['Tutorías'])
 class TutoriaDetailView(views.APIView):
     permission_classes = [LecturaOEstudiante]
+    serializer_class = TutoriaSerializer
 
     def get_tutoria(self, pk, user):
         return get_object_or_404(
@@ -120,7 +123,10 @@ class TutoriaDetailView(views.APIView):
 
     @extend_schema(
         request=CancelacionSerializer,
-        responses={200: dict}
+        responses={200: inline_serializer('TutoriaCancelada', {
+            'message': serializers.CharField(),
+            'cancelacion': CancelacionSerializer(),
+        })}
     )
     def delete(self, request, pk, format=None):
         tutoria = self.get_tutoria(pk, request.user)

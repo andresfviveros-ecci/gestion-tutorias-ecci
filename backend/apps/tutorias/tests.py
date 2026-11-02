@@ -4,7 +4,12 @@ from decimal import Decimal
 from django.test import TestCase
 from rest_framework.test import APITestCase
 
-from apps.accounts.pruebas import crear_bloque, crear_catalogo, crear_tutoria, crear_usuario
+from apps.accounts.pruebas import (
+    crear_bloque,
+    crear_catalogo,
+    crear_tutoria,
+    crear_usuario,
+)
 
 from .models import Tutoria
 from .services import calcular_horas_previas
@@ -88,7 +93,7 @@ class ReglasTutoriasTests(APITestCase):
         cancelacion = tutoria.cancelaciones.get()
         self.assertEqual(tutoria.estado, 'CANCELADA_ESTUDIANTE')
         self.assertEqual(cancelacion.origen, 'ESTUDIANTE')
-        self.assertGreater(cancelacion.horas_previas, Decimal('100'))
+        self.assertGreater(cancelacion.horas_previas, Decimal(100))
         self.assertEqual(self.bloque.cupo_ocupado, 0)
 
     # BE-20

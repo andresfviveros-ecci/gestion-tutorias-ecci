@@ -1,7 +1,14 @@
-from django.db import models
 from django.conf import settings
-from .choices import ESTADO_TUTORIA_CHOICES, ESTADO_ASISTENCIA_CHOICES, ORIGEN_CANCELACION_CHOICES
+from django.db import models
+
 from apps.models import BaseModel
+
+from .choices import (
+    ESTADO_ASISTENCIA_CHOICES,
+    ESTADO_TUTORIA_CHOICES,
+    ORIGEN_CANCELACION_CHOICES,
+)
+
 
 class Tutoria(BaseModel):
     codigo = models.CharField(max_length=20, unique=True, verbose_name='codigo')
@@ -32,7 +39,7 @@ class Tutoria(BaseModel):
                     ),
                     name='ux_tutoria_activa'
                 ),
-                models.CheckConstraint( check=models.Q(minutos_retraso__gte=0),name='ck_tutoria_retraso'),
+                models.CheckConstraint(condition=models.Q(minutos_retraso__gte=0), name="ck_tutoria_retraso"),
             ]
             indexes = [
                 models.Index(fields=['estudiante', 'estado'],name='idx_tutoria_estudiante'),

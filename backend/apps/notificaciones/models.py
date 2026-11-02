@@ -1,7 +1,10 @@
-from django.db import models
 from django.conf import settings
-from .choices import TIPO_NOTIFICACION_CHOICES
+from django.db import models
+
 from apps.models import BaseModel
+
+from .choices import TIPO_NOTIFICACION_CHOICES
+
 
 class Notificacion(BaseModel):
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notificaciones')

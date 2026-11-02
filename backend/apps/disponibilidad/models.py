@@ -1,8 +1,11 @@
-from django.db import models
 from django.conf import settings
-from .choices import MODALIDAD_CHOICES, ESTADO_BLOQUE_CHOICES
-from apps.models import BaseModel
+from django.db import models
+
 from apps.catalogo.models import Materia, PeriodoAcademico
+from apps.models import BaseModel
+
+from .choices import ESTADO_BLOQUE_CHOICES, MODALIDAD_CHOICES
+
 
 class BloqueDisponibilidad(BaseModel):
     docente = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='disponibilidades')
