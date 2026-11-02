@@ -6,6 +6,7 @@ from django.test import override_settings
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
+from .pruebas import crear_bloque, crear_catalogo, crear_tutoria, crear_usuario
 from .serializers import MAX_INTENTOS_PIN, clave_pin
 from .tokens import RecoveryToken
 
@@ -134,3 +135,84 @@ class SeguridadSesionTests(APITestCase):
         login = self.client.post(LOGIN_URL, {'email': self.user.email, 'password': CLAVE}, format='json')
         access = AccessToken(login.data['access'])
         self.assertEqual(access['exp'] - access['iat'], 60 * 60)
+
+
+class PermisosUsuariosTests(APITestCase):
+    """PR2: BE-13, BE-14 y BE-15 en el CRUD de usuarios."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.coordinador = crear_usuario('Coordinador')
+        cls.docente = crear_usuario('Docente')
+        cls.estudiante = crear_usuario('Estudiante')
+        _, cls.periodo, cls.materia = crear_catalogo()
+
+    def setUp(self):
+        self.client.force_authenticate(self.coordinador)
+
+    def test_sin_sesion_responde_401(self):
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.get(ESTUDIANTES_URL).status_code, 401)
+
+    def test_estudiante_no_lista_estudiantes(self):
+        self.client.force_authenticate(self.estudiante)
+        self.assertEqual(self.client.get(ESTUDIANTES_URL).status_code, 403)
+
+    def test_listado_de_docentes_para_coordinador_y_estudiante(self):
+        self.assertEqual(self.client.get('/api/accounts/tutores/').status_code, 200)
+        self.client.force_authenticate(self.estudiante)
+        self.assertEqual(self.client.get('/api/accounts/tutores/').status_code, 200)
+        self.client.force_authenticate(self.docente)
+        self.assertEqual(self.client.get('/api/accounts/tutores/').status_code, 403)
+
+    # BE-13
+    def test_detalle_inexistente_responde_404(self):
+        for recurso in ('estudiantes', 'tutores', 'coordinadores'):
+            with self.subTest(recurso=recurso):
+                self.assertEqual(self.client.get(f'/api/accounts/{recurso}/999999/').status_code, 404)
+
+    def test_detalle_de_otro_grupo_responde_404(self):
+        response = self.client.get(f'/api/accounts/tutores/{self.estudiante.id}/')
+        self.assertEqual(response.status_code, 404)
+
+    # BE-14
+    def test_estudiante_con_tutorias_se_desactiva(self):
+        crear_tutoria(crear_bloque(self.docente, self.periodo, self.materia), self.estudiante)
+        response = self.client.delete(f'{ESTUDIANTES_URL}{self.estudiante.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.estudiante.refresh_from_db()
+        self.assertFalse(self.estudiante.is_active)
+
+    def test_docente_con_bloques_se_desactiva(self):
+        crear_bloque(self.docente, self.periodo, self.materia)
+        response = self.client.delete(f'/api/accounts/tutores/{self.docente.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.docente.refresh_from_db()
+        self.assertFalse(self.docente.is_active)
+
+    def test_usuario_sin_historial_se_elimina(self):
+        nuevo = crear_usuario('Estudiante')
+        response = self.client.delete(f'{ESTUDIANTES_URL}{nuevo.id}/')
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(get_user_model().objects.filter(pk=nuevo.pk).exists())
+
+    # BE-15
+    def test_crud_de_coordinadores(self):
+        otro = crear_usuario('Coordinador')
+        url = f'/api/accounts/coordinadores/{otro.id}/'
+        self.assertEqual(self.client.get(url).data['email'], otro.email)
+
+        datos = {
+            'username': otro.username, 'email': otro.email, 'first_name': 'Laura',
+            'last_name': 'Gómez', 'documento': otro.documento, 'telefono': '3001234567',
+        }
+        response = self.client.put(url, datos, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['first_name'], 'Laura')
+
+        self.assertEqual(self.client.delete(url).status_code, 204)
+
+    def test_estudiante_no_gestiona_coordinadores(self):
+        self.client.force_authenticate(self.estudiante)
+        response = self.client.get(f'/api/accounts/coordinadores/{self.coordinador.id}/')
+        self.assertEqual(response.status_code, 403)

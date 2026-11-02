@@ -169,6 +169,10 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    # Todo exige sesión salvo las vistas que declaran AllowAny (login y recuperación).
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     # Por IP; se aplica a las vistas que declaran throttle_scope.
     'DEFAULT_THROTTLE_RATES': {

@@ -1,7 +1,7 @@
 from rest_framework import status, views
-from rest_framework.permissions import IsAuthenticated
+from apps.accounts.permisos import LecturaODocente
 from rest_framework.response import Response
-from django.db.models import Q
+from django.db.models import ProtectedError
 
 from apps.disponibilidad.models import BloqueDisponibilidad
 from .serializers import (
@@ -23,7 +23,7 @@ def existe_conflicto(docente, fecha, hora_inicio, hora_fin, excluir_id=None):
     return conflictos.exists()
 @extend_schema(tags=['Disponibilidad'])
 class BloqueDisponibilidadView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [LecturaODocente]
 
     @extend_schema(
         responses={200: BloqueDisponibilidadSerializer(many=True)}
@@ -91,7 +91,7 @@ class BloqueDisponibilidadView(views.APIView):
         )
 @extend_schema(tags=['Disponibilidad'])
 class DisponibilidadUpdateView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [LecturaODocente]
     def get_disponibilidad(self, pk):
         try:
             return BloqueDisponibilidad.objects.get(pk=pk)
@@ -195,7 +195,8 @@ class DisponibilidadUpdateView(views.APIView):
         responses={
             204: None,
             403: dict,
-            404: dict
+            404: dict,
+            409: dict
         }
     )
     def delete(self, request, pk, format=None):
@@ -226,5 +227,17 @@ class DisponibilidadUpdateView(views.APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        disponibilidad.delete()
+        try:
+            disponibilidad.delete()
+        except ProtectedError:
+            # Tiene tutorías (aunque estén canceladas) que dependen del bloque.
+            return Response(
+                {
+                    'detail': (
+                        'No se puede eliminar una disponibilidad '
+                        'con tutorías registradas.'
+                    )
+                },
+                status=status.HTTP_409_CONFLICT
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
