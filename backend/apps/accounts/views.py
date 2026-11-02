@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from .serializers import *
 from django.core.mail import send_mail
+from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from django.shortcuts import get_object_or_404
 from rest_framework.permissions import AllowAny
@@ -44,14 +45,15 @@ class RecoveryTokenView(views.APIView):
 
         # Solo se envía el correo si el usuario existe, pero la respuesta es
         # igual en ambos casos para no revelar qué correos están registrados.
+        # Un fallo del correo tampoco cambia la respuesta.
         if user:
-            send_mail(
+            transaction.on_commit(lambda: send_mail(
                 'Recuperación de contraseña',
                 f'Tu código de recuperación es: {pin}',
                 settings.DEFAULT_FROM_EMAIL,
                 [user.email],
-                fail_silently=False,
-            )
+                fail_silently=True,
+            ))
 
         return Response(
             {
@@ -66,7 +68,7 @@ class RecoveryTokenView(views.APIView):
 class ChangePasswordView(views.APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = 'recovery'
+    throttle_scope = 'change_password'
 
     def post(self, request, format=None):
         serializer = ChangePasswordSerializer(data=request.data)
