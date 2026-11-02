@@ -30,6 +30,14 @@ class PeriodoAcademico(BaseModel):
         verbose_name = 'Periodo académico'
         verbose_name_plural = 'Periodos académicos'
         ordering = ['id']
+        constraints = [
+            # BE-25: solo un periodo activo a la vez.
+            models.UniqueConstraint(
+                fields=['activo'],
+                condition=models.Q(activo=True),
+                name='ux_periodo_un_activo',
+            ),
+        ]
 
 
 class Materia(BaseModel):

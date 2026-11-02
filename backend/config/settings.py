@@ -129,13 +129,23 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # CONFIGURACION DE VARIABLES PARA ENVIOS DE CORREO
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# En desarrollo conviene django.core.mail.backends.console.EmailBackend:
+# los correos (PIN de recuperación, avisos) se ven en los logs del contenedor.
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER or 'no-responder@ecci.edu.co'
+
+# Dominios de correo aceptados al registrar usuarios y al recuperar la
+# contraseña. Es la misma lista que usa el frontend (VITE_EMAIL_DOMAINS).
+EMAIL_DOMAINS = [
+    dominio.strip().lower()
+    for dominio in os.getenv('EMAIL_DOMAINS', 'ecci.edu.co').split(',')
+    if dominio.strip()
+]
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/

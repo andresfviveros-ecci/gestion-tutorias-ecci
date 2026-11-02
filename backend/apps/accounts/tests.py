@@ -216,3 +216,106 @@ class PermisosUsuariosTests(APITestCase):
         self.client.force_authenticate(self.estudiante)
         response = self.client.get(f'/api/accounts/coordinadores/{self.coordinador.id}/')
         self.assertEqual(response.status_code, 403)
+
+
+@override_settings(EMAIL_DOMAINS=['ecci.edu.co'])
+class UsuariosTests(APITestCase):
+    """PR4: BE-16, BE-17, BE-23 y lo que el frontend necesita de usuarios."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.coordinador = crear_usuario('Coordinador')
+
+    def setUp(self):
+        self.client.force_authenticate(self.coordinador)
+
+    def datos(self, **cambios):
+        datos = {
+            'username': 'jperez',
+            'email': 'jperez@ecci.edu.co',
+            'password': CLAVE,
+            'first_name': 'Juan',
+            'last_name': 'Pérez',
+            'documento': '1010101010',
+            'telefono': '3001112233',
+            'codigo_institucional': '',
+        }
+        datos.update(cambios)
+        return datos
+
+    def crear(self, **cambios):
+        return self.client.post(ESTUDIANTES_URL, self.datos(**cambios), format='json')
+
+    def test_crea_estudiante_con_rol_y_grupo(self):
+        response = self.crear()
+        self.assertEqual(response.status_code, 201, response.data)
+        user = get_user_model().objects.get(pk=response.data['id'])
+        self.assertEqual(user.rol, 'Estudiante')
+        self.assertTrue(user.groups.filter(name='Estudiante').exists())
+        self.assertTrue(user.check_password(CLAVE))
+
+    # BE-16
+    def test_correo_unico_sin_distinguir_mayusculas(self):
+        self.crear()
+        response = self.crear(username='otro', documento='2020', email='JPEREZ@ecci.edu.co')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('email', response.data)
+
+    def test_correo_de_dominio_no_permitido(self):
+        response = self.crear(email='jperez@gmail.com')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('email', response.data)
+
+    # BE-17
+    def test_contrasena_obligatoria_al_crear(self):
+        datos = self.datos()
+        del datos['password']
+        response = self.client.post(ESTUDIANTES_URL, datos, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('password', response.data)
+
+    def test_contrasena_debil(self):
+        response = self.crear(password='abcdefgh')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(len(response.data['password']), 2)
+
+    def test_editar_sin_contrasena_la_conserva(self):
+        user_id = self.crear().data['id']
+        response = self.client.patch(f'{ESTUDIANTES_URL}{user_id}/', {'telefono': '3110000000'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(get_user_model().objects.get(pk=user_id).check_password(CLAVE))
+
+    # 4.1: is_active y PATCH parcial
+    def test_desactivar_con_patch(self):
+        user_id = self.crear().data['id']
+        response = self.client.patch(f'{ESTUDIANTES_URL}{user_id}/', {'is_active': False}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data['is_active'])
+        self.assertFalse(get_user_model().objects.get(pk=user_id).is_active)
+
+    # 4.1: codigo_institucional vacío como nulo
+    def test_varios_estudiantes_sin_codigo(self):
+        self.assertEqual(self.crear().status_code, 201)
+        response = self.crear(username='otro', email='otro@ecci.edu.co', documento='2020')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIsNone(response.data['codigo_institucional'])
+
+    # BE-23
+    def test_login_de_usuario_inactivo_explica_el_motivo(self):
+        user = crear_usuario('Estudiante')
+        user.is_active = False
+        user.save()
+        self.client.force_authenticate(None)
+        response = self.client.post(LOGIN_URL, {'email': user.email, 'password': CLAVE}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('inactivo', str(response.data))
+
+        response = self.client.post(LOGIN_URL, {'email': user.email, 'password': 'Otra2026*'}, format='json')
+        self.assertIn('Credenciales', str(response.data))
+
+    def test_login_sin_distinguir_mayusculas(self):
+        self.client.force_authenticate(None)
+        response = self.client.post(
+            LOGIN_URL, {'email': self.coordinador.email.upper(), 'password': CLAVE}, format='json'
+        )
+        self.assertEqual(response.status_code, 200)
