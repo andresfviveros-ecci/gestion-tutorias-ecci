@@ -90,7 +90,7 @@ jobs:
         run: python manage.py makemigrations --check --dry-run
 
       - name: Aplicar migraciones
-        run: python manage.py migrate --noinput
+        run: python manage.py migrate --noinput && python manage.py createcachetable
 
       - name: Datos de prueba (carga, segunda corrida y reset)
         run: |

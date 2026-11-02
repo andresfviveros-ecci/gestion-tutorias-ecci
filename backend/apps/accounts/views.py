@@ -5,14 +5,15 @@ from django.contrib.auth import get_user_model
 from .serializers import *
 from django.core.mail import send_mail
 from drf_spectacular.utils import extend_schema
-from rest_framework.permissions import IsAuthenticated
-import re
-from django.core.cache import cache
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
 
 
 """ API PARA INICIAR SESION"""
 @extend_schema(tags=['Autenticación'])
 class LoginView(views.APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request, format=None):
         serializer = LoginSerializers(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -28,6 +29,10 @@ class LoginView(views.APIView):
 """ API PARA RECUPERAR CONTRASEÑA """
 @extend_schema(tags=['Autenticación'])
 class RecoveryTokenView(views.APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'recovery'
+
     def post(self, request, format=None):
         serializer = RecoveryTokenSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -35,25 +40,32 @@ class RecoveryTokenView(views.APIView):
         user = serializer.validated_data['user']
         pin = serializer.validated_data['pin']
 
-        send_mail(
-            'Recuperación de contraseña',
-            f'Tu código de recuperación es: {pin}',
-            settings.EMAIL_HOST_USER,
-            [user.email],
-            fail_silently=False,
-        )
+        # Solo se envía el correo si el usuario existe, pero la respuesta es
+        # igual en ambos casos para no revelar qué correos están registrados.
+        if user:
+            send_mail(
+                'Recuperación de contraseña',
+                f'Tu código de recuperación es: {pin}',
+                settings.DEFAULT_FROM_EMAIL,
+                [user.email],
+                fail_silently=False,
+            )
 
         return Response(
             {
-                'message': 'Se ha enviado el código de recuperación al correo.',
+                'message': 'Si el correo está registrado, recibirás un código de recuperación.',
                 'token': serializer.validated_data['token']
             },
             status=status.HTTP_200_OK
         )
-    
+
 """ API PARA CAMBIAR CONTRASEÑA """
 @extend_schema(tags=['Autenticación'])
 class ChangePasswordView(views.APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'recovery'
+
     def post(self, request, format=None):
         serializer = ChangePasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

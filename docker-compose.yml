@@ -35,6 +35,7 @@ services:
     # (solo la primera vez; ver backend/apps/accounts/management/commands/datos_prueba.py).
     command: >
       bash -c "python manage.py migrate --noinput &&
+      python manage.py createcachetable &&
       if [ \"$$SEED_DEMO\" = \"1\" ]; then python manage.py datos_prueba; fi &&
       python manage.py runserver 0.0.0.0:8000"
     volumes:
@@ -55,6 +56,8 @@ services:
       EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
       EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
       SEED_DEMO: ${SEED_DEMO:-1}
+      JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-60}
+      JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-7}
     depends_on:
       db:
         condition: service_healthy

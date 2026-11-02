@@ -1,9 +1,12 @@
 from django.urls import path
+from rest_framework_simplejwt.views import TokenBlacklistView, TokenRefreshView
 from .views import ChangePasswordView, LoginView,RecoveryTokenView,StudentView,StudentDetailView,TutorView,TutorDetailView,CoordinatorView,CoordinatorDetailView
 
 urlpatterns = [
     # AUTENTICACIÓN
     path('login/', LoginView.as_view(), name='login'),
+    path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
+    path('logout/', TokenBlacklistView.as_view(), name='logout'),
     # RECUPERACIÓN DE CONTRASEÑA
     path('recovery/', RecoveryTokenView.as_view(), name='recovery'),
     # CRUD ESTUDIANTES
