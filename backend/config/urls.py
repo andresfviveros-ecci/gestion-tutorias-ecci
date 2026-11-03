@@ -17,4 +17,6 @@ urlpatterns = [
     path('api/catalogo/', include('apps.catalogo.urls')),
     # TUTORES ESTUDIANTES (RF-02 y RF-03)
     path('api/tutores/', include('apps.tutores.urls')),
+    # REPORTES (RF-09)
+    path('api/reportes/', include('apps.reportes.urls')),
 ]

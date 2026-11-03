@@ -8,7 +8,7 @@ from rest_framework import serializers
 from apps.catalogo.models import Configuracion
 from apps.disponibilidad.models import BloqueDisponibilidad
 from apps.tutores.services import validar_tutor_para_reserva
-from apps.tutorias.models import Cancelacion, Tutoria
+from apps.tutorias.models import Cancelacion, EvaluacionTutoria, Tutoria
 
 from .estados import ACTIVOS
 from .services import (
@@ -19,6 +19,7 @@ from .services import (
     notificar_reserva,
     puede_cancelar,
     puede_editar,
+    puede_evaluar,
     validar_plazo_reserva,
 )
 
@@ -159,6 +160,11 @@ class BloqueResumenSerializer(serializers.ModelSerializer):
         return {'id': bloque.docente_id, 'nombre': bloque.docente.get_full_name()}
 
 
+class EvaluacionLecturaSerializer(serializers.Serializer):
+    calificacion = serializers.IntegerField()
+    comentario = serializers.CharField(allow_null=True)
+
+
 class TutoriaSerializer(serializers.ModelSerializer):
     docente = serializers.CharField(
         source='bloque.docente.get_full_name',
@@ -172,6 +178,8 @@ class TutoriaSerializer(serializers.ModelSerializer):
     puede_cancelar = serializers.SerializerMethodField()
     puede_editar = serializers.SerializerMethodField()
     limite_cancelacion = serializers.SerializerMethodField()
+    puede_evaluar = serializers.SerializerMethodField()
+    evaluacion = EvaluacionLecturaSerializer(read_only=True, allow_null=True)
 
     class Meta:
         model = Tutoria
@@ -195,6 +203,8 @@ class TutoriaSerializer(serializers.ModelSerializer):
             'puede_cancelar',
             'puede_editar',
             'limite_cancelacion',
+            'puede_evaluar',
+            'evaluacion',
         ]
         read_only_fields = [
             'id',
@@ -226,6 +236,9 @@ class TutoriaSerializer(serializers.ModelSerializer):
     def get_limite_cancelacion(self, tutoria) -> datetime:
         """Hasta cuándo puede cancelar el estudiante (RF-08)."""
         return limite_cancelacion(tutoria, self._config())
+
+    def get_puede_evaluar(self, tutoria) -> bool:
+        return puede_evaluar(tutoria)
 
 
 class CancelacionSerializer(serializers.ModelSerializer):
@@ -280,3 +293,31 @@ class CambioEstadoSerializer(serializers.Serializer):
         if attrs['estado'] != 'COMPLETADA' and attrs.get('minutos_retraso'):
             raise serializers.ValidationError({'minutos_retraso': 'Solo aplica a tutorías completadas.'})
         return attrs
+
+
+class EvaluacionSerializer(serializers.ModelSerializer):
+    """RF-09: calificación del estudiante al tutor, en la escala de Configuracion."""
+
+    class Meta:
+        model = EvaluacionTutoria
+        fields = ['calificacion', 'comentario', 'date_creation']
+        read_only_fields = ['date_creation']
+
+    def validate_calificacion(self, value):
+        config = Configuracion.actual()
+        if not config.calificacion_minima <= value <= config.calificacion_maxima:
+            raise serializers.ValidationError(
+                f'La calificación va de {config.calificacion_minima} a {config.calificacion_maxima}.'
+            )
+        return value
+
+    def validate(self, attrs):
+        tutoria = self.context['tutoria']
+        if tutoria.estado != 'COMPLETADA':
+            raise serializers.ValidationError('Solo se evalúan tutorías completadas.')
+        if hasattr(tutoria, 'evaluacion'):
+            raise serializers.ValidationError('Esta tutoría ya fue evaluada.', code='ya_evaluada')
+        return attrs
+
+    def create(self, validated_data):
+        return EvaluacionTutoria.objects.create(tutoria=self.context['tutoria'], **validated_data)

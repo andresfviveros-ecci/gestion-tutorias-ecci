@@ -6,12 +6,13 @@ from rest_framework.response import Response
 
 from apps.accounts.permisos import LecturaOEstudiante
 from apps.tutores.permisos import EsTutor
-from apps.tutorias.models import Tutoria
+from apps.tutorias.models import EvaluacionTutoria, Tutoria
 
 from .filters import TutoriaFilter
 from .serializers import (
     CambioEstadoSerializer,
     CancelacionSerializer,
+    EvaluacionSerializer,
     TutoriaRecibidaSerializer,
     TutoriaRegisterSerializer,
     TutoriaSerializer,
@@ -19,7 +20,7 @@ from .serializers import (
 from .services import cambiar_estado_por_tutor, cancelar_tutoria, puede_editar
 
 # Lo que el serializer de lectura necesita sin consultas extra por fila.
-RELACIONES_LECTURA = ('bloque__docente', 'bloque__materia', 'estudiante')
+RELACIONES_LECTURA = ('bloque__docente', 'bloque__materia', 'estudiante', 'evaluacion')
 
 
 @extend_schema(tags=['Tutorías'])
@@ -177,3 +178,27 @@ class TutoriaRecibidaDetailView(views.APIView):
             tutoria, request.user, datos.pop('estado'), datos.pop('motivo', None), **datos
         )
         return Response(TutoriaRecibidaSerializer(tutoria).data, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=['Tutorías'])
+class EvaluacionView(views.APIView):
+    """RF-09: el estudiante califica su tutoría completada, una sola vez."""
+    permission_classes = [LecturaOEstudiante]
+    serializer_class = EvaluacionSerializer
+
+    def get_tutoria(self, pk, user):
+        return get_object_or_404(Tutoria.objects.select_related('evaluacion'), pk=pk, estudiante=user)
+
+    @extend_schema(responses={200: EvaluacionSerializer})
+    def get(self, request, pk, format=None):
+        tutoria = self.get_tutoria(pk, request.user)
+        evaluacion = get_object_or_404(EvaluacionTutoria, tutoria=tutoria)
+        return Response(EvaluacionSerializer(evaluacion).data)
+
+    @extend_schema(request=EvaluacionSerializer, responses={201: EvaluacionSerializer})
+    def post(self, request, pk, format=None):
+        tutoria = self.get_tutoria(pk, request.user)
+        serializer = EvaluacionSerializer(data=request.data, context={'tutoria': tutoria})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

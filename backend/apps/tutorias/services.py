@@ -207,3 +207,8 @@ def cambiar_estado_por_tutor(tutoria, usuario, estado, motivo=None, **datos):
             tutoria=tutoria,
         )
     return tutoria
+
+
+def puede_evaluar(tutoria):
+    """RF-09: solo tutorías COMPLETADA y una sola vez."""
+    return tutoria.estado == 'COMPLETADA' and not hasattr(tutoria, 'evaluacion')

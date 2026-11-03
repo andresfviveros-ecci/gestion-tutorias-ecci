@@ -354,9 +354,11 @@ class Command(BaseCommand):
         tutoria = Tutoria.objects.create(**datos)
 
         if estado == 'COMPLETADA' and self.rng.random() < 0.7:
-            calificacion = self.rng.choice([5, 5, 5, 4, 4, 3])
-            comentarios = {5: 'Muy clara la explicación.', 4: 'Me sirvió, aunque faltó tiempo.', 3: 'Regular, quedé con dudas.'}
-            EvaluacionTutoria.objects.create(tutoria=tutoria, calificacion=calificacion, comentario=comentarios[calificacion])
+            # RF-09: escala de 1 a 10.
+            calificacion = self.rng.choice([10, 10, 9, 9, 8, 7, 6])
+            comentario = ('Muy clara la explicación.' if calificacion >= 9
+                          else 'Me sirvió, aunque faltó tiempo.' if calificacion >= 7 else 'Regular, quedé con dudas.')
+            EvaluacionTutoria.objects.create(tutoria=tutoria, calificacion=calificacion, comentario=comentario)
         elif estado.startswith('CANCELADA'):
             por_docente = estado == 'CANCELADA_DOCENTE'
             horas = self.rng.choice([2, 6, 12, 24, 48])

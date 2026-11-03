@@ -340,3 +340,54 @@ class TutoriasRecibidasTests(APITestCase):
     def test_no_toca_tutorias_de_otro_tutor(self):
         ajena = crear_tutoria(crear_bloque(crear_usuario('Docente'), self.periodo, self.materia), self.estudiante)
         self.assertEqual(self.cambiar(ajena, estado='CONFIRMADA').status_code, 404)
+
+
+class EvaluacionTests(APITestCase):
+    """RF-09: evaluación de 1 a 10, solo en COMPLETADA y una vez."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.docente = crear_usuario('Docente')
+        cls.estudiante = crear_usuario('Estudiante')
+        _, periodo, materia = crear_catalogo()
+        cls.pasado = crear_bloque(cls.docente, periodo, materia, fecha=date.today() - timedelta(days=1))
+
+    def setUp(self):
+        self.client.force_authenticate(self.estudiante)
+
+    def evaluar(self, tutoria, calificacion=9):
+        return self.client.post(
+            f'{URL}{tutoria.id}/evaluacion/', {'calificacion': calificacion, 'comentario': 'Muy clara.'}, format='json'
+        )
+
+    def test_evaluar_una_vez(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante, estado='COMPLETADA')
+        self.assertTrue(self.client.get(f'{URL}{tutoria.id}/').data['puede_evaluar'])
+
+        response = self.evaluar(tutoria)
+        self.assertEqual(response.status_code, 201, response.data)
+        datos = self.client.get(f'{URL}{tutoria.id}/').data
+        self.assertFalse(datos['puede_evaluar'])
+        self.assertEqual(datos['evaluacion'], {'calificacion': 9, 'comentario': 'Muy clara.'})
+        self.assertEqual(self.client.get(f'{URL}{tutoria.id}/evaluacion/').data['calificacion'], 9)
+
+        response = self.evaluar(tutoria, 10)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['code'], 'ya_evaluada')
+
+    def test_escala_de_configuracion(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante, estado='COMPLETADA')
+        self.assertEqual(self.evaluar(tutoria, 11).status_code, 400)
+        self.assertEqual(self.evaluar(tutoria, 0).status_code, 400)
+
+    def test_solo_completadas(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante, estado='NO_ASISTIO')
+        self.assertFalse(self.client.get(f'{URL}{tutoria.id}/').data['puede_evaluar'])
+        self.assertEqual(self.evaluar(tutoria).status_code, 400)
+
+    def test_solo_el_estudiante_de_la_tutoria(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante, estado='COMPLETADA')
+        self.client.force_authenticate(crear_usuario('Estudiante'))
+        self.assertEqual(self.evaluar(tutoria).status_code, 404)
+        self.client.force_authenticate(self.docente)
+        self.assertEqual(self.evaluar(tutoria).status_code, 403)
