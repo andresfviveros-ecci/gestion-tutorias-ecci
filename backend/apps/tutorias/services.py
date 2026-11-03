@@ -159,3 +159,51 @@ def cancelar_tutoria(tutoria, usuario, motivo, anular=False):
 
     notificar_cancelacion(tutoria, origen, motivo)
     return cancelacion
+
+
+# Estados a los que el tutor lleva una tutoría de sus bloques.
+ESTADOS_DEL_TUTOR = ('CONFIRMADA', 'COMPLETADA', 'NO_ASISTIO', 'CANCELADA_DOCENTE')
+
+
+def estados_para_tutor(tutoria):
+    """Lo que el tutor puede hacer hoy con la tutoría: confirmar o cancelar
+    antes del inicio; marcar completada o no asistió desde el inicio."""
+    if tutoria.estado not in ACTIVOS:
+        return []
+    if bloque_iniciado(tutoria.bloque):
+        return ['COMPLETADA', 'NO_ASISTIO']
+    return ['CONFIRMADA', 'CANCELADA_DOCENTE'] if tutoria.estado == 'RESERVADA' else ['CANCELADA_DOCENTE']
+
+
+@transaction.atomic
+def cambiar_estado_por_tutor(tutoria, usuario, estado, motivo=None, **datos):
+    """Cambio de estado desde la lista de tutorías recibidas. Cancelar pasa
+    por cancelar_tutoria (libera el cupo y avisa por correo)."""
+    if estado == 'CANCELADA_DOCENTE':
+        cancelar_tutoria(tutoria, usuario, motivo)
+        tutoria.refresh_from_db()
+        return tutoria
+
+    tutoria = Tutoria.objects.select_for_update().select_related('bloque__docente', 'estudiante').get(pk=tutoria.pk)
+    validar_transicion(tutoria, estado)
+    if estado not in estados_para_tutor(tutoria):
+        cuando = 'desde el inicio' if estado in ('COMPLETADA', 'NO_ASISTIO') else 'antes del inicio'
+        raise ValidationError({'estado': f'La tutoría solo puede pasar a {estado} {cuando} del bloque.'})
+
+    tutoria.estado = estado
+    if estado == 'COMPLETADA':
+        tutoria.asistencia = 'ASISTIO_TARDE' if datos.get('minutos_retraso') else 'ASISTIO'
+    elif estado == 'NO_ASISTIO':
+        tutoria.asistencia = 'NO_ASISTIO'
+    for campo, valor in datos.items():
+        setattr(tutoria, campo, valor)
+    tutoria.save()
+
+    if estado == 'CONFIRMADA':
+        notificar(
+            tutoria.estudiante, 'RESERVA_CONFIRMADA', 'Tutoría confirmada',
+            f'{tutoria.bloque.docente.get_full_name()} confirmó la tutoría {tutoria.codigo} del '
+            f'{_cuando(tutoria.bloque)}.',
+            tutoria=tutoria,
+        )
+    return tutoria

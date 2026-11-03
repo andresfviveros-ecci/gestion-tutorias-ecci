@@ -11,7 +11,9 @@ from apps.tutorias.models import Cancelacion, Tutoria
 
 from .estados import ACTIVOS
 from .services import (
+    ESTADOS_DEL_TUTOR,
     bloque_iniciado,
+    estados_para_tutor,
     limite_cancelacion,
     notificar_reserva,
     puede_cancelar,
@@ -249,3 +251,29 @@ class CancelacionSerializer(serializers.ModelSerializer):
                 'El motivo de cancelación es obligatorio.'
             )
         return value
+
+
+class TutoriaRecibidaSerializer(TutoriaSerializer):
+    """Tutoría vista por el tutor: trae a qué estados la puede llevar."""
+    estados_siguientes = serializers.SerializerMethodField()
+
+    class Meta(TutoriaSerializer.Meta):
+        fields = TutoriaSerializer.Meta.fields + ['estados_siguientes']
+
+    def get_estados_siguientes(self, tutoria) -> list[str]:
+        return estados_para_tutor(tutoria)
+
+
+class CambioEstadoSerializer(serializers.Serializer):
+    estado = serializers.ChoiceField(choices=ESTADOS_DEL_TUTOR)
+    motivo = serializers.CharField(required=False, allow_blank=True)
+    notas_docente = serializers.CharField(required=False, allow_blank=True)
+    compromisos = serializers.CharField(required=False, allow_blank=True)
+    minutos_retraso = serializers.IntegerField(required=False, min_value=0)
+
+    def validate(self, attrs):
+        if attrs['estado'] == 'CANCELADA_DOCENTE' and not attrs.get('motivo', '').strip():
+            raise serializers.ValidationError({'motivo': 'El motivo de cancelación es obligatorio.'})
+        if attrs['estado'] != 'COMPLETADA' and attrs.get('minutos_retraso'):
+            raise serializers.ValidationError({'minutos_retraso': 'Solo aplica a tutorías completadas.'})
+        return attrs
