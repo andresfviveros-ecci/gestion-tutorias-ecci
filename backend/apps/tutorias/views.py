@@ -9,11 +9,13 @@ from apps.tutorias.models import Tutoria
 
 from .filters import TutoriaFilter
 from .serializers import (
+    CambioEstadoSerializer,
     CancelacionSerializer,
+    TutoriaRecibidaSerializer,
     TutoriaRegisterSerializer,
     TutoriaSerializer,
 )
-from .services import cancelar_tutoria, puede_editar
+from .services import cambiar_estado_por_tutor, cancelar_tutoria, puede_editar
 
 # Lo que el serializer de lectura necesita sin consultas extra por fila.
 RELACIONES_LECTURA = ('bloque__docente', 'bloque__materia', 'estudiante')
@@ -59,7 +61,7 @@ class TutoriaView(generics.ListAPIView):
 class TutoriasRecibidasView(generics.ListAPIView):
     """Tutorías reservadas en los bloques del docente en sesión (BE-19)."""
     permission_classes = [EsDocente]
-    serializer_class = TutoriaSerializer
+    serializer_class = TutoriaRecibidaSerializer
     filterset_class = TutoriaFilter
 
     def get_queryset(self):
@@ -144,3 +146,33 @@ class TutoriaDetailView(views.APIView):
             'message': 'La tutoría fue cancelada correctamente.',
             'cancelacion': CancelacionSerializer(cancelacion).data
         }, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=['Tutorías'])
+class TutoriaRecibidaDetailView(views.APIView):
+    """Una tutoría de los bloques del tutor en sesión. Con PATCH la confirma,
+    la cancela (con motivo) o la marca completada o no asistió (RF-10)."""
+    permission_classes = [EsDocente]
+    serializer_class = TutoriaRecibidaSerializer
+
+    def get_tutoria(self, pk, user):
+        return get_object_or_404(
+            Tutoria.objects.select_related(*RELACIONES_LECTURA),
+            pk=pk,
+            bloque__docente=user
+        )
+
+    @extend_schema(responses={200: TutoriaRecibidaSerializer})
+    def get(self, request, pk, format=None):
+        return Response(TutoriaRecibidaSerializer(self.get_tutoria(pk, request.user)).data)
+
+    @extend_schema(request=CambioEstadoSerializer, responses={200: TutoriaRecibidaSerializer})
+    def patch(self, request, pk, format=None):
+        tutoria = self.get_tutoria(pk, request.user)
+        serializer = CambioEstadoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = dict(serializer.validated_data)
+        tutoria = cambiar_estado_por_tutor(
+            tutoria, request.user, datos.pop('estado'), datos.pop('motivo', None), **datos
+        )
+        return Response(TutoriaRecibidaSerializer(tutoria).data, status=status.HTTP_200_OK)

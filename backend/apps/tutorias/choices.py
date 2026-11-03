@@ -1,11 +1,12 @@
+# RF-10: los cambios permitidos entre estos estados están en estados.py.
 ESTADO_TUTORIA_CHOICES = [
     ('RESERVADA', 'Reservada'),
     ('CONFIRMADA', 'Confirmada'),
-    ('EN_CURSO', 'En curso'),
     ('COMPLETADA', 'Completada'),
+    ('NO_ASISTIO', 'No asistió'),
     ('CANCELADA_ESTUDIANTE', 'Cancelada por estudiante'),
     ('CANCELADA_DOCENTE', 'Cancelada por docente'),
-    ('NO_ASISTIO', 'No asistió'),
+    ('ANULADA', 'Anulada'),
 ]
 
 ESTADO_ASISTENCIA_CHOICES = [

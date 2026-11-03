@@ -11,10 +11,12 @@ from apps.accounts.pruebas import (
     crear_tutoria,
     crear_usuario,
 )
+from apps.catalogo.models import Configuracion
 from apps.notificaciones.models import Notificacion
 
-from .models import Tutoria
-from .services import calcular_horas_previas
+from .estados import puede_pasar
+from .models import Cancelacion, Tutoria
+from .services import calcular_horas_previas, cancelar_tutoria
 
 URL = '/api/tutorias/tutorias/'
 
@@ -192,3 +194,149 @@ class RevisionTutoriasTests(APITestCase):
         self.assertNotEqual(response.data['tutoria']['codigo'], primera['codigo'])
         self.bloque.refresh_from_db()
         self.assertEqual((self.bloque.cupo_ocupado, self.bloque.estado), (1, 'COMPLETO'))
+
+
+class EstadosTests(TestCase):
+    """RF-10: tabla de transiciones."""
+
+    def test_activos_y_finales(self):
+        self.assertTrue(puede_pasar('RESERVADA', 'CONFIRMADA'))
+        self.assertTrue(puede_pasar('CONFIRMADA', 'COMPLETADA'))
+        self.assertTrue(puede_pasar('RESERVADA', 'ANULADA'))
+        self.assertFalse(puede_pasar('CONFIRMADA', 'RESERVADA'))
+        for final in ('COMPLETADA', 'NO_ASISTIO', 'CANCELADA_ESTUDIANTE', 'CANCELADA_DOCENTE', 'ANULADA'):
+            with self.subTest(final=final):
+                self.assertFalse(puede_pasar(final, 'CONFIRMADA'))
+                self.assertFalse(puede_pasar(final, 'CANCELADA_ESTUDIANTE'))
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class PlazosTests(APITestCase):
+    """RF-08: plazos de reserva y cancelación desde Configuracion."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.docente = crear_usuario('Docente')
+        cls.estudiante = crear_usuario('Estudiante')
+        _, cls.periodo, cls.materia = crear_catalogo()
+
+    def setUp(self):
+        self.client.force_authenticate(self.estudiante)
+        self.bloque = crear_bloque(self.docente, self.periodo, self.materia)  # en 7 días
+        self.config = Configuracion.actual()
+
+    def configurar(self, **valores):
+        Configuracion.objects.filter(pk=1).update(**valores)
+
+    def test_reserva_fuera_de_plazo(self):
+        # Con 48 horas de anticipación, un bloque de mañana ya no se reserva.
+        self.configurar(horas_anticipacion_reservar=48)
+        manana = crear_bloque(self.docente, self.periodo, self.materia, fecha=date.today() + timedelta(days=1))
+        response = self.client.post(URL, {'bloque_id': manana.id, 'tema': 'Límites'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['code'], 'plazo_vencido')
+        self.assertIn('bloque_id', response.data['errors'])
+
+    def test_cancelacion_fuera_de_plazo(self):
+        self.configurar(horas_anticipacion_cancelar=24 * 8)
+        tutoria = crear_tutoria(self.bloque, self.estudiante)
+
+        datos = self.client.get(f'{URL}{tutoria.id}/').data
+        self.assertFalse(datos['puede_cancelar'])
+        inicio = datetime.combine(self.bloque.fecha, self.bloque.hora_inicio)
+        self.assertEqual(datos['limite_cancelacion'], inicio - timedelta(hours=24 * 8))
+
+        response = self.client.delete(f'{URL}{tutoria.id}/', {'motivo': 'Viaje'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['code'], 'plazo_vencido')
+
+    def test_el_tutor_cancela_hasta_el_inicio_y_avisa_por_correo(self):
+        self.configurar(horas_anticipacion_cancelar=24 * 8)
+        tutoria = crear_tutoria(self.bloque, self.estudiante)
+        with self.captureOnCommitCallbacks(execute=True):
+            cancelar_tutoria(tutoria, self.docente, 'Calamidad')
+        tutoria.refresh_from_db()
+        self.assertEqual(tutoria.estado, 'CANCELADA_DOCENTE')
+        self.assertEqual([m.to for m in mail.outbox], [[self.estudiante.email]])
+
+    def test_anular(self):
+        tutoria = crear_tutoria(self.bloque, self.estudiante, estado='CONFIRMADA')
+        cancelar_tutoria(tutoria, self.docente, 'Se revocó la habilitación del tutor.', anular=True)
+        tutoria.refresh_from_db()
+        self.assertEqual(tutoria.estado, 'ANULADA')
+        self.assertEqual(Cancelacion.objects.get(tutoria=tutoria).origen, 'SISTEMA')
+
+    def test_reservar_avisa_por_correo(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(URL, {'bloque_id': self.bloque.id, 'tema': 'Límites'}, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(
+            sorted(m.to[0] for m in mail.outbox), sorted([self.docente.email, self.estudiante.email])
+        )
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class TutoriasRecibidasTests(APITestCase):
+    """Listado del tutor y cambio de estado (RF-10)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.docente = crear_usuario('Docente')
+        cls.estudiante = crear_usuario('Estudiante')
+        _, cls.periodo, cls.materia = crear_catalogo()
+
+    def setUp(self):
+        self.client.force_authenticate(self.docente)
+        self.futuro = crear_bloque(self.docente, self.periodo, self.materia)
+        self.pasado = crear_bloque(self.docente, self.periodo, self.materia, fecha=date.today() - timedelta(days=1))
+
+    def cambiar(self, tutoria, **datos):
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.patch(f'/api/tutorias/recibidas/{tutoria.id}/', datos, format='json')
+
+    def test_confirmar_antes_del_inicio(self):
+        tutoria = crear_tutoria(self.futuro, self.estudiante)
+        self.assertEqual(
+            self.client.get('/api/tutorias/recibidas/').data[0]['estados_siguientes'],
+            ['CONFIRMADA', 'CANCELADA_DOCENTE'],
+        )
+        response = self.cambiar(tutoria, estado='CONFIRMADA')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['estado'], 'CONFIRMADA')
+        self.assertTrue(Notificacion.objects.filter(usuario=self.estudiante, tutoria=tutoria).exists())
+
+    def test_completar_desde_el_inicio(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante, estado='CONFIRMADA')
+        response = self.cambiar(tutoria, estado='COMPLETADA', minutos_retraso=10, notas_docente='Se repasó.')
+        self.assertEqual(response.status_code, 200, response.data)
+        tutoria.refresh_from_db()
+        self.assertEqual((tutoria.estado, tutoria.asistencia, tutoria.minutos_retraso), ('COMPLETADA', 'ASISTIO_TARDE', 10))
+        self.assertEqual(response.data['estados_siguientes'], [])
+
+    def test_no_asistio(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante)
+        self.assertEqual(self.cambiar(tutoria, estado='NO_ASISTIO').status_code, 200)
+        tutoria.refresh_from_db()
+        self.assertEqual(tutoria.asistencia, 'NO_ASISTIO')
+
+    def test_no_completa_antes_del_inicio(self):
+        tutoria = crear_tutoria(self.futuro, self.estudiante)
+        self.assertEqual(self.cambiar(tutoria, estado='COMPLETADA').status_code, 400)
+
+    def test_estado_final_no_cambia(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante, estado='COMPLETADA')
+        response = self.cambiar(tutoria, estado='NO_ASISTIO')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['code'], 'transicion_invalida')
+
+    def test_cancelar_exige_motivo_y_avisa_por_correo(self):
+        tutoria = crear_tutoria(self.futuro, self.estudiante)
+        self.assertEqual(self.cambiar(tutoria, estado='CANCELADA_DOCENTE').status_code, 400)
+        response = self.cambiar(tutoria, estado='CANCELADA_DOCENTE', motivo='Calamidad')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['estado'], 'CANCELADA_DOCENTE')
+        self.assertEqual([m.to for m in mail.outbox], [[self.estudiante.email]])
+
+    def test_no_toca_tutorias_de_otro_tutor(self):
+        ajena = crear_tutoria(crear_bloque(crear_usuario('Docente'), self.periodo, self.materia), self.estudiante)
+        self.assertEqual(self.cambiar(ajena, estado='CONFIRMADA').status_code, 404)
