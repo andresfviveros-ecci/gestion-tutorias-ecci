@@ -400,5 +400,18 @@ class Command(BaseCommand):
                 revisada_por=cursadas[0].docentes.get(periodo=periodo).docente if principal else None,
                 fecha_revision=timezone.now() if principal else None,
             )
+            if principal:
+                self._bloques_tutor(estudiante, cursadas[0], periodo)
             total += 1
         return total
+
+    def _bloques_tutor(self, tutor, materia, periodo):
+        # RF-01: la tutora estudiante publica dos horarios la semana siguiente.
+        lunes = self.hoy + timedelta(days=7 - self.hoy.weekday())
+        for dia, salon in ((lunes, SALONES[3]), (lunes + timedelta(days=2), SALONES[2])):
+            if dia <= periodo.fecha_fin:
+                BloqueDisponibilidad.objects.create(
+                    docente=tutor, materia=materia, periodo=periodo, fecha=dia,
+                    hora_inicio=time(12, 0), hora_fin=time(13, 0), modalidad='PRESENCIAL',
+                    lugar=salon, cupo_total=2, estado='DISPONIBLE',
+                )

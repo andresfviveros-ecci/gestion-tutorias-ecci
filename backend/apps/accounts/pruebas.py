@@ -52,6 +52,10 @@ def asignar_materia(docente, materia, periodo):
 
 
 def crear_bloque(docente, periodo, materia, **extra):
+    """Si el dueño es docente, le asigna la materia: sin eso no podría
+    publicar el bloque ni recibir reservas (RF-04)."""
+    if materia is not None and docente.groups.filter(name='Docente').exists():
+        asignar_materia(docente, materia, periodo)
     datos = {
         'fecha': date.today() + timedelta(days=7),
         'hora_inicio': time(8, 0),

@@ -7,6 +7,7 @@ from rest_framework import serializers
 
 from apps.catalogo.models import Configuracion
 from apps.disponibilidad.models import BloqueDisponibilidad
+from apps.tutores.services import validar_tutor_para_reserva
 from apps.tutorias.models import Cancelacion, Tutoria
 
 from .estados import ACTIVOS
@@ -98,6 +99,8 @@ class TutoriaRegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'bloque_id': 'Ya tienes una tutoría activa en este bloque.'
             })
+        # RF-04 y RF-02: el tutor sigue habilitado y le lleva semestres al estudiante.
+        validar_tutor_para_reserva(bloque, estudiante)
 
         # BE-08: el código sale del id, que solo existe después de crear.
         tutoria = Tutoria.objects.create(

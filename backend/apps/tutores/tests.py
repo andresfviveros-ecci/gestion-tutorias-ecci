@@ -6,12 +6,15 @@ from django.test import override_settings
 from rest_framework.test import APITestCase
 
 from apps.accounts.pruebas import asignar_materia, crear_catalogo, crear_usuario
-from apps.catalogo.models import Inscripcion, PeriodoAcademico
+from apps.catalogo.models import Inscripcion, Materia, PeriodoAcademico
+from apps.disponibilidad.models import BloqueDisponibilidad
 from apps.notificaciones.models import Notificacion
+from apps.tutorias.models import Tutoria
 
 from .models import SolicitudTutor
 
 URL = '/api/tutores/solicitudes/'
+BLOQUES_URL = '/api/disponibilidad/disponibilidad/'
 NOTAS = {'nota_corte1': '4.0', 'nota_corte2': '4.5', 'nota_corte3': '4.2'}  # final 4.23
 
 
@@ -126,3 +129,111 @@ class SolicitudesTutorTests(APITestCase):
         self.assertEqual(len(self.client.get(URL).data), 2)
         self.client.force_authenticate(crear_usuario('Docente'))
         self.assertEqual(len(self.client.get(URL).data), 0)
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class ReglasTutorEstudianteTests(APITestCase):
+    """RF-01, RF-04, RF-06 y diferencia de semestres al reservar."""
+
+    @classmethod
+    def setUpTestData(cls):
+        _, cls.periodo, cls.materia = crear_catalogo()
+        cls.otra_materia = Materia.objects.create(codigo='OTRA', nombre='Física', programa=cls.materia.programa)
+        cls.docente = crear_usuario('Docente')
+        asignar_materia(cls.docente, cls.materia, cls.periodo)
+        cls.tutor = crear_usuario('Estudiante')
+        cls.estudiante = crear_usuario('Estudiante')
+        for usuario, semestre in ((cls.tutor, 6), (cls.estudiante, 3)):
+            usuario.semestre = semestre
+            usuario.save(update_fields=['semestre'])
+        cls.solicitud = SolicitudTutor.objects.create(
+            estudiante=cls.tutor, materia=cls.materia, periodo=cls.periodo, estado='APROBADA',
+            nota_corte1=Decimal(5), nota_corte2=Decimal(5), nota_corte3=Decimal(5), nota_final=Decimal(5),
+        )
+        hoy = date.today()
+        cls.lunes = hoy + timedelta(days=7 - hoy.weekday())  # lunes de la semana siguiente
+
+    def setUp(self):
+        self.client.force_authenticate(self.tutor)
+
+    def publicar(self, fecha=None, materia=None, cupo=2, hora=8):
+        return self.client.post(BLOQUES_URL, {
+            'materia': (materia or self.materia).id, 'periodo': self.periodo.id,
+            'fecha': str(fecha or self.lunes), 'hora_inicio': f'{hora:02d}:00', 'hora_fin': f'{hora + 1:02d}:00',
+            'modalidad': 'PRESENCIAL', 'lugar': 'Biblioteca', 'cupo_total': cupo,
+        }, format='json')
+
+    def reservar(self, bloque_id, usuario=None):
+        self.client.force_authenticate(usuario or self.estudiante)
+        return self.client.post('/api/tutorias/tutorias/', {'bloque_id': bloque_id, 'tema': 'Repaso'}, format='json')
+
+    # RF-01
+    def test_tutor_estudiante_publica(self):
+        response = self.publicar()
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertTrue(self.client.get('/api/accounts/me/').data['puede_publicar'])
+
+    def test_estudiante_sin_habilitar_no_publica(self):
+        self.client.force_authenticate(self.estudiante)
+        self.assertFalse(self.client.get('/api/accounts/me/').data['puede_publicar'])
+        self.assertEqual(self.publicar().status_code, 403)
+
+    # RF-04
+    def test_solo_en_materias_habilitadas(self):
+        response = self.publicar(materia=self.otra_materia)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('materia', response.data['errors'])
+
+    # RF-06
+    def test_cupos_semanales(self):
+        self.assertEqual(self.publicar(cupo=6).status_code, 201)
+        response = self.publicar(fecha=self.lunes + timedelta(days=1), cupo=5)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['code'], 'cupos_semanales')
+        self.assertEqual(self.publicar(fecha=self.lunes + timedelta(days=1), cupo=4).status_code, 201)
+        # La semana siguiente empieza de cero.
+        self.assertEqual(self.publicar(fecha=self.lunes + timedelta(days=7), cupo=6).status_code, 201)
+
+    def test_los_docentes_no_tienen_tope_semanal(self):
+        self.client.force_authenticate(self.docente)
+        self.assertEqual(self.publicar(cupo=8).status_code, 201)
+        self.assertEqual(self.publicar(fecha=self.lunes + timedelta(days=1), cupo=8).status_code, 201)
+
+    # RF-02 al reservar
+    def test_diferencia_de_semestres(self):
+        bloque_id = self.publicar().data['id']
+        self.assertEqual(self.reservar(bloque_id).status_code, 201)
+
+        companero = crear_usuario('Estudiante')
+        companero.semestre = 5
+        companero.save(update_fields=['semestre'])
+        response = self.reservar(bloque_id, companero)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['code'], 'diferencia_semestres')
+
+    def test_no_reserva_sus_propios_bloques(self):
+        bloque_id = self.publicar().data['id']
+        self.assertEqual(self.reservar(bloque_id, self.tutor).status_code, 400)
+
+    def test_revocar_anula_las_reservas_y_quita_el_permiso(self):
+        bloque_id = self.publicar().data['id']
+        tutoria_id = self.reservar(bloque_id).data['tutoria']['id']
+
+        self.client.force_authenticate(self.docente)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(f'{URL}{self.solicitud.id}/revocar/', {'motivo': 'Faltas.'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+
+        self.assertEqual(BloqueDisponibilidad.objects.get(pk=bloque_id).estado, 'CANCELADO')
+        self.assertEqual(Tutoria.objects.get(pk=tutoria_id).estado, 'ANULADA')
+        self.assertIn([self.estudiante.email], [m.to for m in mail.outbox])
+
+        self.client.force_authenticate(self.tutor)
+        self.assertEqual(self.publicar(fecha=self.lunes + timedelta(days=2)).status_code, 403)
+        # Sigue viendo el historial de sus tutorías.
+        self.assertEqual(self.client.get('/api/tutorias/recibidas/').status_code, 200)
+
+    def test_la_reserva_comprueba_la_habilitacion(self):
+        bloque_id = self.publicar().data['id']
+        SolicitudTutor.objects.filter(pk=self.solicitud.pk).update(estado='REVOCADA')
+        self.assertEqual(self.reservar(bloque_id).status_code, 400)
