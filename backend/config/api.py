@@ -35,6 +35,7 @@ class PaginacionOpcional(PageNumberPagination):
 RESTRICCIONES = {
     'ux_user_email_ci': ('email', 'Ya existe un usuario con este correo.'),
     'ux_periodo_un_activo': ('activo', 'Ya hay otro periodo activo.'),
+    'ux_solicitud_vigente': ('materia', 'Ya tienes una solicitud pendiente o aprobada en esta materia.'),
 }
 
 

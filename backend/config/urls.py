@@ -15,4 +15,6 @@ urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/catalogo/', include('apps.catalogo.urls')),
+    # TUTORES ESTUDIANTES (RF-02 y RF-03)
+    path('api/tutores/', include('apps.tutores.urls')),
 ]
