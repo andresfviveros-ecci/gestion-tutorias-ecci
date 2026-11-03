@@ -38,3 +38,17 @@ export const CheckIcon = ({ className }: IconProps) => (
     <path d="m3.5 8.4 3 3 6-6.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
+
+export const ClockIcon = ({ className }: IconProps) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none" aria-hidden="true">
+    <circle cx="8" cy="8" r="6.2" stroke="currentColor" strokeWidth="1.3" />
+    <path d="M8 4.6V8l2.2 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+export const LayersIcon = ({ className }: IconProps) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none" aria-hidden="true">
+    <path d="m8 2.2 5.4 2.9L8 8 2.6 5.1 8 2.2Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    <path d="m2.6 8 5.4 2.9L13.4 8M2.6 10.9 8 13.8l5.4-2.9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
