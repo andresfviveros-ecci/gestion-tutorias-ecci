@@ -23,6 +23,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.catalogo.models import (
+    Configuracion,
     DocenteMateria,
     Inscripcion,
     Materia,
@@ -34,7 +35,7 @@ from apps.tutorias.models import Cancelacion, EvaluacionTutoria, Tutoria
 
 DOMINIO = 'aulalibre.test'
 PASSWORD = 'Aula2026*'
-GRUPOS = ['Estudiante', 'Docente', 'Coordinador']
+GRUPOS = ['Estudiante', 'Docente', 'Coordinador', 'Administrador']
 
 # (codigo, nombre, facultad, [(codigo, nombre, semestre, creditos, [temas])])
 PROGRAMAS = [
@@ -123,6 +124,7 @@ class Command(BaseCommand):
                 return
 
             grupos = {nombre: Group.objects.get_or_create(name=nombre)[0] for nombre in GRUPOS}
+            Configuracion.actual()
             periodo = self._periodos()
             materias = self._catalogo()
             self.hash = make_password(PASSWORD)
@@ -138,7 +140,7 @@ class Command(BaseCommand):
         ))
         self.stdout.write(f'Contraseña de todos los usuarios: {PASSWORD}')
         self.stdout.write(f'Accesos rápidos: coordinador@{DOMINIO}, docente@{DOMINIO}, estudiante@{DOMINIO}')
-        self.stdout.write(f'Admin de Django (/admin): usuario admin@{DOMINIO}')
+        self.stdout.write(f'Administrador (coordinadores y /admin): admin@{DOMINIO}')
 
     def _borrar(self):
         usuarios = self.User.objects.filter(email__endswith=f'@{DOMINIO}')
@@ -211,10 +213,11 @@ class Command(BaseCommand):
         usados = {f'{r}@{DOMINIO}' for r in ('admin', 'coordinador', 'docente', 'estudiante')}
         doc = iter(range(9900000001, 9900001000))
 
-        admin = self._crear_usuario('Admin', 'Demo', f'admin@{DOMINIO}', 'Coordinador', grupos['Coordinador'],
-                                    str(next(doc)), is_staff=True, is_superuser=True)
+        # RF-05: el administrador gestiona a los coordinadores (y entra a /admin).
+        self._crear_usuario('Admin', 'Demo', f'admin@{DOMINIO}', 'Administrador', grupos['Administrador'],
+                            str(next(doc)), is_staff=True, is_superuser=True)
 
-        coordinadores = [admin, self._crear_usuario(
+        coordinadores = [self._crear_usuario(
             'Carolina', 'Mejía Restrepo', f'coordinador@{DOMINIO}', 'Coordinador', grupos['Coordinador'], str(next(doc)))]
         for nombre, apellido, email in self._personas(1, usados):
             coordinadores.append(self._crear_usuario(
@@ -232,7 +235,8 @@ class Command(BaseCommand):
             programa = programas[0] if i == 1 else self.rng.choice(programas)
             usuario = self._crear_usuario(
                 nombre, apellido, email, 'Estudiante', grupos['Estudiante'], str(next(doc)),
-                codigo=f'{self.hoy.year}{programas.index(programa) + 1}{i:04d}')
+                codigo=f'{self.hoy.year}{programas.index(programa) + 1}{i:04d}',
+                semestre=5 if i == 1 else self.rng.randint(1, 9))
             usuario.programa = programa
             estudiantes.append(usuario)
         return coordinadores, docentes, estudiantes

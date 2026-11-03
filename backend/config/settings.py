@@ -150,12 +150,15 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # CONFIGURACION DE VARIABLES PARA ENVIOS DE CORREO
-# En desarrollo conviene django.core.mail.backends.console.EmailBackend:
-# los correos (PIN de recuperación, avisos) se ven en los logs del contenedor.
-EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
+# Con DEBUG los correos (PIN de recuperación, avisos) salen por defecto en la
+# consola del contenedor; sin DEBUG, por SMTP. Todo se puede cambiar por variable.
+EMAIL_BACKEND = os.getenv(
+    'EMAIL_BACKEND',
+    'django.core.mail.backends.console.EmailBackend' if DEBUG else 'django.core.mail.backends.smtp.EmailBackend'
+)
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER or 'no-responder@ecci.edu.co'

@@ -10,7 +10,12 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
-from .permisos import EsCoordinador, EsCoordinadorOEstudiante
+from .permisos import (
+    EsAdministrador,
+    EsCoordinador,
+    EsCoordinadorOEstudiante,
+    es_coordinacion,
+)
 from .serializers import (
     ChangePasswordSerializer,
     CoordinatorSerializer,
@@ -162,7 +167,7 @@ class UsuarioListView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         users = get_user_model().objects.filter(groups__name=self.grupo)
-        if self.solo_activos and not self.request.user.groups.filter(name='Coordinador').exists():
+        if self.solo_activos and not es_coordinacion(self.request.user):
             users = users.filter(is_active=True)
         return users.distinct().order_by('id')
 
@@ -237,13 +242,14 @@ class TutorDetailView(UsuarioDetailView):
 """ API PARA CRUD COORDINADORES"""
 @extend_schema(tags=['Coordinadores'])
 class CoordinatorView(UsuarioListView):
+    """RF-05: solo el Administrador gestiona a los coordinadores."""
+    permission_classes = [EsAdministrador]
     grupo = 'Coordinador'
-    solo_activos = True
     serializer_class = CoordinatorSerializer
 
 
 @extend_schema(tags=['Coordinadores'])
 class CoordinatorDetailView(UsuarioDetailView):
-    # Con RF-05 pasa a ser solo para el grupo Administrador.
+    permission_classes = [EsAdministrador]
     grupo = 'Coordinador'
     serializer_class = CoordinatorSerializer

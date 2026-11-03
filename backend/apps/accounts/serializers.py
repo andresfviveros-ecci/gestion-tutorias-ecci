@@ -208,6 +208,7 @@ class MeSerializer(serializers.ModelSerializer):
             'last_name',
             'nombre',
             'rol',
+            'semestre',
             'grupos',
         ]
         read_only_fields = fields
@@ -299,7 +300,7 @@ class StudentRegisterSerializer(UsuarioSerializer):
     grupo = 'Estudiante'
 
     class Meta(UsuarioSerializer.Meta):
-        fields = UsuarioSerializer.Meta.fields + ['codigo_institucional']
+        fields = UsuarioSerializer.Meta.fields + ['codigo_institucional', 'semestre']
 
     def validate_codigo_institucional(self, value):
         # Vacío se guarda como nulo: la columna es única y admite varios nulos.
