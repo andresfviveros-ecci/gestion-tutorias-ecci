@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Loader } from '../../components/Loader';
 import { api } from '../../api/axios';
+import { mensajeError } from '../../utils/api';
 import { fechaLocalISO } from '../../utils/date';
 
 export interface MateriaBackend {
@@ -59,7 +60,7 @@ export const Calendario: React.FC = () => {
     const fetchInitialData = async () => {
       try {
         const [resBloques, resMaterias] = await Promise.all([
-          api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/'),
+          api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/?incluir_pasados=1'),
           api.get<MateriaBackend[]>('/catalogo/materias/'),
         ]);
 
@@ -102,7 +103,7 @@ export const Calendario: React.FC = () => {
     setLoading(true);
     try {
       const [resBloques, resMaterias] = await Promise.all([
-        api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/'),
+        api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/?incluir_pasados=1'),
         api.get<MateriaBackend[]>('/catalogo/materias/'),
       ]);
 
@@ -251,7 +252,7 @@ export const Calendario: React.FC = () => {
       closeDrawer();
     } catch (err: unknown) {
       console.error('Error al actualizar disponibilidad:', err);
-      setErrorMessage('Error al actualizar el horario en el servidor.');
+      setErrorMessage(mensajeError(err));
     } finally {
       setSaving(false);
     }
@@ -298,7 +299,7 @@ export const Calendario: React.FC = () => {
       closeDrawer();
     } catch (err) {
       console.error('Error al suspender el horario:', err);
-      setErrorMessage('Error al suspender el horario.');
+      setErrorMessage(mensajeError(err));
     } finally {
       setSaving(false);
     }

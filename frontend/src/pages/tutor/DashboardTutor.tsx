@@ -68,7 +68,7 @@ export const DashboardTutor: React.FC = () => {
       setLoading(true);
       try {
         // Consultar el endpoint de disponibilidades/tutorías
-        const response = await api.get('/disponibilidad/disponibilidad/');
+        const response = await api.get('/disponibilidad/disponibilidad/?incluir_pasados=1');
         
         let data: TutoriaItem[] = [];
         if (Array.isArray(response.data)) {

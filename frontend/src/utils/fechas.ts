@@ -6,18 +6,8 @@
 export const capitalizar = (texto: string): string =>
   texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : texto;
 
-/** Date -> 'YYYY-MM-DD' en hora local (evita el desfase de toISOString). */
-export const aISOFecha = (fecha: Date): string => {
-  const y = fecha.getFullYear();
-  const m = String(fecha.getMonth() + 1).padStart(2, '0');
-  const d = String(fecha.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
-
 /** 'YYYY-MM-DD' -> Date al mediodía, para que la zona horaria no mueva el día. */
 export const parseFecha = (iso: string): Date => new Date(`${iso}T12:00:00`);
-
-export const hoyISO = (): string => aISOFecha(new Date());
 
 /** Hora actual en 'HH:MM', para comparar con hora_inicio y hora_fin. */
 export const horaActual = (): string => {

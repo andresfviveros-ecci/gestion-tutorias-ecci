@@ -2,18 +2,40 @@
  * Helpers compartidos para respuestas y errores de la API.
  */
 
+const LIMITE_MENSAJE = 200;
+
+/** Detecta respuestas que en realidad son HTML (p. ej. la página 500 de Django). */
+const pareceHtml = (texto: string): boolean => /<[a-z!/][\s\S]*>/i.test(texto);
+
+/** Devuelve el texto si es legible; descarta HTML, cadenas vacías y textos enormes. */
+const textoLegible = (valor: unknown): string | null => {
+  if (typeof valor !== 'string') return null;
+  const limpio = valor.trim();
+  if (!limpio || pareceHtml(limpio) || limpio.length > LIMITE_MENSAJE) return null;
+  return limpio;
+};
+
 /** Extrae un mensaje legible de un error de axios/Django. */
 export const mensajeError = (error: unknown): string => {
   const data = (error as { response?: { data?: unknown } })?.response?.data;
 
-  if (typeof data === 'string') return data;
+  const directo = textoLegible(data);
+  if (directo) return directo;
+
   if (data && typeof data === 'object') {
     const registro = data as Record<string, unknown>;
-    if (typeof registro.detail === 'string') return registro.detail;
+    const detalle = textoLegible(registro.detail);
+    if (detalle) return detalle;
 
     for (const valor of Object.values(registro)) {
-      if (Array.isArray(valor) && valor.length > 0) return String(valor[0]);
-      if (typeof valor === 'string') return valor;
+      if (Array.isArray(valor)) {
+        for (const item of valor) {
+          const texto = textoLegible(item);
+          if (texto) return texto;
+        }
+      }
+      const texto = textoLegible(valor);
+      if (texto) return texto;
     }
   }
   return 'No pudimos completar la operación. Intenta de nuevo.';
