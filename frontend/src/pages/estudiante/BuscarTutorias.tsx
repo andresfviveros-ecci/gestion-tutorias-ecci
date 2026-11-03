@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../api/axios';
 import { hoyLocalISO } from '../../utils/date';
+import { mensajeError } from '../../utils/api';
 
 interface TutorBackend {
   id?: string | number;
@@ -40,15 +41,6 @@ export interface TutoriaBackend {
   materia?: string | number | { id?: number | string; nombre?: string; codigo?: string } | null;
   docente_nombre?: string;
   docente?: { id?: number | string; first_name?: string; last_name?: string; nombre?: string; email?: string; username?: string } | null;
-}
-
-interface ApiErrorResponse {
-  response?: {
-    data?: {
-      detail?: string;
-      non_field_errors?: string[];
-    };
-  };
 }
 
 interface UserExtended {
@@ -420,14 +412,10 @@ export const BuscarTutorias: React.FC = () => {
         await refrescarDatos();
       }, 1200);
     } catch (err) {
-      console.error('Error al reservar tutoría:', err);
-      const apiErr = err as ApiErrorResponse;
-      const errMsg = apiErr.response?.data?.detail 
-        || apiErr.response?.data?.non_field_errors?.[0]
-        || 'Ocurrió un error al procesar la reserva.';
+      // GT-184: también los errores por campo ({"bloque_id": [...]}) del backend.
       setFeedbackMsg({
         type: 'error',
-        text: errMsg,
+        text: mensajeError(err),
       });
     } finally {
       setSubmitting(false);

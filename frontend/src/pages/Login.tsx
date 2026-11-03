@@ -4,9 +4,34 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import axios from "axios";
-import { useAuthStore } from "../store/useAuthStore";
+import { useAuthStore, type FalloLogin } from "../store/useAuthStore";
 import { api } from "../api/axios";
 import { esCorreoPermitido, MENSAJE_DOMINIO } from "../config";
+import { puedeEntrarA, RUTA_INICIO } from "../navigation/modulos";
+
+/** Qué se le dice al usuario según por qué falló el inicio de sesión (GT-205). */
+const AVISOS_LOGIN: Record<FalloLogin, { titulo: string; detalle: string }> = {
+  credenciales: {
+    titulo: "Correo o contraseña incorrectos",
+    detalle: "Revisa tus datos. Si no recuerdas la contraseña, usa «¿Olvidaste tu contraseña?».",
+  },
+  inactivo: {
+    titulo: "Tu cuenta está desactivada",
+    detalle: "Pide a la coordinación de tutorías que la reactive.",
+  },
+  demasiados_intentos: {
+    titulo: "Demasiados intentos",
+    detalle: "Espera unos minutos antes de volver a intentarlo.",
+  },
+  sin_conexion: {
+    titulo: "No pudimos conectar con el servidor",
+    detalle: "Revisa tu conexión a internet e inténtalo de nuevo.",
+  },
+  servidor: {
+    titulo: "El servidor tuvo un problema",
+    detalle: "No es un error de tus datos. Inténtalo de nuevo en unos minutos.",
+  },
+};
 
 const loginSchema = z.object({
   email: z
@@ -252,7 +277,9 @@ export const Login: React.FC = () => {
   const login = useAuthStore((state) => state.login);
 
   const [currentView, setCurrentView] = useState<ViewState>("login");
-  const [authError, setAuthError] = useState(false);
+  const [falloLogin, setFalloLogin] = useState<FalloLogin | null>(null);
+  const [ingresando, setIngresando] = useState(false);
+  const authError = falloLogin === "credenciales";
   const [showPassword, setShowPassword] = useState(false);
 
   // States para la recuperación
@@ -276,6 +303,8 @@ export const Login: React.FC = () => {
     register,
     handleSubmit,
     reset: resetLoginForm,
+    resetField,
+    setFocus,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -317,43 +346,36 @@ export const Login: React.FC = () => {
   };
 
   const onLoginSubmit = async (data: LoginFormData) => {
-    setAuthError(false);
-    const loggedUser = await login(data.email, data.password);
+    if (ingresando) return;
+    setFalloLogin(null);
+    setIngresando(true);
 
-    if (loggedUser) {
-      let defaultPath = "/inicio";
-      if (loggedUser.role === "admin") defaultPath = "/dashboard";
-      if (loggedUser.role === "tutor") defaultPath = "/tutor/dashboard";
+    const resultado = await login(data.email, data.password);
 
-      const stateFrom = (location.state as { from?: { pathname?: string } })
-        ?.from?.pathname;
-
-      if (stateFrom && stateFrom !== "/") {
-        const isTutorRoute = stateFrom.startsWith("/tutor");
-        const isAdminRoute = [
-          "/dashboard",
-          "/estudiantes",
-          "/tutores",
-          "/coordinadores",
-          "/gestionar-usuarios",
-        ].includes(stateFrom);
-        const isStudentRoute = stateFrom === "/inicio";
-
-        const hasPermission =
-          (loggedUser.role === "tutor" && isTutorRoute) ||
-          (loggedUser.role === "admin" && isAdminRoute) ||
-          (loggedUser.role === "estudiante" && isStudentRoute);
-
-        if (hasPermission) {
-          navigate(stateFrom, { replace: true });
-          return;
-        }
+    if (!resultado.ok) {
+      setIngresando(false);
+      setFalloLogin(resultado.fallo);
+      if (resultado.fallo === "credenciales") {
+        // La contraseña se borra y el cursor vuelve a ella para reintentar.
+        resetField("password");
+        setFocus("password");
       }
-
-      navigate(defaultPath, { replace: true });
-    } else {
-      setAuthError(true);
+      return;
     }
+
+    // Vuelve a la pantalla que pedía antes del login si su rol la puede ver;
+    // si no, a su panel.
+    const destino = (location.state as { from?: { pathname?: string } })?.from?.pathname;
+    const ruta =
+      destino && puedeEntrarA(destino, resultado.user)
+        ? destino
+        : RUTA_INICIO[resultado.user.role];
+    navigate(ruta, { replace: true });
+  };
+
+  // Al escribir de nuevo se quita el aviso del intento anterior.
+  const limpiarFallo = () => {
+    if (falloLogin) setFalloLogin(null);
   };
 
   // PASO 1: Enviar correo y guardar el Token retornado
@@ -475,7 +497,7 @@ export const Login: React.FC = () => {
     setNewPassword("");
     setConfirmPassword("");
     setStep3Error(null);
-    setAuthError(false);
+    setFalloLogin(null);
     setShowPassword(false);
   };
 
@@ -514,7 +536,7 @@ export const Login: React.FC = () => {
                     id="emailLogin"
                     placeholder="nombre@ecci.edu.co"
                     autoComplete="email"
-                    {...register("email")}
+                    {...register("email", { onChange: limpiarFallo })}
                     className={`${inputClass} ${
                       errors.email || authError
                         ? "border-peligro focus:border-peligro focus:ring-peligro/15"
@@ -537,7 +559,7 @@ export const Login: React.FC = () => {
                       type={showPassword ? "text" : "password"}
                       id="passwordLogin"
                       autoComplete="current-password"
-                      {...register("password")}
+                      {...register("password", { onChange: limpiarFallo })}
                       className={`${inputClass} pr-16 ${
                         errors.password || authError
                           ? "border-peligro focus:border-peligro focus:ring-peligro/15"
@@ -582,15 +604,58 @@ export const Login: React.FC = () => {
                   </button>
                 </div>
 
-                {authError && (
-                  <div className="rounded-2xl bg-peligro/10 px-4 py-2.5 text-[12px] font-medium text-peligro">
-                    Correo o contraseña incorrectos
+                {falloLogin && (
+                  <div
+                    role="alert"
+                    className={`flex items-start gap-3 rounded-2xl px-4 py-3 ${
+                      falloLogin === "sin_conexion" || falloLogin === "servidor"
+                        ? "bg-[#FFF8EC] text-[#7A4A00]"
+                        : "bg-peligro/10 text-peligro"
+                    }`}
+                  >
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.8}
+                      strokeLinecap="round"
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                    >
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 7.5v5M12 16h.01" />
+                    </svg>
+                    <div className="min-w-0">
+                      <p className="text-[12.5px] font-semibold leading-snug">
+                        {AVISOS_LOGIN[falloLogin].titulo}
+                      </p>
+                      <p className="mt-0.5 text-[11.5px] leading-relaxed opacity-90">
+                        {AVISOS_LOGIN[falloLogin].detalle}
+                      </p>
+                    </div>
                   </div>
                 )}
 
-                <button type="submit" className={primaryButtonClass}>
-                  Iniciar sesión
-                  <ArrowRightIcon />
+                <button
+                  type="submit"
+                  disabled={ingresando}
+                  aria-busy={ingresando}
+                  className={primaryButtonClass}
+                >
+                  {ingresando ? (
+                    <>
+                      <span
+                        aria-hidden="true"
+                        className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                      />
+                      Verificando…
+                    </>
+                  ) : (
+                    <>
+                      Iniciar sesión
+                      <ArrowRightIcon />
+                    </>
+                  )}
                 </button>
               </form>
             </div>
