@@ -4,10 +4,11 @@ from datetime import date
 from django.contrib.auth import get_user_model
 from django.db.models import Count
 
+from apps.tutorias.estados import CANCELADOS
 from apps.tutorias.models import Tutoria
 
-# Las canceladas no cuentan como tutorías del mes.
-ESTADOS_EXCLUIDOS = ('CANCELADA_ESTUDIANTE', 'CANCELADA_DOCENTE')
+# Las canceladas y anuladas no cuentan como tutorías del mes.
+ESTADOS_EXCLUIDOS = CANCELADOS
 
 
 def indicadores_panel(hoy=None):

@@ -1,13 +1,23 @@
+from datetime import datetime
 from uuid import uuid4
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.catalogo.models import Configuracion
 from apps.disponibilidad.models import BloqueDisponibilidad
 from apps.tutorias.models import Cancelacion, Tutoria
 
-from .services import bloque_iniciado, notificar_reserva, puede_cancelar, puede_editar
+from .estados import ACTIVOS
+from .services import (
+    bloque_iniciado,
+    limite_cancelacion,
+    notificar_reserva,
+    puede_cancelar,
+    puede_editar,
+    validar_plazo_reserva,
+)
 
 
 class TutoriaRegisterSerializer(serializers.ModelSerializer):
@@ -68,6 +78,8 @@ class TutoriaRegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'bloque_id': 'El bloque de disponibilidad ya inició o terminó.'
             })
+        # RF-08: y con la anticipación de Configuracion.
+        validar_plazo_reserva(bloque)
 
         if bloque.cupo_ocupado >= bloque.cupo_total:
             raise serializers.ValidationError({
@@ -79,7 +91,7 @@ class TutoriaRegisterSerializer(serializers.ModelSerializer):
         if Tutoria.objects.filter(
             bloque=bloque,
             estudiante=estudiante,
-            estado__in=['RESERVADA', 'CONFIRMADA', 'EN_CURSO']
+            estado__in=ACTIVOS
         ).exists():
             raise serializers.ValidationError({
                 'bloque_id': 'Ya tienes una tutoría activa en este bloque.'
@@ -154,6 +166,7 @@ class TutoriaSerializer(serializers.ModelSerializer):
     bloque_detalle = BloqueResumenSerializer(source='bloque', read_only=True)
     puede_cancelar = serializers.SerializerMethodField()
     puede_editar = serializers.SerializerMethodField()
+    limite_cancelacion = serializers.SerializerMethodField()
 
     class Meta:
         model = Tutoria
@@ -176,6 +189,7 @@ class TutoriaSerializer(serializers.ModelSerializer):
             'compromisos',
             'puede_cancelar',
             'puede_editar',
+            'limite_cancelacion',
         ]
         read_only_fields = [
             'id',
@@ -192,11 +206,21 @@ class TutoriaSerializer(serializers.ModelSerializer):
             'compromisos',
         ]
 
+    def _config(self):
+        # Una sola consulta por respuesta, aunque sea un listado.
+        if 'config' not in self.context:
+            self.context['config'] = Configuracion.actual()
+        return self.context['config']
+
     def get_puede_cancelar(self, tutoria) -> bool:
-        return puede_cancelar(tutoria)
+        return puede_cancelar(tutoria, self._config())
 
     def get_puede_editar(self, tutoria) -> bool:
         return puede_editar(tutoria)
+
+    def get_limite_cancelacion(self, tutoria) -> datetime:
+        """Hasta cuándo puede cancelar el estudiante (RF-08)."""
+        return limite_cancelacion(tutoria, self._config())
 
 
 class CancelacionSerializer(serializers.ModelSerializer):
