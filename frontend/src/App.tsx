@@ -224,7 +224,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
-  const userRole = normalizeRole(user.role || (user as unknown as { rol?: string }).rol);
+  const userRole = normalizeRole(user.role || user.rol);
   const isAllowed = allowedRoles.map((r) => r.toLowerCase()).includes(userRole);
 
   if (!isAllowed) {
