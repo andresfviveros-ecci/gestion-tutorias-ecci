@@ -10,6 +10,7 @@ import { Coordinadores } from './pages/Coordinadores';
 import { GestionarUsuarios } from './pages/GestionarUsuarios';
 import { TutorPanel } from './pages/tutor/TutorPanel';
 import { MiDisponibilidad } from './pages/tutor/MiDisponibilidad';
+import { ModificarDisponibilidad } from './pages/tutor/ModificarDisponibilidad';
 import { Calendario } from './pages/tutor/Calendario';
 import { StudentHome } from './pages/estudiante/StudentHome';
 import { StudentPanel } from './pages/estudiante/StudentPanel';
@@ -347,6 +348,14 @@ export const App: React.FC = () => {
           element={
             <ProtectedRoute allowedRoles={['tutor', 'admin']}>
               <MiDisponibilidad />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tutor/mi-disponibilidad/:id/editar"
+          element={
+            <ProtectedRoute allowedRoles={['tutor', 'admin']}>
+              <ModificarDisponibilidad />
             </ProtectedRoute>
           }
         />
