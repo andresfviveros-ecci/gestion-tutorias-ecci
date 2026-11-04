@@ -1,8 +1,9 @@
 """ INDICADORES DEL PANEL DE COORDINACIÓN """
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.contrib.auth import get_user_model
-from django.db.models import Count
+from django.db.models import Avg, Count, Q
 
 from apps.tutorias.estados import CANCELADOS
 from apps.tutorias.models import Tutoria
@@ -37,3 +38,44 @@ def indicadores_panel(hoy=None):
             f"{round(mas_demandada['total'] * 100 / total)}%" if mas_demandada else '0%'
         ),
     }
+
+
+def redondear(promedio):
+    """Dos decimales con el mismo redondeo de la nota final (ROUND_HALF_UP)."""
+    if promedio is None:
+        return None
+    return float(Decimal(str(promedio)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+
+
+def reporte_tutores(periodo):
+    """RF-09: por cada tutor con tutorías en el periodo, cuántas tuvo, cómo
+    terminaron y el promedio de sus evaluaciones."""
+    filas = (
+        Tutoria.objects.filter(bloque__periodo=periodo)
+        .values('bloque__docente')
+        .annotate(
+            tutorias=Count('id'),
+            completadas=Count('id', filter=Q(estado='COMPLETADA')),
+            no_asistio=Count('id', filter=Q(estado='NO_ASISTIO')),
+            canceladas_por_tutor=Count('id', filter=Q(estado='CANCELADA_DOCENTE')),
+            evaluaciones=Count('evaluacion'),
+            promedio=Avg('evaluacion__calificacion'),
+        )
+    )
+    User = get_user_model()
+    tutores = User.objects.in_bulk([fila['bloque__docente'] for fila in filas])
+    docentes = set(User.objects.filter(pk__in=tutores, groups__name='Docente').values_list('pk', flat=True))
+
+    reporte = []
+    for fila in filas:
+        tutor = tutores[fila.pop('bloque__docente')]
+        promedio = fila.pop('promedio')
+        reporte.append({
+            'id': tutor.pk,
+            'nombre': tutor.get_full_name(),
+            'tipo': 'Docente' if tutor.pk in docentes else 'Estudiante',
+            **fila,
+            'promedio_calificacion': redondear(promedio),
+        })
+    # Primero los mejor calificados; los que no tienen evaluaciones, al final.
+    return sorted(reporte, key=lambda f: (f['promedio_calificacion'] is None, -(f['promedio_calificacion'] or 0), f['nombre']))

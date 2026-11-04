@@ -195,6 +195,12 @@ class ConfiguracionTests(APITestCase):
         self.assertEqual(Configuracion.actual().cupos_semanales_tutor, 8)
         self.assertEqual(Configuracion.objects.count(), 1)
 
+    def test_escala_no_se_sale_del_rango_de_la_base(self):
+        self.client.force_authenticate(crear_usuario('Coordinador'))
+        response = self.client.patch(self.URL, {'calificacion_maxima': 20}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('calificacion_maxima', response.data['errors'])
+
     def test_pesos_suman_100(self):
         self.client.force_authenticate(crear_usuario('Coordinador'))
         response = self.client.patch(self.URL, {'peso_corte3': 50}, format='json')
