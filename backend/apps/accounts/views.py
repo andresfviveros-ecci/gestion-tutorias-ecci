@@ -115,6 +115,37 @@ def eliminar_o_desactivar(request, user):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class UsuarioDetailView(views.APIView):
+    """Detalle de un usuario de un grupo: GET, PUT, PATCH y DELETE."""
+    permission_classes = [EsCoordinador]
+    grupo = None
+    serializer_class = None
+
+    def get_user(self, pk):
+        return get_object_or_404(get_user_model(), pk=pk, groups__name=self.grupo)
+
+    def actualizar(self, request, pk, partial):
+        user = self.get_user(pk)
+        proteger_usuario(request, user)
+        serializer = self.serializer_class(user, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def get(self, request, pk, format=None):
+        serializer = self.serializer_class(self.get_user(pk))
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request, pk, format=None):
+        return self.actualizar(request, pk, partial=False)
+
+    def patch(self, request, pk, format=None):
+        return self.actualizar(request, pk, partial=True)
+
+    def delete(self, request, pk, format=None):
+        return eliminar_o_desactivar(request, self.get_user(pk))
+
+
 """ API PARA CRUD ESTUDIANTE"""
 @extend_schema(tags=['Estudiantes'])
 class StudentView(views.APIView):
@@ -134,26 +165,9 @@ class StudentView(views.APIView):
 
 
 @extend_schema(tags=['Estudiantes'])
-class StudentDetailView(views.APIView):
-    permission_classes = [EsCoordinador]
-
-    def get_user(self, pk):
-        return get_object_or_404(get_user_model(), pk=pk, groups__name='Estudiante')
-
-    def get(self, request, pk, format=None):
-        serializer = StudentRegisterSerializer(self.get_user(pk))
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def put(self, request, pk, format=None):
-        user = self.get_user(pk)
-        proteger_usuario(request, user)
-        serializer = StudentRegisterSerializer(user, data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def delete(self, request, pk, format=None):
-        return eliminar_o_desactivar(request, self.get_user(pk))
+class StudentDetailView(UsuarioDetailView):
+    grupo = 'Estudiante'
+    serializer_class = StudentRegisterSerializer
 
 
 """ API PARA REGISTRAR TUTORES/DOCENTE """
@@ -180,26 +194,9 @@ class TutorView(views.APIView):
 
 
 @extend_schema(tags=['Docentes'])
-class TutorDetailView(views.APIView):
-    permission_classes = [EsCoordinador]
-
-    def get_user(self, pk):
-        return get_object_or_404(get_user_model(), pk=pk, groups__name='Docente')
-
-    def get(self, request, pk, format=None):
-        serializer = TutorRegisterSerializer(self.get_user(pk))
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def put(self, request, pk, format=None):
-        user = self.get_user(pk)
-        proteger_usuario(request, user)
-        serializer = TutorRegisterSerializer(user, data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def delete(self, request, pk, format=None):
-        return eliminar_o_desactivar(request, self.get_user(pk))
+class TutorDetailView(UsuarioDetailView):
+    grupo = 'Docente'
+    serializer_class = TutorRegisterSerializer
 
 
 """ API PARA CRUD COORDINADORES"""
@@ -221,24 +218,7 @@ class CoordinatorView(views.APIView):
 
 
 @extend_schema(tags=['Coordinadores'])
-class CoordinatorDetailView(views.APIView):
+class CoordinatorDetailView(UsuarioDetailView):
     # Con RF-05 pasa a ser solo para el grupo Administrador.
-    permission_classes = [EsCoordinador]
-
-    def get_user(self, pk):
-        return get_object_or_404(get_user_model(), pk=pk, groups__name='Coordinador')
-
-    def get(self, request, pk, format=None):
-        serializer = CoordinatorSerializer(self.get_user(pk))
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def put(self, request, pk, format=None):
-        user = self.get_user(pk)
-        proteger_usuario(request, user)
-        serializer = CoordinatorSerializer(user, data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def delete(self, request, pk, format=None):
-        return eliminar_o_desactivar(request, self.get_user(pk))
+    grupo = 'Coordinador'
+    serializer_class = CoordinatorSerializer

@@ -29,6 +29,8 @@ def crear_usuario(grupo):
 def crear_catalogo():
     n = next(_secuencia)
     programa = ProgramaAcademico.objects.create(codigo=f'PRG{n}', nombre='Ingeniería de Sistemas')
+    # Solo puede haber un periodo activo (BE-25).
+    PeriodoAcademico.objects.filter(activo=True).update(activo=False)
     periodo = PeriodoAcademico.objects.create(
         codigo=f'P{n}',
         fecha_inicio=date.today() - timedelta(days=30),

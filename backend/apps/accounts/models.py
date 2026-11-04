@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.db.models.functions import Lower
 
 class User(AbstractUser):
     documento = models.CharField(max_length=20, unique=True)
@@ -15,4 +16,11 @@ class User(AbstractUser):
         verbose_name = 'Usuario'
         verbose_name_plural = 'Usuarios'
         ordering = ['id']
-        
+        constraints = [
+            # BE-16: correo único sin distinguir mayúsculas (el vacío no cuenta).
+            models.UniqueConstraint(
+                Lower('email'),
+                condition=~models.Q(email=''),
+                name='ux_user_email_ci',
+            ),
+        ]

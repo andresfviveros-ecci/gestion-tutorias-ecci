@@ -1,5 +1,6 @@
+from django.db import transaction
 from rest_framework import serializers
-from .models import ProgramaAcademico, Materia, PeriodoAcademico
+from .models import DocenteMateria, Inscripcion, ProgramaAcademico, Materia, PeriodoAcademico
 
 class ProgramaAcademicoSerializer(serializers.ModelSerializer):
     class Meta:
@@ -53,7 +54,8 @@ class PeriodoAcademicoSerializer(serializers.ModelSerializer):
             'codigo': {'required': True},
             'fecha_inicio': {'required': True},
             'fecha_fin': {'required': True},
-            'activo': {'required': False},
+            # Sin el validador de unicidad: activar uno desactiva los demás.
+            'activo': {'required': False, 'validators': []},
         }
 
     def validate(self, attrs):
@@ -72,3 +74,67 @@ class PeriodoAcademicoSerializer(serializers.ModelSerializer):
             })
 
         return attrs
+
+    # BE-25: al activar un periodo se desactivan los demás en la misma transacción.
+    def _desactivar_otros(self, validated_data):
+        if validated_data.get('activo'):
+            otros = PeriodoAcademico.objects.filter(activo=True)
+            if self.instance is not None:
+                otros = otros.exclude(pk=self.instance.pk)
+            otros.update(activo=False)
+
+    @transaction.atomic
+    def create(self, validated_data):
+        self._desactivar_otros(validated_data)
+        return super().create(validated_data)
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        self._desactivar_otros(validated_data)
+        return super().update(instance, validated_data)
+
+
+class DocenteMateriaSerializer(serializers.ModelSerializer):
+    docente_nombre = serializers.CharField(source='docente.get_full_name', read_only=True)
+    materia_nombre = serializers.CharField(source='materia.nombre', read_only=True)
+    periodo_codigo = serializers.CharField(source='periodo.codigo', read_only=True)
+
+    class Meta:
+        model = DocenteMateria
+        fields = [
+            'id',
+            'docente',
+            'docente_nombre',
+            'materia',
+            'materia_nombre',
+            'periodo',
+            'periodo_codigo',
+        ]
+
+    def validate_docente(self, value):
+        if not value.groups.filter(name='Docente').exists():
+            raise serializers.ValidationError('El usuario no es docente.')
+        return value
+
+
+class InscripcionSerializer(serializers.ModelSerializer):
+    estudiante_nombre = serializers.CharField(source='estudiante.get_full_name', read_only=True)
+    materia_nombre = serializers.CharField(source='materia.nombre', read_only=True)
+    periodo_codigo = serializers.CharField(source='periodo.codigo', read_only=True)
+
+    class Meta:
+        model = Inscripcion
+        fields = [
+            'id',
+            'estudiante',
+            'estudiante_nombre',
+            'materia',
+            'materia_nombre',
+            'periodo',
+            'periodo_codigo',
+        ]
+
+    def validate_estudiante(self, value):
+        if not value.groups.filter(name='Estudiante').exists():
+            raise serializers.ValidationError('El usuario no es estudiante.')
+        return value
