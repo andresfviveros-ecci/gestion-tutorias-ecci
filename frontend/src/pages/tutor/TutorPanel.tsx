@@ -46,6 +46,7 @@ const ESTADOS_FINALES = [
   'NO_ASISTIO',
   'CANCELADA_ESTUDIANTE',
   'CANCELADA_DOCENTE',
+  'ANULADA',
 ];
 
 const minutosEntre = (inicio: string, fin: string): number => {
