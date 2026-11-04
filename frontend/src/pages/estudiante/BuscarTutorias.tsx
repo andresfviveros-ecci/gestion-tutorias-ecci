@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../../api/axios';
 import { StudentRail } from '../../components/estudiante/StudentRail';
@@ -27,7 +27,10 @@ import { modalidadLegible } from '../../utils/panel';
 interface BloqueAPI {
   id: number;
   docente: number | { id?: number };
+  /** Lo envía el backend desde #51; incluye a los estudiantes tutores. */
+  docente_nombre?: string | null;
   materia: number | { id?: number; nombre?: string; codigo?: string };
+  materia_nombre?: string | null;
   fecha: string;
   hora_inicio: string;
   hora_fin: string;
@@ -60,7 +63,7 @@ interface TutoriaAPI {
   estado?: string;
 }
 
-const ESTADOS_ACTIVOS = ['RESERVADA', 'CONFIRMADA', 'EN_CURSO'];
+const ESTADOS_ACTIVOS = ['RESERVADA', 'CONFIRMADA'];
 
 /** Extrae un id numérico de un PK o de un objeto anidado. */
 const idReferencia = (valor: unknown): number | null => {
@@ -175,6 +178,12 @@ const consultarPanel = async (): Promise<DatosPanel> => {
  * Reemplaza la vista anterior de "Consultar horarios".
  */
 export const BuscarTutorias = () => {
+  // "Ver disponibilidad" desde la página de inicio llega con el tutor elegido.
+  const location = useLocation();
+  const tutorPedido = ((location.state as { tutorNombre?: string } | null)?.tutorNombre || '')
+    .trim()
+    .toLowerCase();
+
   const [bloques, setBloques] = useState<BloqueAPI[]>([]);
   const [materias, setMaterias] = useState<MateriaAPI[]>([]);
   const [tutores, setTutores] = useState<TutorAPI[]>([]);
@@ -250,15 +259,23 @@ export const BuscarTutorias = () => {
     return ids;
   }, [misTutorias]);
 
-  const nombreMateria = (bloque: BloqueAPI): string => {
-    const id = idReferencia(bloque.materia);
-    return (id !== null ? materiasPorId.get(id)?.nombre : undefined) || 'Tutoría académica';
-  };
+  const nombreMateria = useCallback(
+    (bloque: BloqueAPI): string => {
+      if (bloque.materia_nombre) return bloque.materia_nombre;
+      const id = idReferencia(bloque.materia);
+      return (id !== null ? materiasPorId.get(id)?.nombre : undefined) || 'Tutoría académica';
+    },
+    [materiasPorId],
+  );
 
-  const tutorDeBloque = (bloque: BloqueAPI): string => {
-    const id = idReferencia(bloque.docente);
-    return nombreDeTutor(id !== null ? tutoresPorId.get(id) : undefined);
-  };
+  const tutorDeBloque = useCallback(
+    (bloque: BloqueAPI): string => {
+      if (bloque.docente_nombre) return bloque.docente_nombre;
+      const id = idReferencia(bloque.docente);
+      return nombreDeTutor(id !== null ? tutoresPorId.get(id) : undefined);
+    },
+    [tutoresPorId],
+  );
 
   const disponibles = useMemo(() => {
     const ahora = horaActual();
@@ -269,11 +286,19 @@ export const BuscarTutorias = () => {
         if (!bloque.fecha || bloque.fecha < hoy) return false;
         if ((bloque.cupo_ocupado || 0) >= (bloque.cupo_total || 1)) return false;
         if (idsReservados.has(bloque.id)) return false;
-        if (bloque.fecha === hoy && horaCorta(bloque.hora_fin) <= ahora) return false;
+        // Un bloque que ya empezó no se puede reservar (el backend lo rechaza).
+        if (bloque.fecha === hoy && horaCorta(bloque.hora_inicio) <= ahora) return false;
         return true;
       })
       .sort((a, b) => `${a.fecha}T${a.hora_inicio}`.localeCompare(`${b.fecha}T${b.hora_inicio}`));
   }, [bloques, hoy, idsReservados]);
+
+  // Primer horario del tutor pedido desde inicio: fija materia, modalidad,
+  // fecha y horario mientras el estudiante no elija otra cosa.
+  const bloquePreferido = useMemo(() => {
+    if (!tutorPedido) return null;
+    return disponibles.find((bloque) => tutorDeBloque(bloque).trim().toLowerCase() === tutorPedido) ?? null;
+  }, [disponibles, tutorDeBloque, tutorPedido]);
 
   const opcionesMateria = useMemo(() => {
     const ids = new Set<number>();
@@ -282,7 +307,10 @@ export const BuscarTutorias = () => {
       if (id !== null) ids.add(id);
     });
     return Array.from(ids)
-      .map((id) => ({ id, nombre: materiasPorId.get(id)?.nombre || `Materia ${id}` }))
+      .map((id) => {
+        const bloque = disponibles.find((b) => idReferencia(b.materia) === id);
+        return { id, nombre: (bloque && bloque.materia_nombre) || materiasPorId.get(id)?.nombre || `Materia ${id}` };
+      })
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [disponibles, materiasPorId]);
 
@@ -290,8 +318,10 @@ export const BuscarTutorias = () => {
     if (materiaId !== null && opcionesMateria.some((opcion) => opcion.id === materiaId)) {
       return materiaId;
     }
+    const preferida = bloquePreferido ? idReferencia(bloquePreferido.materia) : null;
+    if (preferida !== null) return preferida;
     return opcionesMateria[0]?.id ?? null;
-  }, [materiaId, opcionesMateria]);
+  }, [materiaId, opcionesMateria, bloquePreferido]);
 
   const opcionesModalidad = useMemo(() => {
     const valores = new Set<string>();
@@ -307,8 +337,10 @@ export const BuscarTutorias = () => {
     if (modalidad && opcionesModalidad.includes(modalidad.toUpperCase())) {
       return modalidad.toUpperCase();
     }
+    const preferida = (bloquePreferido?.modalidad || '').toUpperCase();
+    if (preferida && opcionesModalidad.includes(preferida)) return preferida;
     return opcionesModalidad[0] ?? '';
-  }, [modalidad, opcionesModalidad]);
+  }, [modalidad, opcionesModalidad, bloquePreferido]);
 
   const opcionesFecha = useMemo(() => {
     const valores = new Set<string>();
@@ -322,8 +354,9 @@ export const BuscarTutorias = () => {
 
   const fechaActiva = useMemo(() => {
     if (fecha && opcionesFecha.includes(fecha)) return fecha;
+    if (bloquePreferido && opcionesFecha.includes(bloquePreferido.fecha)) return bloquePreferido.fecha;
     return opcionesFecha[0] ?? '';
-  }, [fecha, opcionesFecha]);
+  }, [fecha, opcionesFecha, bloquePreferido]);
 
   const bloquesDelDia = useMemo(
     () =>
@@ -337,12 +370,17 @@ export const BuscarTutorias = () => {
   );
 
   const bloqueSeleccionado = useMemo(
-    () => bloquesDelDia.find((bloque) => bloque.id === bloqueId) ?? bloquesDelDia[0] ?? null,
-    [bloquesDelDia, bloqueId],
+    () =>
+      bloquesDelDia.find((bloque) => bloque.id === bloqueId) ??
+      bloquesDelDia.find((bloque) => bloque.id === bloquePreferido?.id) ??
+      bloquesDelDia[0] ??
+      null,
+    [bloquesDelDia, bloqueId, bloquePreferido],
   );
 
   const confirmar = async (evento: FormEvent) => {
     evento.preventDefault();
+    if (reservando) return;
     setErrorReserva(null);
 
     if (!bloqueSeleccionado) {
