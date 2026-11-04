@@ -33,10 +33,12 @@ def docentes_revisores(materia, periodo):
 
 def puede_revisar(usuario, solicitud):
     """RF-03: la revisa el docente con la materia asignada en el periodo de
-    la solicitud. La coordinación también puede, por si ese docente falta."""
-    return es_coordinacion(usuario) or DocenteMateria.objects.filter(
-        docente=usuario, materia_id=solicitud.materia_id, periodo_id=solicitud.periodo_id
-    ).exists()
+    la solicitud. La coordinación solo la revisa si la materia se quedó sin
+    docente en ese periodo (decisión de la PO)."""
+    asignaciones = DocenteMateria.objects.filter(materia_id=solicitud.materia_id, periodo_id=solicitud.periodo_id)
+    if asignaciones.filter(docente=usuario).exists():
+        return True
+    return es_coordinacion(usuario) and not asignaciones.exists()
 
 
 def notificar_solicitud(solicitud):
@@ -58,7 +60,7 @@ def revisar(solicitud, usuario, estado, motivo=''):
         'estudiante', 'materia'
     ).get(pk=solicitud.pk)
     if not puede_revisar(usuario, solicitud):
-        raise PermissionDenied('Solo el docente de la materia o la coordinación revisan esta solicitud.')
+        raise PermissionDenied('La revisa el docente de la materia; la coordinación solo si la materia no tiene docente.')
 
     permitidos = {'APROBADA': 'PENDIENTE', 'RECHAZADA': 'PENDIENTE', 'REVOCADA': 'APROBADA'}
     if solicitud.estado != permitidos[estado]:

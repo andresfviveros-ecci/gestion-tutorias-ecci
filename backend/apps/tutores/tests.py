@@ -110,10 +110,17 @@ class SolicitudesTutorTests(APITestCase):
     def test_solo_el_docente_de_la_materia_revisa(self):
         solicitud_id = self.solicitar().data['id']
         otro = crear_usuario('Docente')
-        # No la ve, así que responde 404; la coordinación sí puede.
+        # No la ve, así que responde 404.
         self.assertEqual(self.revisar(solicitud_id, 'aprobar', usuario=otro).status_code, 404)
         self.assertEqual(self.revisar(solicitud_id, 'aprobar', usuario=self.estudiante).status_code, 403)
-        self.assertEqual(self.revisar(solicitud_id, 'aprobar', usuario=crear_usuario('Coordinador')).status_code, 200)
+
+    def test_coordinacion_solo_revisa_si_la_materia_no_tiene_docente(self):
+        solicitud_id = self.solicitar().data['id']
+        coordinador = crear_usuario('Coordinador')
+        self.assertEqual(self.revisar(solicitud_id, 'aprobar', usuario=coordinador).status_code, 403)
+
+        self.docente.materias_asignadas.all().delete()
+        self.assertEqual(self.revisar(solicitud_id, 'aprobar', usuario=coordinador).status_code, 200)
 
     def test_quien_ve_que(self):
         self.solicitar()
