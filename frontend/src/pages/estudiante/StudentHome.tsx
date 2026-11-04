@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTutorStore } from '../../store/useTutorStore';
 import { api } from '../../api/axios';
+import { hoyLocalISO } from '../../utils/date';
 
 interface TutorBackend {
   id?: string | number;
@@ -16,11 +17,6 @@ interface TutorBackend {
   correo?: string;
   documento?: string;
   telefono?: string;
-}
-
-interface TutorStoreInterface {
-  tutores?: TutorBackend[];
-  fetchTutores?: () => Promise<void>;
 }
 
 export interface BloqueBackend {
@@ -50,15 +46,6 @@ interface TutorFormatted {
   bg: string;
 }
 
-// Obtener la fecha de hoy en formato YYYY-MM-DD
-const getTodayISO = (): string => {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 const formatearFechaLarga = (fechaStr?: string): string => {
   if (!fechaStr) return '';
   const partes = fechaStr.split('-');
@@ -87,9 +74,21 @@ export const StudentHome: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
 
-  const tutorStore = useTutorStore() as unknown as TutorStoreInterface;
-  const tutoresStore = tutorStore.tutores || [];
-  const fetchTutores = tutorStore.fetchTutores;
+  const storeTutores = useTutorStore((state) => state.tutores);
+  const fetchTutores = useTutorStore((state) => state.fetchTutores);
+
+  const tutoresStore = useMemo<TutorBackend[]>(
+    () =>
+      storeTutores.map((t) => ({
+        id: t.id,
+        nombre: t.nombre,
+        username: t.username,
+        correo: t.correo,
+        documento: t.documento,
+        telefono: t.telefono,
+      })),
+    [storeTutores]
+  );
 
   const [tutoresApi, setTutoresApi] = useState<TutorBackend[]>([]);
   const [bloques, setBloques] = useState<BloqueBackend[]>([]);
@@ -99,7 +98,7 @@ export const StudentHome: React.FC = () => {
   const phrases = ['Asesoría Docente.', 'Tutorías Libres.', 'Espacio Estudiantil.'];
   const typewriterRef = useRef({ phraseIdx: 0, charIdx: 0, isDeleting: false });
 
-  const todayISO = getTodayISO();
+  const todayISO = hoyLocalISO();
   const fechaEscritaTexto = formatearFechaLarga(todayISO);
 
   // Cargar datos
@@ -130,11 +129,7 @@ export const StudentHome: React.FC = () => {
       } catch (err) {
         console.error('Error al cargar datos en StudentHome:', err);
       } finally {
-        if (isMounted) {
-          setTimeout(() => {
-            if (isMounted) setLoading(false);
-          }, 300);
-        }
+        if (isMounted) setLoading(false);
       }
     };
 
