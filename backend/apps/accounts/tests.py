@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core import mail
@@ -459,18 +461,26 @@ class RevisionCuentasTests(APITestCase):
             'token': token, 'pin': pin, 'password': 'Nueva2026*', 'password_confirm': 'Nueva2026*',
         }, format='json')
 
-    # 2.2: intentos por usuario
-    def test_un_token_nuevo_no_reinicia_los_intentos(self):
+    # Intentos por token: fallar el PIN a propósito no bloquea a la persona.
+    def test_agotar_un_token_no_bloquea_la_recuperacion_de_la_cuenta(self):
         token, pin = self.pedir_token(self.estudiante.email)
         incorrecto = f'{(int(pin) + 1) % 1_000_000:06d}'
         for _ in range(MAX_INTENTOS_PIN):
             self.assertEqual(self.cambiar(token, incorrecto).status_code, 400)
+        self.assertEqual(self.cambiar(token, pin).status_code, 400)
 
         cache.delete('throttle_recovery_127.0.0.1')
+        cache.delete(THROTTLE_KEY)
         token, pin = self.pedir_token(self.estudiante.email)
-        self.assertEqual(self.cambiar(token, pin).status_code, 400)
-        self.estudiante.refresh_from_db()
-        self.assertTrue(self.estudiante.check_password(CLAVE))
+        self.assertEqual(self.cambiar(token, pin).status_code, 200)
+
+    def test_intentos_duran_lo_mismo_que_el_token(self):
+        token, pin = self.pedir_token(self.estudiante.email)
+        incorrecto = f'{(int(pin) + 1) % 1_000_000:06d}'
+        with patch('apps.accounts.serializers.cache.set', wraps=cache.set) as guardar:
+            self.cambiar(token, incorrecto)
+        guardar.assert_called_once()
+        self.assertEqual(guardar.call_args.kwargs['timeout'], RecoveryToken.lifetime.total_seconds())
 
     # 2.2: tiempo del login
     def test_login_con_correo_inexistente_calcula_un_hash(self):
