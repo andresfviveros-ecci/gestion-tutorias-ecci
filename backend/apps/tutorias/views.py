@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status, views
@@ -78,15 +79,17 @@ class TutoriaDetailView(views.APIView):
     permission_classes = [LecturaOEstudiante]
     serializer_class = TutoriaSerializer
 
-    def get_tutoria(self, pk, user):
-        return get_object_or_404(
-            Tutoria.objects.select_related(*RELACIONES_LECTURA),
-            pk=pk,
-            estudiante=user
-        )
+    def get_tutoria(self, pk, user, bloquear=False):
+        tutorias = Tutoria.objects.select_related(*RELACIONES_LECTURA)
+        if bloquear:
+            tutorias = tutorias.select_for_update(of=('self',))
+        return get_object_or_404(tutorias, pk=pk, estudiante=user)
 
+    @transaction.atomic
     def actualizar(self, request, pk, partial):
-        tutoria = self.get_tutoria(pk, request.user)
+        # La fila queda bloqueada hasta guardar: si la tutoría se cancela
+        # mientras tanto, save() no devuelve el estado atrás.
+        tutoria = self.get_tutoria(pk, request.user, bloquear=True)
 
         # BE-09: solo reservadas y antes del inicio.
         if not puede_editar(tutoria):

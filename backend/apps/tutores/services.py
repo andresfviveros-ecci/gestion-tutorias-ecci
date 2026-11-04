@@ -1,5 +1,5 @@
 """ REGLAS DE LAS SOLICITUDES DE TUTOR (RF-02 y RF-03) """
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 from django.utils import timezone
@@ -18,7 +18,7 @@ from .models import SolicitudTutor
 def calcular_nota_final(corte1, corte2, corte3, config):
     """Promedio ponderado de los tres cortes con los pesos de Configuracion."""
     total = corte1 * config.peso_corte1 + corte2 * config.peso_corte2 + corte3 * config.peso_corte3
-    return (total / Decimal(100)).quantize(Decimal('0.01'))
+    return (total / Decimal(100)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 def materia_cursada(estudiante, materia, periodo):
@@ -57,7 +57,9 @@ def notificar_solicitud(solicitud):
 def revisar(solicitud, usuario, estado, motivo=''):
     """Aprobar o rechazar una solicitud pendiente, o revocar una aprobada.
     Rechazar y revocar exigen motivo; el estudiante recibe un aviso."""
-    solicitud = SolicitudTutor.objects.select_for_update().select_related('estudiante', 'materia').get(pk=solicitud.pk)
+    solicitud = SolicitudTutor.objects.select_for_update(of=('self',)).select_related(
+        'estudiante', 'materia'
+    ).get(pk=solicitud.pk)
     if not puede_revisar(usuario, solicitud):
         raise PermissionDenied('Solo el docente de la materia o la coordinación revisan esta solicitud.')
 

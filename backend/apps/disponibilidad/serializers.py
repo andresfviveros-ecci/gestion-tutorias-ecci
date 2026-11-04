@@ -106,14 +106,19 @@ class BloqueDisponibilidadSerializer(serializers.ModelSerializer):
             })
 
         # RF-04: solo en las materias habilitadas para el tutor en el periodo
-        # (asignadas al docente o aprobadas al estudiante).
-        if materia.id not in materias_habilitadas(docente, periodo):
+        # (asignadas al docente o aprobadas al estudiante). Al editar solo se
+        # revisa si cambian: perder la asignación no impide corregir el lugar
+        # de un bloque ya publicado.
+        cambia_materia = bloque is None or (materia.pk, periodo.pk) != (bloque.materia_id, bloque.periodo_id)
+        if cambia_materia and materia.id not in materias_habilitadas(docente, periodo):
             raise serializers.ValidationError({
                 'materia': f'No estás habilitado en la materia {materia.nombre} en el periodo {periodo.codigo}.'
             })
 
         # RF-06: el tutor estudiante no pasa de cupos_semanales_tutor por semana.
-        if es_tutor_estudiante(docente):
+        # Igual que arriba, solo si cambian los cupos o la semana del bloque.
+        cambian_cupos = bloque is None or (cupo_total, fecha) != (bloque.cupo_total, bloque.fecha)
+        if cambian_cupos and es_tutor_estudiante(docente):
             limite = Configuracion.actual().cupos_semanales_tutor
             ocupados = cupos_de_la_semana(docente, fecha, excluir_id=bloque.pk if bloque else None)
             if ocupados + cupo_total > limite:

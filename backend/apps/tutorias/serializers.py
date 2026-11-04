@@ -13,6 +13,7 @@ from apps.tutorias.models import Cancelacion, Tutoria
 from .estados import ACTIVOS
 from .services import (
     ESTADOS_DEL_TUTOR,
+    MAX_MINUTOS_RETRASO,
     bloque_iniciado,
     estados_para_tutor,
     limite_cancelacion,
@@ -272,7 +273,7 @@ class CambioEstadoSerializer(serializers.Serializer):
     motivo = serializers.CharField(required=False, allow_blank=True)
     notas_docente = serializers.CharField(required=False, allow_blank=True)
     compromisos = serializers.CharField(required=False, allow_blank=True)
-    minutos_retraso = serializers.IntegerField(required=False, min_value=0)
+    minutos_retraso = serializers.IntegerField(required=False, min_value=0, max_value=MAX_MINUTOS_RETRASO)
 
     def validate(self, attrs):
         if attrs['estado'] == 'CANCELADA_DOCENTE' and not attrs.get('motivo', '').strip():
