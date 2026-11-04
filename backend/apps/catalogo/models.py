@@ -6,6 +6,12 @@ from django.db import models
 
 from apps.models import BaseModel
 
+# Tope de la escala de evaluación. La tabla de evaluaciones tiene un
+# CheckConstraint con este rango, así que Configuracion no puede salirse de él.
+CALIFICACION_MIN = 1
+CALIFICACION_MAX = 10
+RANGO_CALIFICACION = [MinValueValidator(CALIFICACION_MIN), MaxValueValidator(CALIFICACION_MAX)]
+
 
 class ProgramaAcademico(BaseModel):
     codigo = models.CharField(max_length=20, unique=True, verbose_name='codigo')
@@ -110,8 +116,8 @@ class Configuracion(BaseModel):
     cupos_semanales_tutor = models.PositiveSmallIntegerField(default=10, validators=[MinValueValidator(1)], verbose_name='cupos_semanales_tutor')
     horas_anticipacion_cancelar = models.PositiveSmallIntegerField(default=1, verbose_name='horas_anticipacion_cancelar')
     horas_anticipacion_reservar = models.PositiveSmallIntegerField(default=2, verbose_name='horas_anticipacion_reservar')
-    calificacion_minima = models.PositiveSmallIntegerField(default=1, verbose_name='calificacion_minima')
-    calificacion_maxima = models.PositiveSmallIntegerField(default=10, verbose_name='calificacion_maxima')
+    calificacion_minima = models.PositiveSmallIntegerField(default=1, validators=RANGO_CALIFICACION, verbose_name='calificacion_minima')
+    calificacion_maxima = models.PositiveSmallIntegerField(default=10, validators=RANGO_CALIFICACION, verbose_name='calificacion_maxima')
 
     def __str__(self):
         return 'Configuración de tutorías'

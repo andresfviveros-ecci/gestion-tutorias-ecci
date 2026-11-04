@@ -1,5 +1,6 @@
 """ INDICADORES DEL PANEL DE COORDINACIÓN """
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.contrib.auth import get_user_model
 from django.db.models import Avg, Count, Q
@@ -39,6 +40,13 @@ def indicadores_panel(hoy=None):
     }
 
 
+def redondear(promedio):
+    """Dos decimales con el mismo redondeo de la nota final (ROUND_HALF_UP)."""
+    if promedio is None:
+        return None
+    return float(Decimal(str(promedio)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+
+
 def reporte_tutores(periodo):
     """RF-09: por cada tutor con tutorías en el periodo, cuántas tuvo, cómo
     terminaron y el promedio de sus evaluaciones."""
@@ -67,7 +75,7 @@ def reporte_tutores(periodo):
             'nombre': tutor.get_full_name(),
             'tipo': 'Docente' if tutor.pk in docentes else 'Estudiante',
             **fila,
-            'promedio_calificacion': round(promedio, 2) if promedio is not None else None,
+            'promedio_calificacion': redondear(promedio),
         })
     # Primero los mejor calificados; los que no tienen evaluaciones, al final.
     return sorted(reporte, key=lambda f: (f['promedio_calificacion'] is None, -(f['promedio_calificacion'] or 0), f['nombre']))

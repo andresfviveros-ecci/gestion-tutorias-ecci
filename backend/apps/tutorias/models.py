@@ -1,6 +1,8 @@
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
+from apps.catalogo.models import CALIFICACION_MAX, CALIFICACION_MIN
 from apps.models import BaseModel
 
 from .choices import (
@@ -67,7 +69,10 @@ class Cancelacion(BaseModel):
 
 class EvaluacionTutoria(BaseModel):
     tutoria = models.OneToOneField(Tutoria, on_delete=models.CASCADE, related_name='evaluacion')
-    calificacion = models.SmallIntegerField(verbose_name='calificacion')
+    calificacion = models.SmallIntegerField(
+        validators=[MinValueValidator(CALIFICACION_MIN), MaxValueValidator(CALIFICACION_MAX)],
+        verbose_name='calificacion'
+    )
     comentario = models.TextField(null=True, blank=True, verbose_name='comentario')
 
     def __str__(self):
@@ -77,3 +82,9 @@ class EvaluacionTutoria(BaseModel):
         verbose_name = 'Evaluación de tutoría'
         verbose_name_plural = 'Evaluaciones de tutorías'
         ordering = ['id']
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(calificacion__gte=CALIFICACION_MIN, calificacion__lte=CALIFICACION_MAX),
+                name='ck_evaluacion_calificacion',
+            ),
+        ]

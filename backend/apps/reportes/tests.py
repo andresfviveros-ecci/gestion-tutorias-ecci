@@ -11,6 +11,8 @@ from apps.accounts.pruebas import (
 from apps.catalogo.models import PeriodoAcademico
 from apps.tutorias.models import EvaluacionTutoria
 
+from .services import redondear
+
 URL = '/api/accounts/dashboard-stats/'
 
 

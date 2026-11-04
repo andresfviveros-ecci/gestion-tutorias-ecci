@@ -2,6 +2,8 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from django.core import mail
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
 from rest_framework.test import APITestCase
 
@@ -15,7 +17,7 @@ from apps.catalogo.models import Configuracion
 from apps.notificaciones.models import Notificacion
 
 from .estados import puede_pasar
-from .models import Cancelacion, Tutoria
+from .models import Cancelacion, EvaluacionTutoria, Tutoria
 from .services import calcular_horas_previas, cancelar_tutoria
 
 URL = '/api/tutorias/tutorias/'
@@ -397,3 +399,10 @@ class EvaluacionTests(APITestCase):
         self.assertEqual(self.evaluar(tutoria).status_code, 404)
         self.client.force_authenticate(self.docente)
         self.assertEqual(self.evaluar(tutoria).status_code, 403)
+
+    def test_el_modelo_y_la_base_rechazan_calificaciones_fuera_de_rango(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante, estado='COMPLETADA')
+        with self.assertRaises(ValidationError):
+            EvaluacionTutoria(tutoria=tutoria, calificacion=50).full_clean()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            EvaluacionTutoria.objects.create(tutoria=tutoria, calificacion=0)

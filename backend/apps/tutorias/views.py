@@ -189,8 +189,11 @@ class EvaluacionView(views.APIView):
     permission_classes = [LecturaOEstudiante]
     serializer_class = EvaluacionSerializer
 
-    def get_tutoria(self, pk, user):
-        return get_object_or_404(Tutoria.objects.select_related('evaluacion'), pk=pk, estudiante=user)
+    def get_tutoria(self, pk, user, bloquear=False):
+        tutorias = Tutoria.objects.select_related('evaluacion')
+        if bloquear:
+            tutorias = tutorias.select_for_update(of=('self',))
+        return get_object_or_404(tutorias, pk=pk, estudiante=user)
 
     @extend_schema(responses={200: EvaluacionSerializer})
     def get(self, request, pk, format=None):
@@ -199,8 +202,11 @@ class EvaluacionView(views.APIView):
         return Response(EvaluacionSerializer(evaluacion).data)
 
     @extend_schema(request=EvaluacionSerializer, responses={201: EvaluacionSerializer})
+    @transaction.atomic
     def post(self, request, pk, format=None):
-        tutoria = self.get_tutoria(pk, request.user)
+        # Con la fila bloqueada, el segundo POST simultáneo ve la evaluación ya
+        # guardada y responde ya_evaluada en vez de 500.
+        tutoria = self.get_tutoria(pk, request.user, bloquear=True)
         serializer = EvaluacionSerializer(data=request.data, context={'tutoria': tutoria})
         serializer.is_valid(raise_exception=True)
         serializer.save()
