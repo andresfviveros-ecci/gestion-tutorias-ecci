@@ -2,14 +2,15 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core import mail
-from django.test import override_settings
+from django.test import SimpleTestCase, override_settings
 from rest_framework.test import APITestCase
 
 from apps.accounts.pruebas import asignar_materia, crear_catalogo, crear_usuario
-from apps.catalogo.models import Inscripcion, PeriodoAcademico
+from apps.catalogo.models import Configuracion, Inscripcion, PeriodoAcademico
 from apps.notificaciones.models import Notificacion
 
 from .models import SolicitudTutor
+from .services import calcular_nota_final
 
 URL = '/api/tutores/solicitudes/'
 NOTAS = {'nota_corte1': '4.0', 'nota_corte2': '4.5', 'nota_corte3': '4.2'}  # final 4.23
@@ -126,3 +127,10 @@ class SolicitudesTutorTests(APITestCase):
         self.assertEqual(len(self.client.get(URL).data), 2)
         self.client.force_authenticate(crear_usuario('Docente'))
         self.assertEqual(len(self.client.get(URL).data), 0)
+
+
+class NotaFinalTests(SimpleTestCase):
+    def test_redondea_la_mitad_hacia_arriba(self):
+        # 4,005 con el redondeo por defecto (al par) daba 4,00.
+        config = Configuracion(peso_corte1=50, peso_corte2=50, peso_corte3=0)
+        self.assertEqual(calcular_nota_final(Decimal('4.01'), Decimal('4.00'), Decimal(0), config), Decimal('4.01'))
