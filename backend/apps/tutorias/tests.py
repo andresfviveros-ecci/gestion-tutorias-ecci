@@ -1,7 +1,8 @@
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
-from django.test import TestCase
+from django.core import mail
+from django.test import TestCase, override_settings
 from rest_framework.test import APITestCase
 
 from apps.accounts.pruebas import (
@@ -10,6 +11,7 @@ from apps.accounts.pruebas import (
     crear_tutoria,
     crear_usuario,
 )
+from apps.notificaciones.models import Notificacion
 
 from .models import Tutoria
 from .services import calcular_horas_previas
@@ -144,3 +146,49 @@ class HorasPreviasTests(TestCase):
     def test_horas_previas_no_desborda_el_campo(self):
         bloque = type('Bloque', (), {'fecha': date.today() + timedelta(days=400), 'hora_inicio': time(8, 0)})
         self.assertEqual(calcular_horas_previas(bloque), Decimal('999.99'))
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class RevisionTutoriasTests(APITestCase):
+    """Pendientes de la revisión de #51 y de la auditoría en tutorías."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.docente = crear_usuario('Docente')
+        cls.estudiante = crear_usuario('Estudiante')
+        _, cls.periodo, cls.materia = crear_catalogo()
+
+    def setUp(self):
+        self.client.force_authenticate(self.estudiante)
+        self.bloque = crear_bloque(self.docente, self.periodo, self.materia, cupo_total=1)
+
+    def reservar(self):
+        return self.client.post(URL, {'bloque_id': self.bloque.id, 'tema': 'Derivadas'}, format='json')
+
+    def cancelar(self, tutoria_id):
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.delete(f'{URL}{tutoria_id}/', {'motivo': 'Enfermedad'}, format='json')
+
+    def test_reservar_crea_notificaciones(self):
+        response = self.reservar()
+        self.assertEqual(response.status_code, 201, response.data)
+        tipos = dict(Notificacion.objects.values_list('usuario_id', 'tipo'))
+        self.assertEqual(tipos, {self.docente.id: 'NUEVA_RESERVA', self.estudiante.id: 'RESERVA_CONFIRMADA'})
+
+    def test_cancelar_avisa_al_docente(self):
+        tutoria_id = self.reservar().data['tutoria']['id']
+        self.assertEqual(self.cancelar(tutoria_id).status_code, 200)
+        aviso = Notificacion.objects.get(tipo='CANCELACION')
+        self.assertEqual(aviso.usuario, self.docente)
+        self.assertTrue(aviso.enviada_email)
+        self.assertEqual([m.to for m in mail.outbox], [[self.docente.email]])
+
+    def test_reservar_cancelar_y_volver_a_reservar(self):
+        # BE-08: era el caso que repetía el código.
+        primera = self.reservar().data['tutoria']
+        self.assertEqual(self.cancelar(primera['id']).status_code, 200)
+        response = self.reservar()
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertNotEqual(response.data['tutoria']['codigo'], primera['codigo'])
+        self.bloque.refresh_from_db()
+        self.assertEqual((self.bloque.cupo_ocupado, self.bloque.estado), (1, 'COMPLETO'))

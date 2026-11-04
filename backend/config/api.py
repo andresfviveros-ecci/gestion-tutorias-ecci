@@ -1,6 +1,7 @@
 """ PIEZAS COMUNES DEL CONTRATO DE LA API
 Paginación opcional, formato único de error y filtros compartidos. """
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.db import IntegrityError
 from django.db.models import ProtectedError
 from django.http import Http404
 from django_filters import rest_framework as filters
@@ -23,14 +24,29 @@ class PaginacionOpcional(PageNumberPagination):
             return None
         return super().paginate_queryset(queryset, request, view)
 
+    def get_paginated_response_schema(self, schema):
+        # Swagger documenta las dos formas: lista plana sin ?page= y la
+        # respuesta paginada con ?page=.
+        return {'oneOf': [schema, super().get_paginated_response_schema(schema)]}
 
-def responder_lista(view, queryset, serializer_class):
-    """Lista para las APIView: pagina igual que las vistas genéricas."""
-    paginador = PaginacionOpcional()
-    pagina = paginador.paginate_queryset(queryset, view.request, view)
-    if pagina is not None:
-        return paginador.get_paginated_response(serializer_class(pagina, many=True).data)
-    return Response(serializer_class(queryset, many=True).data, status=status.HTTP_200_OK)
+
+# Restricciones de la base que el serializer ya valida; si chocan (dos
+# peticiones a la vez) se responde 400 con el campo, no 500.
+RESTRICCIONES = {
+    'ux_user_email_ci': ('email', 'Ya existe un usuario con este correo.'),
+    'ux_periodo_un_activo': ('activo', 'Ya hay otro periodo activo.'),
+    'ux_docente_materia': ('materia', 'El docente ya tiene esta materia asignada en el periodo.'),
+    'ux_inscripcion': ('materia', 'El estudiante ya está inscrito en esta materia en el periodo.'),
+}
+
+
+def _como_lista(errores):
+    """{"campo": "mensaje"} → {"campo": ["mensaje"]}, para que errors tenga
+    siempre la misma forma."""
+    return {
+        campo: mensajes if isinstance(mensajes, (list, dict)) else [mensajes]
+        for campo, mensajes in errores.items()
+    }
 
 
 def _primero(valor):
@@ -47,6 +63,15 @@ def _primero(valor):
 def manejar_excepcion(exc, context):
     """Formato único de error (BE-28):
     {"detail": "Mensaje para mostrar", "code": "codigo", "errors": {"campo": ["mensaje"]}}"""
+    if isinstance(exc, IntegrityError):
+        for nombre, (campo, mensaje) in RESTRICCIONES.items():
+            if nombre in str(exc):
+                return Response(
+                    {'detail': mensaje, 'code': 'unique', 'errors': {campo: [mensaje]}},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        return None
+
     if isinstance(exc, ProtectedError):
         return Response(
             {
@@ -70,7 +95,7 @@ def manejar_excepcion(exc, context):
 
     datos = response.data
     if isinstance(exc, ValidationError):
-        errores = datos if isinstance(datos, dict) else {'non_field_errors': datos}
+        errores = _como_lista(datos if isinstance(datos, dict) else {'non_field_errors': datos})
         response.data = {
             'detail': _primero(errores),
             'code': _primero(exc.get_codes()) or 'invalid',

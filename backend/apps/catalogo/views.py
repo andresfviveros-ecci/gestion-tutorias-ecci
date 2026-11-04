@@ -1,4 +1,4 @@
-from django.db.models import ProtectedError
+from django.db.models import F, ProtectedError
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status
@@ -53,6 +53,21 @@ class MateriaDetailView(CatalogoDetailView):
     serializer_class = MateriaSerializer
     motivo_protegido = 'No se puede eliminar la materia porque tiene tutorías registradas.'
 
+    def destroy(self, request, *args, **kwargs):
+        # Los bloques usan SET_NULL y las asignaciones e inscripciones CASCADE,
+        # así que el borrado nunca fallaba: se perdía el historial en silencio.
+        materia = self.get_object()
+        if materia.disponibilidades.exists():
+            motivo = 'No se puede eliminar la materia porque tiene bloques de disponibilidad o tutorías.'
+        elif materia.docentes.exists() or materia.inscripciones.exists():
+            motivo = 'No se puede eliminar la materia porque tiene docentes asignados o estudiantes inscritos.'
+        else:
+            return super().destroy(request, *args, **kwargs)
+        return Response(
+            {'detail': f'{motivo} Puedes desactivarla en su lugar.', 'code': 'protegido', 'errors': {}},
+            status=status.HTTP_409_CONFLICT
+        )
+
 
 """ APIS PARA CREAR PROGRAMA ACADEMICO"""
 @extend_schema(tags=['Programas Académicos'])
@@ -104,6 +119,17 @@ class InscripcionFilter(filters.FilterSet):
         fields = ['estudiante', 'materia', 'periodo']
 
 
+def inscripciones_visibles(user, inscripciones):
+    if user.is_superuser or user.groups.filter(name='Coordinador').exists():
+        return inscripciones
+    if user.groups.filter(name='Docente').exists():
+        return inscripciones.filter(
+            materia__docentes__docente=user,
+            materia__docentes__periodo=F('periodo')
+        ).distinct()
+    return inscripciones.filter(estudiante=user)
+
+
 @extend_schema(tags=['Docentes - Materias'])
 class DocenteMateriaView(generics.ListCreateAPIView):
     permission_classes = [LecturaOCoordinador]
@@ -121,14 +147,26 @@ class DocenteMateriaDetailView(generics.RetrieveDestroyAPIView):
 
 @extend_schema(tags=['Inscripciones'])
 class InscripcionView(generics.ListCreateAPIView):
+    """La coordinación ve todas las inscripciones; un estudiante, solo las
+    suyas, y un docente, las de las materias que tiene asignadas."""
     permission_classes = [LecturaOCoordinador]
-    queryset = Inscripcion.objects.select_related('estudiante', 'materia', 'periodo')
     serializer_class = InscripcionSerializer
     filterset_class = InscripcionFilter
+
+    def get_queryset(self):
+        inscripciones = Inscripcion.objects.select_related('estudiante', 'materia', 'periodo')
+        if getattr(self, 'swagger_fake_view', False):  # generación del esquema
+            return inscripciones.none()
+        return inscripciones_visibles(self.request.user, inscripciones)
 
 
 @extend_schema(tags=['Inscripciones'])
 class InscripcionDetailView(generics.RetrieveDestroyAPIView):
     permission_classes = [LecturaOCoordinador]
-    queryset = Inscripcion.objects.select_related('estudiante', 'materia', 'periodo')
     serializer_class = InscripcionSerializer
+
+    def get_queryset(self):
+        inscripciones = Inscripcion.objects.select_related('estudiante', 'materia', 'periodo')
+        if getattr(self, 'swagger_fake_view', False):  # generación del esquema
+            return inscripciones.none()
+        return inscripciones_visibles(self.request.user, inscripciones)

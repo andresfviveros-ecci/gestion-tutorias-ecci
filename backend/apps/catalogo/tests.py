@@ -14,7 +14,7 @@ from apps.accounts.pruebas import (
     crear_usuario,
 )
 
-from .models import PeriodoAcademico
+from .models import Inscripcion, Materia, PeriodoAcademico
 
 
 class PermisosCatalogoTests(APITestCase):
@@ -125,3 +125,47 @@ class MigracionPeriodoActivoTests(TransactionTestCase):
 
         Periodo = executor.loader.project_state(self.despues).apps.get_model('catalogo', 'PeriodoAcademico')
         self.assertEqual(list(Periodo.objects.filter(activo=True).values_list('codigo', flat=True)), ['2026-2'])
+
+
+class RevisionCatalogoTests(APITestCase):
+    """Pendientes de la revisión de #50 y #52 en el catálogo."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.coordinador = crear_usuario('Coordinador')
+        cls.estudiante = crear_usuario('Estudiante')
+        cls.programa, cls.periodo, cls.materia = crear_catalogo()
+
+    def setUp(self):
+        self.client.force_authenticate(self.coordinador)
+
+    def borrar_materia(self, materia):
+        return self.client.delete(f'/api/catalogo/materias/{materia.id}/')
+
+    def test_materia_con_bloques_responde_409(self):
+        crear_bloque(crear_usuario('Docente'), self.periodo, self.materia)
+        self.assertEqual(self.borrar_materia(self.materia).status_code, 409)
+        self.assertTrue(Materia.objects.filter(pk=self.materia.pk).exists())
+
+    def test_materia_con_inscripciones_responde_409(self):
+        Inscripcion.objects.create(estudiante=self.estudiante, materia=self.materia, periodo=self.periodo)
+        self.assertEqual(self.borrar_materia(self.materia).status_code, 409)
+
+    def test_materia_sin_dependencias_se_borra(self):
+        nueva = Materia.objects.create(programa=self.programa, codigo='NUEVA1', nombre='Nueva', semestre=1)
+        self.assertEqual(self.borrar_materia(nueva).status_code, 204)
+
+    def test_estudiante_ve_solo_sus_inscripciones(self):
+        otro = crear_usuario('Estudiante')
+        Inscripcion.objects.create(estudiante=self.estudiante, materia=self.materia, periodo=self.periodo)
+        ajena = Inscripcion.objects.create(estudiante=otro, materia=self.materia, periodo=self.periodo)
+
+        self.client.force_authenticate(self.estudiante)
+        datos = self.client.get('/api/catalogo/inscripciones/').data
+        self.assertEqual([i['estudiante'] for i in datos], [self.estudiante.id])
+        self.assertEqual(self.client.get(f'/api/catalogo/inscripciones/{ajena.id}/').status_code, 404)
+
+    def test_filtros_con_texto_responden_400(self):
+        for url in ('/api/catalogo/docentes-materias/', '/api/catalogo/inscripciones/'):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url, {'materia': 'abc'}).status_code, 400)

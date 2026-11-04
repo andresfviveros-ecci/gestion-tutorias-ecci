@@ -10,8 +10,8 @@ from .models import BloqueDisponibilidad
 
 class BloqueDisponibilidadFilter(filters.FilterSet):
     """BE-27: por defecto solo bloques de hoy en adelante y no cancelados.
-    ?desde=, ?hasta= e ?incluir_pasados=1 amplían el rango; ?estado=CANCELADO
-    muestra los cancelados."""
+    ?desde=, ?hasta=, ?fecha= o ?incluir_pasados=1 reemplazan ese rango;
+    ?estado=CANCELADO muestra los cancelados."""
     docente = UsuarioFilter(field_name='docente_id', help_text='Id del docente, o "me".')
     materia = filters.NumberFilter(field_name='materia_id')
     periodo = filters.NumberFilter(field_name='periodo_id')
@@ -31,7 +31,8 @@ class BloqueDisponibilidadFilter(filters.FilterSet):
 
     def filter_queryset(self, queryset):
         datos = self.form.cleaned_data
-        if not (datos.get('incluir_pasados') or datos.get('desde') or datos.get('fecha')):
+        rango = ('incluir_pasados', 'desde', 'hasta', 'fecha')
+        if not any(datos.get(campo) for campo in rango):
             queryset = queryset.filter(fecha__gte=date.today())
         if not datos.get('estado'):
             queryset = queryset.exclude(estado='CANCELADO')

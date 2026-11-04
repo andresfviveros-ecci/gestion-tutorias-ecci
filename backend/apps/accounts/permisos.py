@@ -15,6 +15,8 @@ class EnGrupos(BasePermission):
             return False
         if self.lectura_libre and request.method in SAFE_METHODS:
             return True
+        if user.is_superuser:
+            return True
         return user.groups.filter(name__in=self.grupos).exists()
 
 

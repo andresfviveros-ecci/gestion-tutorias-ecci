@@ -5,7 +5,12 @@ from itertools import count
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 
-from apps.catalogo.models import Materia, PeriodoAcademico, ProgramaAcademico
+from apps.catalogo.models import (
+    DocenteMateria,
+    Materia,
+    PeriodoAcademico,
+    ProgramaAcademico,
+)
 from apps.disponibilidad.models import BloqueDisponibilidad
 from apps.tutorias.models import Tutoria
 
@@ -39,6 +44,11 @@ def crear_catalogo():
     )
     materia = Materia.objects.create(codigo=f'MAT{n}', nombre='Cálculo I', programa=programa)
     return programa, periodo, materia
+
+
+def asignar_materia(docente, materia, periodo):
+    """Sin asignación el docente no puede publicar bloques en la materia."""
+    return DocenteMateria.objects.get_or_create(docente=docente, materia=materia, periodo=periodo)[0]
 
 
 def crear_bloque(docente, periodo, materia, **extra):

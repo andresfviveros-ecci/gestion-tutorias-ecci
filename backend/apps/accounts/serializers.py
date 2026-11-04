@@ -15,7 +15,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .tokens import RecoveryToken
 
-# Intentos fallidos de PIN antes de invalidar la recuperación (BE-02).
+# Intentos fallidos de PIN antes de invalidar la recuperación (BE-02), y
+# cuánto dura el bloqueo de la cuenta después del último fallo.
 MAX_INTENTOS_PIN = 5
 
 
@@ -47,6 +48,8 @@ def clave_pin(jti):
 
 
 def clave_intentos(jti):
+    # Por token y no por usuario: si no, cualquiera que conozca un correo le
+    # bloquea la recuperación a esa persona fallando el PIN a propósito.
     return f'password_recovery_intentos_{jti}'
 
 
@@ -69,6 +72,10 @@ class LoginSerializers(serializers.Serializer):
         ).first()
         # BE-23: authenticate() descarta a los inactivos y el mensaje nunca
         # llegaba. Se revisa la clave primero para no revelar cuentas.
+        if not user:
+            # Se calcula un hash igual, para que el tiempo de respuesta no
+            # delate qué correos tienen cuenta.
+            get_user_model()().set_password(password)
         if not user or not user.check_password(password):
             raise serializers.ValidationError(
                 'Credenciales invalidas.'
@@ -131,9 +138,12 @@ class ChangePasswordSerializer(serializers.Serializer):
 
     def _registrar_intento_fallido(self, jti):
         clave = clave_intentos(jti)
-        cache.add(clave, 0, timeout=RecoveryToken.lifetime.total_seconds())
-        if cache.incr(clave) >= MAX_INTENTOS_PIN:
+        intentos = cache.get(clave, 0) + 1
+        if intentos >= MAX_INTENTOS_PIN:
             cache.delete_many([clave_pin(jti), clave])
+        else:
+            # cache.set y no cache.incr: incr vuelve al TTL por defecto (300 s).
+            cache.set(clave, intentos, timeout=RecoveryToken.lifetime.total_seconds())
 
     def save(self, **kwargs):
         user = self.validated_data['user']
@@ -249,6 +259,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
     def validate_password(self, value):
         validar_clave(value)
+        return value
+
+    def validate_is_active(self, value):
+        request = self.context.get('request')
+        if not value and request and self.instance is not None and self.instance.pk == request.user.pk:
+            raise serializers.ValidationError('No puedes desactivar tu propia cuenta.')
         return value
 
     def validate(self, attrs):

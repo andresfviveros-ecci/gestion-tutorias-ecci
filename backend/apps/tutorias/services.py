@@ -4,13 +4,12 @@ Así las reglas se prueban sin HTTP y no se repiten entre vistas. """
 from datetime import datetime
 from decimal import Decimal
 
-from django.conf import settings
-from django.core.mail import send_mail
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.disponibilidad.models import BloqueDisponibilidad
+from apps.notificaciones.services import notificar
 
 from .models import Cancelacion, Tutoria
 
@@ -52,19 +51,37 @@ def liberar_cupo(bloque_id):
     bloque.save(update_fields=['cupo_ocupado', 'estado'])
 
 
-def notificar_cancelacion_docente(tutoria, motivo):
+def notificar_reserva(tutoria):
     bloque = tutoria.bloque
-    send_mail(
-        'Tu tutoría fue cancelada',
-        (
-            f'El docente canceló la tutoría {tutoria.codigo} del {bloque.fecha} '
-            f'a las {bloque.hora_inicio:%H:%M}.\nMotivo: {motivo}'
-        ),
-        settings.DEFAULT_FROM_EMAIL,
-        [tutoria.estudiante.email],
-        # Un fallo de SMTP no debe deshacer la cancelación.
-        fail_silently=True,
+    cuando = f'{bloque.fecha} a las {bloque.hora_inicio:%H:%M}'
+    notificar(
+        bloque.docente, 'NUEVA_RESERVA', 'Nueva reserva de tutoría',
+        f'{tutoria.estudiante.get_full_name()} reservó la tutoría {tutoria.codigo} del {cuando}. '
+        f'Tema: {tutoria.tema}',
+        tutoria=tutoria,
     )
+    notificar(
+        tutoria.estudiante, 'RESERVA_CONFIRMADA', 'Tutoría reservada',
+        f'Reservaste la tutoría {tutoria.codigo} con {bloque.docente.get_full_name()} el {cuando}.',
+        tutoria=tutoria,
+    )
+
+
+def notificar_cancelacion(tutoria, origen, motivo):
+    """Avisa por la aplicación y por correo a la otra parte: al docente si
+    cancela el estudiante y al estudiante si cancela el docente."""
+    bloque = tutoria.bloque
+    cuando = f'{bloque.fecha} a las {bloque.hora_inicio:%H:%M}'
+    if origen == 'DOCENTE':
+        destinatario = tutoria.estudiante
+        mensaje = f'El docente canceló la tutoría {tutoria.codigo} del {cuando}.\nMotivo: {motivo}'
+    else:
+        destinatario = bloque.docente
+        mensaje = (
+            f'{tutoria.estudiante.get_full_name()} canceló la tutoría {tutoria.codigo} '
+            f'del {cuando}.\nMotivo: {motivo}'
+        )
+    notificar(destinatario, 'CANCELACION', 'Tutoría cancelada', mensaje, tutoria=tutoria, correo=True)
 
 
 @transaction.atomic
@@ -72,8 +89,11 @@ def cancelar_tutoria(tutoria, usuario, motivo):
     """Cancela la tutoría y libera el cupo. El estado y el origen salen de
     quién cancela (BE-06, BE-07); se permite en RESERVADA y CONFIRMADA
     (BE-20) y solo antes del inicio (BE-09)."""
-    tutoria = Tutoria.objects.select_for_update().select_related(
-        'bloque', 'estudiante'
+    # Primero el bloque y después la tutoría, en el mismo orden que reservar
+    # y cancelar_bloque, para que dos operaciones no se bloqueen entre sí.
+    BloqueDisponibilidad.objects.select_for_update().get(pk=tutoria.bloque_id)
+    tutoria = Tutoria.objects.select_for_update(of=('self',)).select_related(
+        'bloque__docente', 'estudiante'
     ).get(pk=tutoria.pk)
 
     if tutoria.estado not in ESTADOS_ACTIVOS:
@@ -93,6 +113,5 @@ def cancelar_tutoria(tutoria, usuario, motivo):
     tutoria.save(update_fields=['estado'])
     liberar_cupo(tutoria.bloque_id)
 
-    if origen == 'DOCENTE':
-        transaction.on_commit(lambda: notificar_cancelacion_docente(tutoria, motivo))
+    notificar_cancelacion(tutoria, origen, motivo)
     return cancelacion

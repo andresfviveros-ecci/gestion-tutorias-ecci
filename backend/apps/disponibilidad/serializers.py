@@ -3,6 +3,8 @@ from datetime import datetime
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.catalogo.models import DocenteMateria
+
 from .models import BloqueDisponibilidad
 from .services import existe_conflicto
 
@@ -42,6 +44,7 @@ class BloqueDisponibilidadSerializer(serializers.ModelSerializer):
         ]
         # BE-11: el dueño, el estado y el cupo ocupado los fija el servidor.
         read_only_fields = ['docente', 'cupo_ocupado', 'estado']
+        extra_kwargs = {'materia': {'required': True, 'allow_null': False}}
 
     def _valor(self, attrs, campo, por_defecto=None):
         if campo in attrs:
@@ -55,6 +58,11 @@ class BloqueDisponibilidadSerializer(serializers.ModelSerializer):
         hora_fin = self._valor(attrs, 'hora_fin')
         cupo_total = self._valor(attrs, 'cupo_total', 1)
         periodo = self._valor(attrs, 'periodo')
+        materia = self._valor(attrs, 'materia')
+        docente = bloque.docente if bloque else self.context['request'].user
+
+        if materia is None:
+            raise serializers.ValidationError({'materia': 'La materia es obligatoria.'})
 
         if hora_inicio >= hora_fin:
             raise serializers.ValidationError({
@@ -96,7 +104,15 @@ class BloqueDisponibilidadSerializer(serializers.ModelSerializer):
                 )
             })
 
-        docente = bloque.docente if bloque else self.context['request'].user
+        # El docente solo publica horarios en las materias que tiene asignadas
+        # en el periodo. Al editar solo se revisa si cambian: quitarle la
+        # asignación no le impide corregir el lugar de un bloque ya publicado.
+        cambia_materia = bloque is None or (materia.pk, periodo.pk) != (bloque.materia_id, bloque.periodo_id)
+        if cambia_materia and not DocenteMateria.objects.filter(docente=docente, materia=materia, periodo=periodo).exists():
+            raise serializers.ValidationError({
+                'materia': f'No tienes asignada la materia {materia.nombre} en el periodo {periodo.codigo}.'
+            })
+
         if existe_conflicto(
             docente=docente,
             fecha=fecha,
