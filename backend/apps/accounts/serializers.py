@@ -2,14 +2,31 @@ from django.contrib.auth import authenticate
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
-from rest_framework import serializers
-from rest_framework_simplejwt.tokens import AccessToken
-import random
-from datetime import timedelta
+import secrets
 from django.contrib.auth.models import Group
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 import re
 from django.core.cache import cache
+from .tokens import RecoveryToken
+
+# Intentos fallidos de PIN antes de invalidar la recuperación (BE-02).
+MAX_INTENTOS_PIN = 5
+
+
+def clave_pin(jti):
+    return f'password_recovery_{jti}'
+
+
+def clave_intentos(jti):
+    return f'password_recovery_intentos_{jti}'
+
+
+def cerrar_sesiones(user):
+    """Pone en la lista negra los refresh del usuario: tras cambiar la clave
+    un refresh robado deja de servir."""
+    for token in OutstandingToken.objects.filter(user=user):
+        BlacklistedToken.objects.get_or_create(token=token)
 
 
 """ SERIALIZERS PARA VALIDAR INICIO DE SESION"""
@@ -58,22 +75,19 @@ class ChangePasswordSerializer(serializers.Serializer):
     )
     def validate(self, attrs):
         try:
-            token = AccessToken(attrs['token'])
-            if token.get('type') != 'password_recovery':
-                raise serializers.ValidationError(
-                    'Token de recuperación inválido.'
-                )
-            pin_guardado = cache.get(
-                f'password_recovery_{token["jti"]}'
-            )
-            if not pin_guardado or pin_guardado != attrs['pin']:
+            # RecoveryToken valida firma, expiración y token_type.
+            token = RecoveryToken(attrs['token'])
+            jti = token['jti']
+            # El usuario va en la caché junto al PIN, no en el token (BE-24).
+            guardado = cache.get(clave_pin(jti))
+            if not guardado or not secrets.compare_digest(guardado['pin'].encode(), attrs['pin'].encode()):
+                if guardado:
+                    self._registrar_intento_fallido(jti)
                 raise serializers.ValidationError(
                     'Código de recuperación incorrecto o expirado.'
                 )
-            User = get_user_model()
-            user = User.objects.get(
-                id=token['user_id'],
-                email__iexact=token['email'],
+            user = get_user_model().objects.get(
+                id=guardado['user_id'],
                 is_active=True
             )
         except (TokenError, get_user_model().DoesNotExist, KeyError):
@@ -98,16 +112,22 @@ class ChangePasswordSerializer(serializers.Serializer):
                 'password': 'La contraseña debe contener un carácter especial.'
             })
         attrs['user'] = user
+        attrs['jti'] = jti
         return attrs
+
+    def _registrar_intento_fallido(self, jti):
+        clave = clave_intentos(jti)
+        cache.add(clave, 0, timeout=RecoveryToken.lifetime.total_seconds())
+        if cache.incr(clave) >= MAX_INTENTOS_PIN:
+            cache.delete_many([clave_pin(jti), clave])
 
     def save(self, **kwargs):
         user = self.validated_data['user']
-        token = AccessToken(self.validated_data['token'])
+        jti = self.validated_data['jti']
         user.set_password(self.validated_data['password'])
         user.save()
-        cache.delete(
-            f'password_recovery_{token["jti"]}'
-        )
+        cache.delete_many([clave_pin(jti), clave_intentos(jti)])
+        cerrar_sesiones(user)
         return user
     
 """ SERIALIZER PARA RECUPERAR CONTRASEÑA """
@@ -122,31 +142,24 @@ class RecoveryTokenSerializer(serializers.Serializer):
         return value.lower()
 
     def validate(self, attrs):
-        User = get_user_model()
+        # La respuesta es la misma exista o no el correo (BE-24): siempre se
+        # entrega un token, pero solo se guarda PIN si el usuario existe. El
+        # token lleva los mismos claims en los dos casos: el usuario queda en
+        # la caché, con el jti como llave, y no en el JWT, que se puede leer.
+        user = get_user_model().objects.filter(
+            email__iexact=attrs['email'],
+            is_active=True
+        ).first()
 
-        try:
-            user = User.objects.get(
-                email__iexact=attrs['email'],
-                is_active=True
+        token = RecoveryToken()
+        pin = None
+        if user:
+            pin = f'{secrets.randbelow(1_000_000):06d}'
+            cache.set(
+                clave_pin(token['jti']),
+                {'pin': pin, 'user_id': user.id},
+                timeout=RecoveryToken.lifetime.total_seconds()
             )
-        except User.DoesNotExist:
-            raise serializers.ValidationError(
-                'No existe un usuario activo con este correo.'
-            )
-
-        pin = f'{random.randint(0, 999999):06d}'
-
-        token = AccessToken()
-        token['user_id'] = user.id
-        token['email'] = user.email
-        token['type'] = 'password_recovery'
-        token.set_exp(lifetime=timedelta(minutes=5))
-
-        cache.set(
-            f'password_recovery_{token["jti"]}',
-            pin,
-            timeout=300
-        )
 
         attrs['user'] = user
         attrs['pin'] = pin
