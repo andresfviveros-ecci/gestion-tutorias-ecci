@@ -2,7 +2,7 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import views, status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from apps.accounts.permisos import LecturaOEstudiante
 from rest_framework.exceptions import ValidationError
 from drf_spectacular.utils import extend_schema
 
@@ -17,7 +17,7 @@ from .serializers import (
 
 @extend_schema(tags=['Tutorías'])
 class TutoriaView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [LecturaOEstudiante]
 
     @extend_schema(responses={200: TutoriaSerializer(many=True)})
     def get(self, request, format=None):
@@ -49,7 +49,7 @@ class TutoriaView(views.APIView):
 
 @extend_schema(tags=['Tutorías'])
 class TutoriaDetailView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [LecturaOEstudiante]
 
     def get_tutoria(self, pk, user):
         return get_object_or_404(

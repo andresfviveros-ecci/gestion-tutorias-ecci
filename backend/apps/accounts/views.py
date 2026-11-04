@@ -6,8 +6,11 @@ from .serializers import *
 from django.core.mail import send_mail
 from django.db import transaction
 from drf_spectacular.utils import extend_schema
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from django.shortcuts import get_object_or_404
+from rest_framework.permissions import AllowAny
+from .permisos import EsCoordinador, EsCoordinadorOEstudiante
 from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 
 """ API PARA INICIAR SESION"""
@@ -78,22 +81,52 @@ class ChangePasswordView(views.APIView):
             status=status.HTTP_200_OK
         )
 
+def proteger_usuario(request, user, borrar=False):
+    """Reglas para editar o borrar cuentas desde los CRUD de usuarios:
+    solo un superusuario toca a otro superusuario, nadie se borra a sí
+    mismo y siempre queda al menos un coordinador activo."""
+    if user.is_superuser and not request.user.is_superuser:
+        raise PermissionDenied('Solo un superusuario puede editar o eliminar a otro superusuario.')
+    if not borrar:
+        return
+    if user.pk == request.user.pk:
+        raise ValidationError({'detail': 'No puedes eliminar tu propia cuenta.'})
+    if user.groups.filter(name='Coordinador').exists():
+        otros = get_user_model().objects.filter(
+            groups__name='Coordinador',
+            is_active=True
+        ).exclude(pk=user.pk)
+        if not otros.exists():
+            raise ValidationError({'detail': 'No se puede eliminar al último coordinador activo.'})
+
+
+def eliminar_o_desactivar(request, user):
+    """Borra el usuario si no tiene historial. Si tiene tutorías o bloques
+    (BE-14) lo desactiva, para no perder ese historial ni responder 500."""
+    proteger_usuario(request, user, borrar=True)
+    if user.tutorias.exists() or user.disponibilidades.exists():
+        user.is_active = False
+        user.save(update_fields=['is_active'])
+        return Response(
+            {'detail': 'El usuario tiene tutorías o disponibilidad registradas; se desactivó en lugar de eliminarse.'},
+            status=status.HTTP_200_OK
+        )
+    user.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 """ API PARA CRUD ESTUDIANTE"""
 @extend_schema(tags=['Estudiantes'])
 class StudentView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [EsCoordinador]
 
     def get(self, request, format=None):
-        if not request.user.groups.filter(name='Coordinador').exists():
-            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
         users = get_user_model().objects.filter(groups__name='Estudiante')
         serializer = StudentRegisterSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(request=StudentRegisterSerializer)
     def post(self, request, format=None):
-        if not request.user.groups.filter(name='Coordinador').exists():
-            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = StudentRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -102,48 +135,44 @@ class StudentView(views.APIView):
 
 @extend_schema(tags=['Estudiantes'])
 class StudentDetailView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [EsCoordinador]
+
+    def get_user(self, pk):
+        return get_object_or_404(get_user_model(), pk=pk, groups__name='Estudiante')
 
     def get(self, request, pk, format=None):
-        if not request.user.groups.filter(name='Coordinador').exists():
-            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
-        user = get_user_model().objects.get(pk=pk, groups__name='Estudiante')
-        serializer = StudentRegisterSerializer(user)
+        serializer = StudentRegisterSerializer(self.get_user(pk))
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def put(self, request, pk, format=None):
-        if not request.user.groups.filter(name='Coordinador').exists():
-            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
-        user = get_user_model().objects.get(pk=pk, groups__name='Estudiante')
+        user = self.get_user(pk)
+        proteger_usuario(request, user)
         serializer = StudentRegisterSerializer(user, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk, format=None):
-        if not request.user.groups.filter(name='Coordinador').exists():
-            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
-        user = get_user_model().objects.get(pk=pk, groups__name='Estudiante')
-        user.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return eliminar_o_desactivar(request, self.get_user(pk))
 
 
 """ API PARA REGISTRAR TUTORES/DOCENTE """
 @extend_schema(tags=['Docentes'])
 class TutorView(views.APIView):
-    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        # Los estudiantes también listan docentes para reservar.
+        if self.request.method == 'GET':
+            return [EsCoordinadorOEstudiante()]
+        return [EsCoordinador()]
 
     def get(self, request, format=None):
-        if not request.user.groups.filter(name__in=['Coordinador', 'Estudiante']).exists():
-            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
         users = get_user_model().objects.filter(groups__name='Docente', is_active=True).distinct()
         serializer = TutorRegisterSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
     @extend_schema(request=TutorRegisterSerializer)
     def post(self, request, format=None):
-        if not request.user.groups.filter(name='Coordinador').exists():
-            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = TutorRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -152,68 +181,64 @@ class TutorView(views.APIView):
 
 @extend_schema(tags=['Docentes'])
 class TutorDetailView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [EsCoordinador]
+
+    def get_user(self, pk):
+        return get_object_or_404(get_user_model(), pk=pk, groups__name='Docente')
 
     def get(self, request, pk, format=None):
-        if not request.user.groups.filter(name='Coordinador').exists():
-            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
-        user = get_user_model().objects.get(pk=pk, groups__name='Docente')
-        serializer = TutorRegisterSerializer(user)
+        serializer = TutorRegisterSerializer(self.get_user(pk))
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def put(self, request, pk, format=None):
-        if not request.user.groups.filter(name='Coordinador').exists():
-            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
-        user = get_user_model().objects.get(pk=pk, groups__name='Docente')
+        user = self.get_user(pk)
+        proteger_usuario(request, user)
         serializer = TutorRegisterSerializer(user, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk, format=None):
-        if not request.user.groups.filter(name='Coordinador').exists():
-            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
-        user = get_user_model().objects.get(pk=pk, groups__name='Docente')
-        user.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return eliminar_o_desactivar(request, self.get_user(pk))
 
 
 """ API PARA CRUD COORDINADORES"""
 @extend_schema(tags=['Coordinadores'])
 class CoordinatorView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [EsCoordinador]
 
     def get(self, request, format=None):
-        if not request.user.groups.filter(name='Coordinador').exists():
-            return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
         users = get_user_model().objects.filter(groups__name='Coordinador', is_active=True).distinct()
         serializer = CoordinatorSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(request=CoordinatorSerializer)
     def post(self, request, format=None):
-        if not request.user.groups.filter(name='Coordinador').exists():
-            return Response(
-                {'detail': 'No tienes permisos para realizar esta operación.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
         serializer = CoordinatorSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(tags=['Coordinadores'])
 class CoordinatorDetailView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    # Con RF-05 pasa a ser solo para el grupo Administrador.
+    permission_classes = [EsCoordinador]
+
+    def get_user(self, pk):
+        return get_object_or_404(get_user_model(), pk=pk, groups__name='Coordinador')
 
     def get(self, request, pk, format=None):
-        return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        serializer = CoordinatorSerializer(self.get_user(pk))
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def put(self, request, pk, format=None):
-        return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        user = self.get_user(pk)
+        proteger_usuario(request, user)
+        serializer = CoordinatorSerializer(user, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk, format=None):
-        return Response({'detail': 'No tienes permisos para realizar esta operación.'}, status=status.HTTP_403_FORBIDDEN)
+        return eliminar_o_desactivar(request, self.get_user(pk))

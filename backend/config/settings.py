@@ -169,6 +169,10 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    # Todo exige sesión salvo las vistas que declaran AllowAny (login y recuperación).
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     # La IP sale de REMOTE_ADDR y no de X-Forwarded-For, que lo manda el
     # cliente: si no, basta cambiar el header para saltarse el límite.

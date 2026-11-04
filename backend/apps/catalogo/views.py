@@ -1,5 +1,6 @@
 from rest_framework import status, views
-from rest_framework.permissions import IsAuthenticated
+from django.db.models import ProtectedError
+from apps.accounts.permisos import LecturaOCoordinador
 from rest_framework.response import Response
 from .models import Materia
 from .serializer import *
@@ -7,9 +8,18 @@ from drf_spectacular.utils import extend_schema
 from .models import PeriodoAcademico
 from .serializer import PeriodoAcademicoSerializer
 
+def eliminar_protegido(objeto, motivo):
+    """Borra el objeto o responde 409 si otros registros dependen de él (BE-14)."""
+    try:
+        objeto.delete()
+    except ProtectedError:
+        return Response({'detail': motivo}, status=status.HTTP_409_CONFLICT)
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 @extend_schema(tags=['Materias'])
 class MateriaView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [LecturaOCoordinador]
 
     @extend_schema(
         responses={200: MateriaSerializer(many=True)}
@@ -40,7 +50,7 @@ class MateriaView(views.APIView):
 
 @extend_schema(tags=['Materias'])
 class MateriaDetailView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [LecturaOCoordinador]
 
     def get_materia(self, pk):
         try:
@@ -113,16 +123,15 @@ class MateriaDetailView(views.APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        materia.delete()
-
-        return Response(
-            status=status.HTTP_204_NO_CONTENT
+        return eliminar_protegido(
+            materia,
+            'No se puede eliminar la materia porque tiene tutorías registradas.'
         )
 
 """ APIS PARA CREAR PROGRAMA ACADEMICO"""
 @extend_schema(tags=['Programas Académicos'])
 class ProgramaAcademicoView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [LecturaOCoordinador]
 
     @extend_schema(
         responses={200: ProgramaAcademicoSerializer(many=True)}
@@ -156,7 +165,7 @@ class ProgramaAcademicoView(views.APIView):
 
 @extend_schema(tags=['Programas Académicos'])
 class ProgramaAcademicoDetailView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [LecturaOCoordinador]
 
     def get_programa(self, pk):
         try:
@@ -232,7 +241,7 @@ class ProgramaAcademicoDetailView(views.APIView):
             status=status.HTTP_200_OK
         )
 
-    @extend_schema(responses={204: None})
+    @extend_schema(responses={204: None, 409: dict})
     def delete(self, request, pk, format=None):
         programa = self.get_programa(pk)
 
@@ -242,16 +251,15 @@ class ProgramaAcademicoDetailView(views.APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        programa.delete()
-
-        return Response(
-            status=status.HTTP_204_NO_CONTENT
+        return eliminar_protegido(
+            programa,
+            'No se puede eliminar el programa porque tiene materias asociadas.'
         )
     
 """ APIS DE PERIODO"""
 @extend_schema(tags=['Periodos Académicos'])
 class PeriodoAcademicoView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [LecturaOCoordinador]
 
     @extend_schema(
         responses={200: PeriodoAcademicoSerializer(many=True)}
@@ -282,7 +290,7 @@ class PeriodoAcademicoView(views.APIView):
 
 @extend_schema(tags=['Periodos Académicos'])
 class PeriodoAcademicoDetailView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [LecturaOCoordinador]
 
     def get_periodo(self, pk):
         try:
@@ -351,7 +359,7 @@ class PeriodoAcademicoDetailView(views.APIView):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @extend_schema(responses={204: None, 404: None})
+    @extend_schema(responses={204: None, 404: None, 409: dict})
     def delete(self, request, pk, format=None):
         periodo = self.get_periodo(pk)
 
@@ -361,6 +369,7 @@ class PeriodoAcademicoDetailView(views.APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        periodo.delete()
-
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return eliminar_protegido(
+            periodo,
+            'No se puede eliminar el periodo porque tiene tutorías registradas.'
+        )
