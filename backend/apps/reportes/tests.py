@@ -92,3 +92,7 @@ class ReporteTutoresTests(APITestCase):
     def test_solo_coordinacion(self):
         self.client.force_authenticate(self.docente)
         self.assertEqual(self.client.get(self.URL).status_code, 403)
+
+    def test_redondea_el_promedio_hacia_arriba(self):
+        self.assertEqual(redondear(8.125), 8.13)
+        self.assertIsNone(redondear(None))
