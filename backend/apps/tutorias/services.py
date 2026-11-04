@@ -111,6 +111,16 @@ def notificar_cancelacion(tutoria, origen, motivo):
     notificar(destinatario, 'CANCELACION', 'Tutoría cancelada', mensaje, tutoria=tutoria, correo=True)
 
 
+def bloquear_tutoria(tutoria):
+    """Bloquea primero el bloque y después la tutoría, en el mismo orden que
+    reservar y cancelar_bloque, para que dos operaciones no se bloqueen entre
+    sí. Debe llamarse dentro de una transacción."""
+    BloqueDisponibilidad.objects.select_for_update().get(pk=tutoria.bloque_id)
+    return Tutoria.objects.select_for_update(of=('self',)).select_related(
+        'bloque__docente', 'estudiante'
+    ).get(pk=tutoria.pk)
+
+
 @transaction.atomic
 def cancelar_tutoria(tutoria, usuario, motivo, anular=False):
     """Cancela la tutoría, libera el cupo y avisa a la otra parte.
@@ -120,12 +130,7 @@ def cancelar_tutoria(tutoria, usuario, motivo, anular=False):
       tutor, hasta el inicio del bloque.
     - Con anular=True la cancela el sistema (ANULADA, origen SISTEMA), por
       ejemplo al revocar la habilitación de un tutor."""
-    # Primero el bloque y después la tutoría, en el mismo orden que reservar
-    # y cancelar_bloque, para que dos operaciones no se bloqueen entre sí.
-    BloqueDisponibilidad.objects.select_for_update().get(pk=tutoria.bloque_id)
-    tutoria = Tutoria.objects.select_for_update().select_related(
-        'bloque__docente', 'estudiante'
-    ).get(pk=tutoria.pk)
+    tutoria = bloquear_tutoria(tutoria)
 
     if anular:
         origen, estado = 'SISTEMA', 'ANULADA'
@@ -163,6 +168,9 @@ def cancelar_tutoria(tutoria, usuario, motivo, anular=False):
 
 # Estados a los que el tutor lleva una tutoría de sus bloques.
 ESTADOS_DEL_TUTOR = ('CONFIRMADA', 'COMPLETADA', 'NO_ASISTIO', 'CANCELADA_DOCENTE')
+# Tope de minutos_retraso: un día. La columna es SmallInteger y con más de
+# 32767 la base respondía 500.
+MAX_MINUTOS_RETRASO = 1440
 
 
 def estados_para_tutor(tutoria):
@@ -184,7 +192,7 @@ def cambiar_estado_por_tutor(tutoria, usuario, estado, motivo=None, **datos):
         tutoria.refresh_from_db()
         return tutoria
 
-    tutoria = Tutoria.objects.select_for_update().select_related('bloque__docente', 'estudiante').get(pk=tutoria.pk)
+    tutoria = bloquear_tutoria(tutoria)
     validar_transicion(tutoria, estado)
     if estado not in estados_para_tutor(tutoria):
         cuando = 'desde el inicio' if estado in ('COMPLETADA', 'NO_ASISTIO') else 'antes del inicio'

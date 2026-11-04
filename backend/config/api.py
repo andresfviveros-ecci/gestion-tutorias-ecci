@@ -36,6 +36,8 @@ RESTRICCIONES = {
     'ux_user_email_ci': ('email', 'Ya existe un usuario con este correo.'),
     'ux_periodo_un_activo': ('activo', 'Ya hay otro periodo activo.'),
     'ux_solicitud_vigente': ('materia', 'Ya tienes una solicitud pendiente o aprobada en esta materia.'),
+    'ux_docente_materia': ('materia', 'El docente ya tiene esta materia asignada en el periodo.'),
+    'ux_inscripcion': ('materia', 'El estudiante ya está inscrito en esta materia en el periodo.'),
 }
 
 

@@ -313,6 +313,12 @@ class TutoriasRecibidasTests(APITestCase):
         self.assertEqual((tutoria.estado, tutoria.asistencia, tutoria.minutos_retraso), ('COMPLETADA', 'ASISTIO_TARDE', 10))
         self.assertEqual(response.data['estados_siguientes'], [])
 
+    def test_minutos_retraso_con_tope(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante, estado='CONFIRMADA')
+        response = self.cambiar(tutoria, estado='COMPLETADA', minutos_retraso=99999)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('minutos_retraso', response.data['errors'])
+
     def test_no_asistio(self):
         tutoria = crear_tutoria(self.pasado, self.estudiante)
         self.assertEqual(self.cambiar(tutoria, estado='NO_ASISTIO').status_code, 200)

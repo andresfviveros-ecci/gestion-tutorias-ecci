@@ -105,8 +105,10 @@ class BloqueDisponibilidadSerializer(serializers.ModelSerializer):
             })
 
         # El docente solo publica horarios en las materias que tiene asignadas
-        # en el periodo.
-        if not DocenteMateria.objects.filter(docente=docente, materia=materia, periodo=periodo).exists():
+        # en el periodo. Al editar solo se revisa si cambian: quitarle la
+        # asignación no le impide corregir el lugar de un bloque ya publicado.
+        cambia_materia = bloque is None or (materia.pk, periodo.pk) != (bloque.materia_id, bloque.periodo_id)
+        if cambia_materia and not DocenteMateria.objects.filter(docente=docente, materia=materia, periodo=periodo).exists():
             raise serializers.ValidationError({
                 'materia': f'No tienes asignada la materia {materia.nombre} en el periodo {periodo.codigo}.'
             })
