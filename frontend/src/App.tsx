@@ -8,27 +8,20 @@ import { Estudiantes } from './pages/Estudiantes';
 import { Tutores } from './pages/Tutores';
 import { Coordinadores } from './pages/Coordinadores';
 import { GestionarUsuarios } from './pages/GestionarUsuarios';
-import { DashboardTutor } from './pages/tutor/DashboardTutor';
+import { TutorPanel } from './pages/tutor/TutorPanel';
 import { MiDisponibilidad } from './pages/tutor/MiDisponibilidad';
 import { Calendario } from './pages/tutor/Calendario';
 import { StudentHome } from './pages/estudiante/StudentHome';
-import { DashboardEstudiante } from './pages/estudiante/DashboardEstudiante';
+import { StudentPanel } from './pages/estudiante/StudentPanel';
 import { BuscarTutorias } from './pages/estudiante/BuscarTutorias';
 import { MisReservas } from './pages/estudiante/MisReservas';
 import { Layout } from './components/Layout';
+import { MODULOS, normalizarRol, RUTA_INICIO } from './navigation/modulos';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles: UserRole[];
 }
-
-// Normaliza el rol sin importar si viene de Django como 'Estudiante', 'Docente', 'role' o 'rol'
-const normalizeRole = (role?: string): UserRole => {
-  const r = String(role || '').toLowerCase();
-  if (r.includes('admin') || r.includes('coordinador')) return 'admin';
-  if (r.includes('tutor') || r.includes('docente')) return 'tutor';
-  return 'estudiante';
-};
 
 const cardContainerVariants: Variants = {
   hidden: { opacity: 0, scale: 0.92, y: 30 },
@@ -57,11 +50,7 @@ const itemVariants: Variants = {
 const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
   const navigate = useNavigate();
 
-  const handleRedirect = () => {
-    if (role === 'admin') navigate('/dashboard');
-    else if (role === 'tutor') navigate('/tutor/dashboard');
-    else navigate('/inicio');
-  };
+  const handleRedirect = () => navigate(RUTA_INICIO[role]);
 
   const roleFormatted =
     role === 'admin' ? 'Coordinador / Admin' : role === 'tutor' ? 'Docente / Tutor' : 'Estudiante';
@@ -224,10 +213,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
-  const userRole = normalizeRole(user.role || (user as unknown as { rol?: string }).rol);
+  const userRole = normalizarRol(user.role || user.rol);
   const isAllowed = allowedRoles.map((r) => r.toLowerCase()).includes(userRole);
+  // Los módulos que exigen un grupo (Coordinadores → Administrador) se cuidan también aquí.
+  const modulo = MODULOS.find((m) => m.ruta === location.pathname);
+  const faltaGrupo = Boolean(modulo?.grupos && !modulo.grupos.some((g) => user.grupos?.includes(g)));
 
-  if (!isAllowed) {
+  if (!isAllowed || faltaGrupo) {
     return <AccessDeniedView role={userRole} />;
   }
 
@@ -250,15 +242,13 @@ export const App: React.FC = () => {
             </ProtectedRoute>
           }
         />
-        <Route path="/estudiante" element={<Navigate to="/inicio" replace />} />
+        <Route path="/estudiante" element={<Navigate to="/estudiante/dashboard" replace />} />
         
         <Route
           path="/estudiante/dashboard"
           element={
             <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
-              <Layout>
-                <DashboardEstudiante />
-              </Layout>
+              <StudentPanel />
             </ProtectedRoute>
           }
         />
@@ -350,9 +340,7 @@ export const App: React.FC = () => {
           path="/tutor/dashboard"
           element={
             <ProtectedRoute allowedRoles={['tutor', 'admin']}>
-              <Layout>
-                <DashboardTutor />
-              </Layout>
+              <TutorPanel />
             </ProtectedRoute>
           }
         />
@@ -360,9 +348,7 @@ export const App: React.FC = () => {
           path="/tutor/mi-disponibilidad"
           element={
             <ProtectedRoute allowedRoles={['tutor', 'admin']}>
-              <Layout>
-                <MiDisponibilidad />
-              </Layout>
+              <MiDisponibilidad />
             </ProtectedRoute>
           }
         />
