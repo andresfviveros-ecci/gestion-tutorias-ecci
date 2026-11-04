@@ -344,7 +344,7 @@ export const Calendario: React.FC = () => {
         </div>
 
         {successMessage && (
-          <AlertaFormulario tipo="exito" titulo="Horario actualizado" mensaje={successMessage}onCerrar={() => setSuccessMessage(null)} />
+          <AlertaFormulario tipo="exito" titulo="Horario actualizado" mensaje={successMessage} onCerrar={() => setSuccessMessage(null)} />
         )}
 
         <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex-1 flex flex-col justify-between overflow-hidden">

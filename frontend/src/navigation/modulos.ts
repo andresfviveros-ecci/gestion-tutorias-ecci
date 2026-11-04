@@ -58,7 +58,7 @@ export const MODULOS: Modulo[] = [
 export const RUTA_INICIO: Record<UserRole, string> = {
   admin: '/dashboard',
   tutor: '/tutor/dashboard',
-  estudiante: '/inicio',
+  estudiante: '/estudiante/dashboard',
 };
 
 /**

@@ -59,7 +59,7 @@ export const Sidebar: React.FC = () => {
   const navigate = useNavigate();
 
   const modulos = user
-    ? modulosVisibles({ role: normalizarRol(user.role), grupos: user.grupos })
+    ? modulosVisibles({ role: normalizarRol(user.role || user.rol), grupos: user.grupos })
     : [];
 
   const handleLogout = () => {
