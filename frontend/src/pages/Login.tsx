@@ -321,7 +321,7 @@ export const Login: React.FC = () => {
     const loggedUser = await login(data.email, data.password);
 
     if (loggedUser) {
-      let defaultPath = "/inicio";
+      let defaultPath = "/estudiante/dashboard";
       if (loggedUser.role === "admin") defaultPath = "/dashboard";
       if (loggedUser.role === "tutor") defaultPath = "/tutor/dashboard";
 
@@ -337,7 +337,8 @@ export const Login: React.FC = () => {
           "/coordinadores",
           "/gestionar-usuarios",
         ].includes(stateFrom);
-        const isStudentRoute = stateFrom === "/inicio";
+        const isStudentRoute =
+          stateFrom === "/inicio" || stateFrom.startsWith("/estudiante");
 
         const hasPermission =
           (loggedUser.role === "tutor" && isTutorRoute) ||
