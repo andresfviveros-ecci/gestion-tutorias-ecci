@@ -13,6 +13,8 @@ from rest_framework_simplejwt.token_blacklist.models import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.tutores.services import puede_publicar
+
 from .tokens import RecoveryToken
 
 # Intentos fallidos de PIN antes de invalidar la recuperación (BE-02), y
@@ -195,6 +197,7 @@ El frontend lo usa para conocer su id, su nombre y sus grupos. """
 class MeSerializer(serializers.ModelSerializer):
     nombre = serializers.CharField(source='get_full_name', read_only=True)
     grupos = serializers.SerializerMethodField()
+    puede_publicar = serializers.SerializerMethodField()
 
     class Meta:
         model = get_user_model()
@@ -208,11 +211,16 @@ class MeSerializer(serializers.ModelSerializer):
             'rol',
             'semestre',
             'grupos',
+            'puede_publicar',
         ]
         read_only_fields = fields
 
     def get_grupos(self, user) -> list[str]:
         return list(user.groups.values_list('name', flat=True))
+
+    def get_puede_publicar(self, user) -> bool:
+        """RF-01: el frontend muestra Mi disponibilidad con este dato."""
+        return puede_publicar(user)
 
 
 """ SERIALIZER DE USUARIOS

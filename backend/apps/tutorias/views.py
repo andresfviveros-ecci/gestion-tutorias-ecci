@@ -5,7 +5,8 @@ from rest_framework import generics, serializers, status, views
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from apps.accounts.permisos import EsDocente, LecturaOEstudiante
+from apps.accounts.permisos import LecturaOEstudiante
+from apps.tutores.permisos import EsTutor
 from apps.tutorias.models import Tutoria
 
 from .filters import TutoriaFilter
@@ -61,7 +62,7 @@ class TutoriaView(generics.ListAPIView):
 @extend_schema(tags=['Tutorías'])
 class TutoriasRecibidasView(generics.ListAPIView):
     """Tutorías reservadas en los bloques del docente en sesión (BE-19)."""
-    permission_classes = [EsDocente]
+    permission_classes = [EsTutor]
     serializer_class = TutoriaRecibidaSerializer
     filterset_class = TutoriaFilter
 
@@ -155,7 +156,7 @@ class TutoriaDetailView(views.APIView):
 class TutoriaRecibidaDetailView(views.APIView):
     """Una tutoría de los bloques del tutor en sesión. Con PATCH la confirma,
     la cancela (con motivo) o la marca completada o no asistió (RF-10)."""
-    permission_classes = [EsDocente]
+    permission_classes = [EsTutor]
     serializer_class = TutoriaRecibidaSerializer
 
     def get_tutoria(self, pk, user):

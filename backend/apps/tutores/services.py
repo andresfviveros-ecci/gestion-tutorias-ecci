@@ -5,9 +5,12 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from apps.accounts.permisos import es_coordinacion
-from apps.catalogo.models import DocenteMateria, Inscripcion
+from apps.accounts.permisos import en_grupos, es_coordinacion
+from apps.catalogo.models import Configuracion, DocenteMateria, Inscripcion
+from apps.disponibilidad.models import BloqueDisponibilidad
+from apps.disponibilidad.services import cancelar_bloque
 from apps.notificaciones.services import notificar
+from apps.tutorias.services import bloque_iniciado
 
 from .models import SolicitudTutor
 
@@ -77,6 +80,8 @@ def revisar(solicitud, usuario, estado, motivo=''):
     solicitud.revisada_por = usuario
     solicitud.fecha_revision = timezone.now()
     solicitud.save(update_fields=['estado', 'motivo', 'revisada_por', 'fecha_revision'])
+    if estado == 'REVOCADA':
+        retirar_bloques(solicitud, usuario, motivo)
 
     textos = {
         'APROBADA': ('Solicitud de tutor aprobada', f'Ya puedes publicar horarios de tutoría de {solicitud.materia.nombre}.'),
@@ -88,3 +93,75 @@ def revisar(solicitud, usuario, estado, motivo=''):
         mensaje = f'{mensaje}\nMotivo: {motivo}'
     notificar(solicitud.estudiante, 'HABILITACION', titulo, mensaje, correo=True)
     return solicitud
+
+
+""" HABILITACIÓN DE TUTORES (RF-01 y RF-04)
+Un docente es tutor de las materias que tiene asignadas en el periodo; un
+estudiante, de las materias con solicitud APROBADA en ese periodo. """
+def es_docente(user):
+    return en_grupos(user, ('Docente',))
+
+
+def materias_habilitadas(user, periodo):
+    """Ids de las materias en las que el usuario puede publicar en el periodo."""
+    asignadas = DocenteMateria.objects.filter(docente=user, periodo=periodo).values_list('materia_id', flat=True)
+    aprobadas = SolicitudTutor.objects.filter(
+        estudiante=user, periodo=periodo, estado='APROBADA'
+    ).values_list('materia_id', flat=True)
+    return set(asignadas) | set(aprobadas)
+
+
+def puede_publicar(user):
+    """RF-01: docentes y estudiantes con al menos una materia aprobada como
+    tutor en el periodo activo."""
+    if not (user and user.is_authenticated):
+        return False
+    return es_docente(user) or SolicitudTutor.objects.filter(
+        estudiante=user, estado='APROBADA', periodo__activo=True
+    ).exists()
+
+
+def es_tutor(user):
+    """Docente o estudiante que ha sido tutor alguna vez: ve las tutorías
+    de sus bloques aunque hoy no esté habilitado."""
+    return es_docente(user) or SolicitudTutor.objects.filter(
+        estudiante=user, estado__in=('APROBADA', 'REVOCADA')
+    ).exists()
+
+
+def es_tutor_estudiante(user):
+    """RF-06 y la diferencia de semestres aplican al tutor estudiante."""
+    return not es_docente(user)
+
+
+def retirar_bloques(solicitud, usuario, motivo):
+    """Al revocar la habilitación, los bloques futuros del tutor en esa
+    materia se cancelan y sus tutorías activas quedan ANULADAS."""
+    bloques = BloqueDisponibilidad.objects.filter(
+        docente=solicitud.estudiante, materia=solicitud.materia, periodo=solicitud.periodo
+    ).exclude(estado__in=('CANCELADO', 'CERRADO'))
+    for bloque in bloques:
+        if not bloque_iniciado(bloque):
+            cancelar_bloque(bloque, usuario, f'Se revocó la habilitación del tutor. {motivo}', anular=True)
+
+
+def validar_tutor_para_reserva(bloque, estudiante):
+    """La reserva vuelve a comprobar la habilitación del tutor (RF-04) y, si
+    el tutor es estudiante, la diferencia de semestres (RF-02)."""
+    tutor = bloque.docente
+    if tutor.pk == estudiante.pk:
+        raise ValidationError({'bloque_id': 'No puedes reservar tus propios horarios de tutoría.'})
+    if bloque.materia_id not in materias_habilitadas(tutor, bloque.periodo):
+        raise ValidationError({'bloque_id': 'El tutor ya no está habilitado en esta materia.'})
+    if not es_tutor_estudiante(tutor):
+        return
+
+    diferencia = Configuracion.actual().diferencia_semestres
+    if estudiante.semestre is None or tutor.semestre is None:
+        raise ValidationError({
+            'bloque_id': 'Para reservar con un tutor estudiante, tu semestre debe estar registrado.'
+        })
+    if tutor.semestre - estudiante.semestre < diferencia:
+        raise ValidationError({
+            'bloque_id': f'El tutor debe ir al menos {diferencia} semestres por delante del tuyo.'
+        }, code='diferencia_semestres')

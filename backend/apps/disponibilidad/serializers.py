@@ -3,10 +3,11 @@ from datetime import datetime
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.catalogo.models import DocenteMateria
+from apps.catalogo.models import Configuracion
+from apps.tutores.services import es_tutor_estudiante, materias_habilitadas
 
 from .models import BloqueDisponibilidad
-from .services import existe_conflicto
+from .services import cupos_de_la_semana, existe_conflicto
 
 
 class BloqueDisponibilidadSerializer(serializers.ModelSerializer):
@@ -104,14 +105,29 @@ class BloqueDisponibilidadSerializer(serializers.ModelSerializer):
                 )
             })
 
-        # El docente solo publica horarios en las materias que tiene asignadas
-        # en el periodo. Al editar solo se revisa si cambian: quitarle la
-        # asignación no le impide corregir el lugar de un bloque ya publicado.
+        # RF-04: solo en las materias habilitadas para el tutor en el periodo
+        # (asignadas al docente o aprobadas al estudiante). Al editar solo se
+        # revisa si cambian: perder la asignación no impide corregir el lugar
+        # de un bloque ya publicado.
         cambia_materia = bloque is None or (materia.pk, periodo.pk) != (bloque.materia_id, bloque.periodo_id)
-        if cambia_materia and not DocenteMateria.objects.filter(docente=docente, materia=materia, periodo=periodo).exists():
+        if cambia_materia and materia.id not in materias_habilitadas(docente, periodo):
             raise serializers.ValidationError({
-                'materia': f'No tienes asignada la materia {materia.nombre} en el periodo {periodo.codigo}.'
+                'materia': f'No estás habilitado en la materia {materia.nombre} en el periodo {periodo.codigo}.'
             })
+
+        # RF-06: el tutor estudiante no pasa de cupos_semanales_tutor por semana.
+        # Igual que arriba, solo si cambian los cupos o la semana del bloque.
+        cambian_cupos = bloque is None or (cupo_total, fecha) != (bloque.cupo_total, bloque.fecha)
+        if cambian_cupos and es_tutor_estudiante(docente):
+            limite = Configuracion.actual().cupos_semanales_tutor
+            ocupados = cupos_de_la_semana(docente, fecha, excluir_id=bloque.pk if bloque else None)
+            if ocupados + cupo_total > limite:
+                raise serializers.ValidationError({
+                    'cupo_total': (
+                        f'Superas los {limite} cupos por semana: ya tienes {ocupados} '
+                        f'publicados en la semana del {fecha:%Y-%m-%d}.'
+                    )
+                }, code='cupos_semanales')
 
         if existe_conflicto(
             docente=docente,

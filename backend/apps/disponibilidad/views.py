@@ -5,8 +5,8 @@ from rest_framework import generics, serializers, status, views
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from apps.accounts.permisos import LecturaODocente
 from apps.disponibilidad.models import BloqueDisponibilidad
+from apps.tutores.permisos import LecturaOTutor
 from apps.tutorias.services import bloque_iniciado
 
 from .filters import BloqueDisponibilidadFilter
@@ -19,7 +19,7 @@ MOTIVO_CANCELACION_BLOQUE = 'El docente canceló la disponibilidad.'
 @extend_schema(tags=['Disponibilidad'])
 class BloqueDisponibilidadView(generics.ListCreateAPIView):
     """Listado con filtros (BloqueDisponibilidadFilter) y paginación con ?page=."""
-    permission_classes = [LecturaODocente]
+    permission_classes = [LecturaOTutor]
     serializer_class = BloqueDisponibilidadSerializer
     filterset_class = BloqueDisponibilidadFilter
     queryset = BloqueDisponibilidad.objects.select_related(
@@ -34,7 +34,7 @@ class BloqueDisponibilidadView(generics.ListCreateAPIView):
 
 @extend_schema(tags=['Disponibilidad'])
 class DisponibilidadUpdateView(views.APIView):
-    permission_classes = [LecturaODocente]
+    permission_classes = [LecturaOTutor]
     serializer_class = BloqueDisponibilidadSerializer
 
     def get_disponibilidad(self, pk):
