@@ -1,243 +1,126 @@
-from rest_framework import status, views
-from apps.accounts.permisos import LecturaODocente
+from django.db import transaction
+from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import generics, serializers, status, views
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
-from django.db.models import ProtectedError
 
 from apps.disponibilidad.models import BloqueDisponibilidad
-from .serializers import (
-    BloqueDisponibilidadSerializer,
-    BloqueDisponibilidadUpdateSerializer
-)
-from drf_spectacular.utils import extend_schema
+from apps.tutores.permisos import LecturaOTutor
+from apps.tutorias.services import bloque_iniciado
+
+from .filters import BloqueDisponibilidadFilter
+from .serializers import BloqueDisponibilidadSerializer
+from .services import cancelar_bloque
+
+MOTIVO_CANCELACION_BLOQUE = 'El docente canceló la disponibilidad.'
 
 
-def existe_conflicto(docente, fecha, hora_inicio, hora_fin, excluir_id=None):
-    conflictos = BloqueDisponibilidad.objects.filter(
-        docente=docente,
-        fecha=fecha,
-        hora_inicio__lt=hora_fin,
-        hora_fin__gt=hora_inicio
-    )
-    if excluir_id is not None:
-        conflictos = conflictos.exclude(pk=excluir_id)
-    return conflictos.exists()
 @extend_schema(tags=['Disponibilidad'])
-class BloqueDisponibilidadView(views.APIView):
-    permission_classes = [LecturaODocente]
+class BloqueDisponibilidadView(generics.ListCreateAPIView):
+    """Listado con filtros (BloqueDisponibilidadFilter) y paginación con ?page=."""
+    permission_classes = [LecturaOTutor]
+    serializer_class = BloqueDisponibilidadSerializer
+    filterset_class = BloqueDisponibilidadFilter
+    queryset = BloqueDisponibilidad.objects.select_related(
+        'docente',
+        'materia',
+        'periodo'
+    ).order_by('fecha', 'hora_inicio')
 
-    @extend_schema(
-        responses={200: BloqueDisponibilidadSerializer(many=True)}
-    )
-    def get(self, request, format=None):
-        disponibilidades = BloqueDisponibilidad.objects.select_related(
-            'docente',
-            'materia',
-            'periodo'
-        ).all().order_by('fecha', 'hora_inicio')
-        docente_id = request.query_params.get('docente')
-        materia_id = request.query_params.get('materia')
-        fecha = request.query_params.get('fecha')
-        estado = request.query_params.get('estado')
-        if docente_id:
-            disponibilidades = disponibilidades.filter(
-                docente_id=docente_id
-            )
-        if materia_id:
-            disponibilidades = disponibilidades.filter(
-                materia_id=materia_id
-            )
-        if fecha:
-            disponibilidades = disponibilidades.filter(fecha=fecha)
-        if estado:
-            disponibilidades = disponibilidades.filter(estado=estado)
-        serializer = BloqueDisponibilidadSerializer(
-            disponibilidades,
-            many=True
-        )
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
-    @extend_schema(
-        request=BloqueDisponibilidadSerializer,
-        responses={
-            201: BloqueDisponibilidadSerializer,
-            400: dict
-        }
-    )
-    def post(self, request, format=None):
-        serializer = BloqueDisponibilidadSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        datos = serializer.validated_data
-        if existe_conflicto(
-            docente=request.user,
-            fecha=datos['fecha'],
-            hora_inicio=datos['hora_inicio'],
-            hora_fin=datos['hora_fin']
-        ):
-            return Response(
-                {
-                    'error': (
-                        'El horario seleccionado presenta conflicto '
-                        'con otra disponibilidad existente.'
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        disponibilidad = serializer.save(docente=request.user)
-        return Response(
-            BloqueDisponibilidadSerializer(disponibilidad).data,
-            status=status.HTTP_201_CREATED
-        )
+    def perform_create(self, serializer):
+        serializer.save(docente=self.request.user)
+
+
 @extend_schema(tags=['Disponibilidad'])
 class DisponibilidadUpdateView(views.APIView):
-    permission_classes = [LecturaODocente]
+    permission_classes = [LecturaOTutor]
+    serializer_class = BloqueDisponibilidadSerializer
+
     def get_disponibilidad(self, pk):
-        try:
-            return BloqueDisponibilidad.objects.get(pk=pk)
-        except BloqueDisponibilidad.DoesNotExist:
-            return None
-    @extend_schema(
-        responses={
-            200: BloqueDisponibilidadSerializer,
-            404: dict
-        }
-    )
-    def get(self, request, pk, format=None):
-        disponibilidad = self.get_disponibilidad(pk)
-        if disponibilidad is None:
-            return Response(
-                {'error': 'La disponibilidad no existe.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        serializer = BloqueDisponibilidadSerializer(disponibilidad)
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
+        return get_object_or_404(
+            BloqueDisponibilidad.objects.select_related('docente', 'materia', 'periodo'),
+            pk=pk
         )
-    @extend_schema(
-        request=BloqueDisponibilidadUpdateSerializer,
-        responses={
-            200: BloqueDisponibilidadSerializer,
-            400: dict,
-            403: dict,
-            404: dict
-        }
-    )
-    def put(self, request, pk, format=None):
+
+    def get_propia(self, request, pk):
         disponibilidad = self.get_disponibilidad(pk)
-        if disponibilidad is None:
-            return Response(
-                {'error': 'La disponibilidad no existe.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
         if disponibilidad.docente_id != request.user.id:
-            return Response(
-                {
-                    'error': (
-                        'No tiene permisos para actualizar '
-                        'esta disponibilidad.'
-                    )
-                },
-                status=status.HTTP_403_FORBIDDEN
+            self.permission_denied(
+                request,
+                message='No tiene permisos sobre esta disponibilidad.'
             )
-        serializer = BloqueDisponibilidadUpdateSerializer(
-            disponibilidad,
-            data=request.data
+        return disponibilidad
+
+    @extend_schema(responses={200: BloqueDisponibilidadSerializer})
+    def get(self, request, pk, format=None):
+        serializer = BloqueDisponibilidadSerializer(self.get_disponibilidad(pk))
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @transaction.atomic
+    def actualizar(self, request, pk, partial):
+        self.get_propia(request, pk)
+        # La fila queda bloqueada hasta guardar: si un estudiante reserva
+        # mientras tanto, save() no devuelve cupo_ocupado ni estado atrás.
+        bloque = BloqueDisponibilidad.objects.select_for_update(of=('self',)).select_related(
+            'docente', 'materia', 'periodo'
+        ).get(pk=pk)
+        serializer = BloqueDisponibilidadSerializer(
+            bloque,
+            data=request.data,
+            partial=partial,
+            context={'request': request}
         )
         serializer.is_valid(raise_exception=True)
-        datos = serializer.validated_data
-        fecha = datos.get('fecha', disponibilidad.fecha)
-        hora_inicio = datos.get(
-            'hora_inicio',
-            disponibilidad.hora_inicio
-        )
-        hora_fin = datos.get(
-            'hora_fin',
-            disponibilidad.hora_fin
-        )
-        if existe_conflicto(
-            docente=disponibilidad.docente,
-            fecha=fecha,
-            hora_inicio=hora_inicio,
-            hora_fin=hora_fin,
-            excluir_id=disponibilidad.id
-        ):
-            return Response(
-                {
-                    'error': (
-                        'El horario seleccionado presenta conflicto '
-                        'con otra disponibilidad existente.'
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        cupo_total = datos.get(
-            'cupo_total',
-            disponibilidad.cupo_total
-        )
-        if cupo_total < disponibilidad.cupo_ocupado:
-            return Response(
-                {
-                    'error': (
-                        'El cupo total no puede ser menor '
-                        'que los cupos que ya están ocupados.'
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        disponibilidad = serializer.save()
-        return Response(
-            BloqueDisponibilidadSerializer(disponibilidad).data,
-            status=status.HTTP_200_OK
-        )
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     @extend_schema(
+        request=BloqueDisponibilidadSerializer,
+        responses={200: BloqueDisponibilidadSerializer}
+    )
+    def put(self, request, pk, format=None):
+        return self.actualizar(request, pk, partial=False)
+
+    @extend_schema(
+        request=BloqueDisponibilidadSerializer,
+        responses={200: BloqueDisponibilidadSerializer}
+    )
+    def patch(self, request, pk, format=None):
+        return self.actualizar(request, pk, partial=True)
+
+    @extend_schema(
+        request=inline_serializer('CancelarBloque', {'motivo': serializers.CharField(required=False)}),
         responses={
+            200: inline_serializer('BloqueCancelado', {
+                'detail': serializers.CharField(),
+                'tutorias_canceladas': serializers.IntegerField(),
+            }),
             204: None,
-            403: dict,
-            404: dict,
-            409: dict
         }
     )
     def delete(self, request, pk, format=None):
-        disponibilidad = self.get_disponibilidad(pk)
+        disponibilidad = self.get_propia(request, pk)
 
-        if disponibilidad is None:
-            return Response(
-                {'error': 'La disponibilidad no existe.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        if disponibilidad.docente_id != request.user.id:
-            return Response(
-                {
-                    'error': (
-                        'No tiene permisos para eliminar '
-                        'esta disponibilidad.'
-                    )
-                },
-                status=status.HTTP_403_FORBIDDEN
-            )
-        if disponibilidad.cupo_ocupado > 0:
-            return Response(
-                {
-                    'error': (
-                        'No se puede eliminar una disponibilidad '
-                        'que tiene cupos ocupados.'
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        try:
+        # Un bloque que ya empezó es historial: cambiarlo alteraría los reportes.
+        if bloque_iniciado(disponibilidad):
+            raise ValidationError('Este bloque ya inició o terminó, así que no se puede eliminar ni cancelar.')
+
+        # Sin tutorías se borra. Con tutorías se cancela: las reservas
+        # activas pasan a CANCELADA_DOCENTE y se avisa a cada estudiante.
+        if not disponibilidad.tutorias.exists():
             disponibilidad.delete()
-        except ProtectedError:
-            # Tiene tutorías (aunque estén canceladas) que dependen del bloque.
-            return Response(
-                {
-                    'detail': (
-                        'No se puede eliminar una disponibilidad '
-                        'con tutorías registradas.'
-                    )
-                },
-                status=status.HTTP_409_CONFLICT
-            )
-        return Response(status=status.HTTP_204_NO_CONTENT)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        motivo = (request.data.get('motivo') or '').strip() or MOTIVO_CANCELACION_BLOQUE
+        canceladas = cancelar_bloque(disponibilidad, request.user, motivo)
+        return Response(
+            {
+                'detail': (
+                    f'La disponibilidad se canceló. Se cancelaron {canceladas} '
+                    'tutorías y se avisó a los estudiantes.'
+                ),
+                'tutorias_canceladas': canceladas,
+            },
+            status=status.HTTP_200_OK
+        )

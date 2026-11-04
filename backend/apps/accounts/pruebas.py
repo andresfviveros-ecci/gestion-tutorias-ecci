@@ -5,7 +5,12 @@ from itertools import count
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 
-from apps.catalogo.models import Materia, PeriodoAcademico, ProgramaAcademico
+from apps.catalogo.models import (
+    DocenteMateria,
+    Materia,
+    PeriodoAcademico,
+    ProgramaAcademico,
+)
 from apps.disponibilidad.models import BloqueDisponibilidad
 from apps.tutorias.models import Tutoria
 
@@ -29,6 +34,8 @@ def crear_usuario(grupo):
 def crear_catalogo():
     n = next(_secuencia)
     programa = ProgramaAcademico.objects.create(codigo=f'PRG{n}', nombre='Ingeniería de Sistemas')
+    # Solo puede haber un periodo activo (BE-25).
+    PeriodoAcademico.objects.filter(activo=True).update(activo=False)
     periodo = PeriodoAcademico.objects.create(
         codigo=f'P{n}',
         fecha_inicio=date.today() - timedelta(days=30),
@@ -39,7 +46,16 @@ def crear_catalogo():
     return programa, periodo, materia
 
 
+def asignar_materia(docente, materia, periodo):
+    """Sin asignación el docente no puede publicar bloques en la materia."""
+    return DocenteMateria.objects.get_or_create(docente=docente, materia=materia, periodo=periodo)[0]
+
+
 def crear_bloque(docente, periodo, materia, **extra):
+    """Si el dueño es docente, le asigna la materia: sin eso no podría
+    publicar el bloque ni recibir reservas (RF-04)."""
+    if materia is not None and docente.groups.filter(name='Docente').exists():
+        asignar_materia(docente, materia, periodo)
     datos = {
         'fecha': date.today() + timedelta(days=7),
         'hora_inicio': time(8, 0),

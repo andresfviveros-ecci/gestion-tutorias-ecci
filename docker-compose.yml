@@ -55,9 +55,18 @@ services:
       CORS_ALLOWED_ORIGINS: http://localhost:${FRONTEND_PORT:-5173},http://127.0.0.1:${FRONTEND_PORT:-5173}
       EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
       EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-True}
       SEED_DEMO: ${SEED_DEMO:-1}
+      # Misma lista que el frontend: una sola variable para los dos.
+      EMAIL_DOMAINS: ${VITE_EMAIL_DOMAINS:-ecci.edu.co,aulalibre.test}
+      # Consola por defecto en desarrollo: el PIN de recuperación sale en los logs.
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
       JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-60}
       JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-7}
+      THROTTLE_RECOVERY: ${THROTTLE_RECOVERY:-5/hour}
+      THROTTLE_CHANGE_PASSWORD: ${THROTTLE_CHANGE_PASSWORD:-10/hour}
     depends_on:
       db:
         condition: service_healthy

@@ -1,17 +1,48 @@
-from django.contrib.auth import authenticate
-from rest_framework import serializers
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import get_user_model
-import secrets
-from django.contrib.auth.models import Group
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 import re
+import secrets
+
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.cache import cache
+from rest_framework import serializers
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.token_blacklist.models import (
+    BlacklistedToken,
+    OutstandingToken,
+)
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from apps.tutores.services import puede_publicar
+
 from .tokens import RecoveryToken
 
-# Intentos fallidos de PIN antes de invalidar la recuperación (BE-02).
+# Intentos fallidos de PIN antes de invalidar la recuperación (BE-02), y
+# cuánto dura el bloqueo de la cuenta después del último fallo.
 MAX_INTENTOS_PIN = 5
+
+
+def validar_clave(password):
+    """Regla de fortaleza única para crear, editar y recuperar (BE-17)."""
+    errores = []
+    if len(password) < 8:
+        errores.append('La contraseña debe tener mínimo 8 caracteres.')
+    if not re.search(r'\d', password):
+        errores.append('La contraseña debe contener un número.')
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>_/\-]', password):
+        errores.append('La contraseña debe contener un carácter especial.')
+    if errores:
+        raise serializers.ValidationError(errores)
+
+
+def correo_permitido(email):
+    dominio = email.rsplit('@', 1)[-1].lower()
+    return dominio in settings.EMAIL_DOMAINS
+
+
+def mensaje_dominios():
+    dominios = ', '.join(f'@{d}' for d in settings.EMAIL_DOMAINS)
+    return f'Debe ingresar un correo institucional ({dominios}).'
 
 
 def clave_pin(jti):
@@ -19,6 +50,8 @@ def clave_pin(jti):
 
 
 def clave_intentos(jti):
+    # Por token y no por usuario: si no, cualquiera que conozca un correo le
+    # bloquea la recuperación a esa persona fallando el PIN a propósito.
     return f'password_recovery_intentos_{jti}'
 
 
@@ -37,17 +70,15 @@ class LoginSerializers(serializers.Serializer):
         email = attrs.get('email')
         password = attrs.get('password')
         user = get_user_model().objects.filter(
-            email=email
+            email__iexact=email
         ).first()
+        # BE-23: authenticate() descarta a los inactivos y el mensaje nunca
+        # llegaba. Se revisa la clave primero para no revelar cuentas.
         if not user:
-            raise serializers.ValidationError(
-                'Credenciales invalidas.'
-            )
-        user = authenticate(
-            username=user.username,
-            password=password
-        )
-        if not user:
+            # Se calcula un hash igual, para que el tiempo de respuesta no
+            # delate qué correos tienen cuenta.
+            get_user_model()().set_password(password)
+        if not user or not user.check_password(password):
             raise serializers.ValidationError(
                 'Credenciales invalidas.'
             )
@@ -99,27 +130,22 @@ class ChangePasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 'password_confirm': 'Las contraseñas no coinciden.'
             })
-        if len(password) < 8:
-            raise serializers.ValidationError({
-                'password': 'La contraseña debe tener mínimo 8 caracteres.'
-            })
-        if not re.search(r'\d', password):
-            raise serializers.ValidationError({
-                'password': 'La contraseña debe contener un número.'
-            })
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>_/\-]', password):
-            raise serializers.ValidationError({
-                'password': 'La contraseña debe contener un carácter especial.'
-            })
+        try:
+            validar_clave(password)
+        except serializers.ValidationError as error:
+            raise serializers.ValidationError({'password': error.detail})
         attrs['user'] = user
         attrs['jti'] = jti
         return attrs
 
     def _registrar_intento_fallido(self, jti):
         clave = clave_intentos(jti)
-        cache.add(clave, 0, timeout=RecoveryToken.lifetime.total_seconds())
-        if cache.incr(clave) >= MAX_INTENTOS_PIN:
+        intentos = cache.get(clave, 0) + 1
+        if intentos >= MAX_INTENTOS_PIN:
             cache.delete_many([clave_pin(jti), clave])
+        else:
+            # cache.set y no cache.incr: incr vuelve al TTL por defecto (300 s).
+            cache.set(clave, intentos, timeout=RecoveryToken.lifetime.total_seconds())
 
     def save(self, **kwargs):
         user = self.validated_data['user']
@@ -135,10 +161,8 @@ class RecoveryTokenSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
     def validate_email(self, value):
-        if not value.lower().endswith('@ecci.edu.co'):
-            raise serializers.ValidationError(
-                'Debe ingresar un correo institucional @ecci.edu.co.'
-            )
+        if not correo_permitido(value):
+            raise serializers.ValidationError(mensaje_dominios())
         return value.lower()
 
     def validate(self, attrs):
@@ -166,8 +190,45 @@ class RecoveryTokenSerializer(serializers.Serializer):
         attrs['token'] = str(token)
 
         return attrs
-""" SERIALIZERS PARA REGISTRAR ESTUDIANTE """
-class StudentRegisterSerializer(serializers.ModelSerializer):
+
+
+""" SERIALIZER DEL USUARIO EN SESION
+El frontend lo usa para conocer su id, su nombre y sus grupos. """
+class MeSerializer(serializers.ModelSerializer):
+    nombre = serializers.CharField(source='get_full_name', read_only=True)
+    grupos = serializers.SerializerMethodField()
+    puede_publicar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'nombre',
+            'rol',
+            'semestre',
+            'grupos',
+            'puede_publicar',
+        ]
+        read_only_fields = fields
+
+    def get_grupos(self, user) -> list[str]:
+        return list(user.groups.values_list('name', flat=True))
+
+    def get_puede_publicar(self, user) -> bool:
+        """RF-01: el frontend muestra Mi disponibilidad con este dato."""
+        return puede_publicar(user)
+
+
+""" SERIALIZER DE USUARIOS
+Uno solo para los tres grupos: cada subclase define el grupo y sus campos.
+El rol se llena desde el grupo y nadie lo escribe a mano. """
+class UsuarioSerializer(serializers.ModelSerializer):
+    grupo = None
+
     class Meta:
         model = get_user_model()
         fields = [
@@ -179,7 +240,7 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
             'last_name',
             'documento',
             'telefono',
-            'codigo_institucional',
+            'is_active',
         ]
         read_only_fields = ['id']
         extra_kwargs = {
@@ -190,16 +251,44 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
             'last_name': {'required': True, 'allow_blank': False},
             'documento': {'required': True, 'allow_blank': False},
             'telefono': {'required': True, 'allow_blank': False},
+            'is_active': {'required': False},
         }
+
+    def validate_email(self, value):
+        value = value.strip().lower()
+        if not correo_permitido(value):
+            raise serializers.ValidationError(mensaje_dominios())
+        # BE-16: único sin distinguir mayúsculas.
+        repetidos = get_user_model().objects.filter(email__iexact=value)
+        if self.instance is not None:
+            repetidos = repetidos.exclude(pk=self.instance.pk)
+        if repetidos.exists():
+            raise serializers.ValidationError('Ya existe un usuario con este correo.')
+        return value
+
+    def validate_password(self, value):
+        validar_clave(value)
+        return value
+
+    def validate_is_active(self, value):
+        request = self.context.get('request')
+        if not value and request and self.instance is not None and self.instance.pk == request.user.pk:
+            raise serializers.ValidationError('No puedes desactivar tu propia cuenta.')
+        return value
+
+    def validate(self, attrs):
+        # BE-17: la contraseña es obligatoria al crear.
+        if self.instance is None and not attrs.get('password'):
+            raise serializers.ValidationError({'password': 'La contraseña es obligatoria.'})
+        return attrs
 
     def create(self, validated_data):
         User = get_user_model()
         user = User.objects.create_user(
-            rol='Estudiante',
+            rol=self.grupo,
             **validated_data
         )
-        estudiante = Group.objects.get(name='Estudiante')
-        user.groups.add(estudiante)
+        user.groups.add(Group.objects.get_or_create(name=self.grupo)[0])
         return user
 
     def update(self, instance, validated_data):
@@ -210,91 +299,25 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         instance.save()
         return instance
+
+
+""" SERIALIZERS PARA REGISTRAR ESTUDIANTE """
+class StudentRegisterSerializer(UsuarioSerializer):
+    grupo = 'Estudiante'
+
+    class Meta(UsuarioSerializer.Meta):
+        fields = UsuarioSerializer.Meta.fields + ['codigo_institucional', 'semestre']
+
+    def validate_codigo_institucional(self, value):
+        # Vacío se guarda como nulo: la columna es única y admite varios nulos.
+        return (value or '').strip() or None
+
 
 """ SERIALIZERS PARA REGISTRAR TUTORES/DOCENTE"""
-class TutorRegisterSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = get_user_model()
-        fields = [
-            'id',
-            'username',
-            'email',
-            'password',
-            'first_name',
-            'last_name',
-            'documento',
-            'telefono',
-        ]
-        read_only_fields = ['id']
-        extra_kwargs = {
-            'username': {'required': True, 'allow_blank': False},
-            'email': {'required': True},
-            'password': {'required': False, 'write_only': True, 'allow_blank': False},
-            'first_name': {'required': True, 'allow_blank': False},
-            'last_name': {'required': True, 'allow_blank': False},
-            'documento': {'required': True, 'allow_blank': False},
-            'telefono': {'required': True, 'allow_blank': False},
-        }
+class TutorRegisterSerializer(UsuarioSerializer):
+    grupo = 'Docente'
 
-    def create(self, validated_data):
-        User = get_user_model()
-        user = User.objects.create_user(
-            rol='Docente',
-            **validated_data
-        )
-        tutor = Group.objects.get(name='Docente')
-        user.groups.add(tutor)
-        return user
-
-    def update(self, instance, validated_data):
-        password = validated_data.pop('password', None)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        if password:
-            instance.set_password(password)
-        instance.save()
-        return instance
 
 """" SERIALIZERS PARA REGISTRAR COORDINADORES"""
-class CoordinatorSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = get_user_model()
-        fields = [
-            'id',
-            'username',
-            'email',
-            'password',
-            'first_name',
-            'last_name',
-            'documento',
-            'telefono',
-        ]
-        read_only_fields = ['id']
-        extra_kwargs = {
-            'username': {'required': True, 'allow_blank': False},
-            'email': {'required': True},
-            'password': {'required': False, 'write_only': True, 'allow_blank': False},
-            'first_name': {'required': True, 'allow_blank': False},
-            'last_name': {'required': True, 'allow_blank': False},
-            'documento': {'required': True, 'allow_blank': False},
-            'telefono': {'required': True, 'allow_blank': False},
-        }
-
-    def create(self, validated_data):
-        User = get_user_model()
-        user = User.objects.create_user(
-            rol='Coordinador',
-            **validated_data
-        )
-        coordinador = Group.objects.get(name='Coordinador')
-        user.groups.add(coordinador)
-        return user
-
-    def update(self, instance, validated_data):
-        password = validated_data.pop('password', None)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        if password:
-            instance.set_password(password)
-        instance.save()
-        return instance
+class CoordinatorSerializer(UsuarioSerializer):
+    grupo = 'Coordinador'

@@ -4,4 +4,6 @@ TIPO_NOTIFICACION_CHOICES = [
     ('CANCELACION', 'Cancelación'),
     ('CAMBIO_HORARIO', 'Cambio de horario'),
     ('NUEVA_RESERVA', 'Nueva reserva'),
+    ('SOLICITUD_TUTOR', 'Solicitud de tutor'),
+    ('HABILITACION', 'Habilitación de tutor'),
 ]

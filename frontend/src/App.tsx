@@ -256,9 +256,7 @@ export const App: React.FC = () => {
           path="/estudiante/buscar-tutorias"
           element={
             <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
-              <Layout>
-                <BuscarTutorias />
-              </Layout>
+              <BuscarTutorias />
             </ProtectedRoute>
           }
         />

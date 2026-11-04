@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     # Se corre dentro de un contenedor para que el servicio de Postgres se
     # resuelva como "db", que es el HOST fijo en backend/config/db.py.
-    container: python:3.10
+    container: python:3.12
     services:
       db:
         image: postgres:16
@@ -77,10 +77,8 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      # Hoy hay ~65 avisos (casi todos por "from x import *"). No bloquea
-      # hasta que el equipo los limpie; luego quitar continue-on-error.
+      # Bloqueante: el código está limpio (configuración en backend/ruff.toml).
       - name: Ruff (lint)
-        continue-on-error: true
         run: ruff check . --output-format=github
 
       - name: Django system check
@@ -101,8 +99,9 @@ jobs:
       - name: Pruebas
         run: python manage.py test --verbosity 2
 
-      - name: Generar esquema OpenAPI
-        run: python manage.py spectacular --file openapi.yml
+      # Swagger es el contrato con el frontend: cualquier aviso rompe el build.
+      - name: Generar y validar esquema OpenAPI
+        run: python manage.py spectacular --validate --fail-on-warn --file openapi.yml
 
       - uses: actions/upload-artifact@v7
         with:

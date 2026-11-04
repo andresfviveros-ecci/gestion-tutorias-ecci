@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core import mail
@@ -7,7 +9,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
 from .pruebas import crear_bloque, crear_catalogo, crear_tutoria, crear_usuario
-from .serializers import MAX_INTENTOS_PIN, clave_pin
+from .serializers import MAX_INTENTOS_PIN, clave_intentos, clave_pin
 from .tokens import RecoveryToken
 
 LOGIN_URL = '/api/accounts/login/'
@@ -175,6 +177,7 @@ class PermisosUsuariosTests(APITestCase):
     @classmethod
     def setUpTestData(cls):
         cls.coordinador = crear_usuario('Coordinador')
+        cls.administrador = crear_usuario('Administrador')
         cls.docente = crear_usuario('Docente')
         cls.estudiante = crear_usuario('Estudiante')
         _, cls.periodo, cls.materia = crear_catalogo()
@@ -199,6 +202,7 @@ class PermisosUsuariosTests(APITestCase):
 
     # BE-13
     def test_detalle_inexistente_responde_404(self):
+        self.client.force_authenticate(self.administrador)
         for recurso in ('estudiantes', 'tutores', 'coordinadores'):
             with self.subTest(recurso=recurso):
                 self.assertEqual(self.client.get(f'/api/accounts/{recurso}/999999/').status_code, 404)
@@ -228,8 +232,9 @@ class PermisosUsuariosTests(APITestCase):
         self.assertEqual(response.status_code, 204)
         self.assertFalse(get_user_model().objects.filter(pk=nuevo.pk).exists())
 
-    # BE-15
+    # BE-15 y RF-05: el CRUD de coordinadores es del Administrador.
     def test_crud_de_coordinadores(self):
+        self.client.force_authenticate(self.administrador)
         otro = crear_usuario('Coordinador')
         url = f'/api/accounts/coordinadores/{otro.id}/'
         self.assertEqual(self.client.get(url).data['email'], otro.email)
@@ -249,7 +254,18 @@ class PermisosUsuariosTests(APITestCase):
         response = self.client.get(f'/api/accounts/coordinadores/{self.coordinador.id}/')
         self.assertEqual(response.status_code, 403)
 
-    def test_coordinador_no_toca_al_superusuario(self):
+    def test_coordinador_no_gestiona_coordinadores(self):
+        otro = crear_usuario('Coordinador')
+        self.assertEqual(self.client.get('/api/accounts/coordinadores/').status_code, 403)
+        self.assertEqual(self.client.delete(f'/api/accounts/coordinadores/{otro.id}/').status_code, 403)
+
+    def test_administrador_hace_lo_de_la_coordinacion(self):
+        self.client.force_authenticate(self.administrador)
+        self.assertEqual(self.client.get(ESTUDIANTES_URL).status_code, 200)
+        self.assertEqual(self.client.get('/api/accounts/coordinadores/').status_code, 200)
+
+    def test_administrador_no_toca_al_superusuario(self):
+        self.client.force_authenticate(self.administrador)
         admin = crear_usuario('Coordinador')
         admin.is_superuser = True
         admin.save(update_fields=['is_superuser'])
@@ -265,20 +281,326 @@ class PermisosUsuariosTests(APITestCase):
         self.assertTrue(admin.check_password(CLAVE))
 
         # Otro superusuario sí puede.
-        self.coordinador.is_superuser = True
-        self.coordinador.save(update_fields=['is_superuser'])
+        self.administrador.is_superuser = True
+        self.administrador.save(update_fields=['is_superuser'])
         self.assertEqual(self.client.delete(url).status_code, 204)
 
     def test_nadie_se_borra_a_si_mismo(self):
-        crear_usuario('Coordinador')
-        response = self.client.delete(f'/api/accounts/coordinadores/{self.coordinador.id}/')
+        # Un administrador que también está en el grupo Coordinador.
+        self.administrador.groups.add(Group.objects.get(name='Coordinador'))
+        self.client.force_authenticate(self.administrador)
+        response = self.client.delete(f'/api/accounts/coordinadores/{self.administrador.id}/')
         self.assertEqual(response.status_code, 400)
 
     def test_no_se_borra_al_ultimo_coordinador(self):
-        # Quien borra ya está inactivo (p. ej. con una sesión abierta), así
-        # que "otro" es el único coordinador activo que queda.
+        self.client.force_authenticate(self.administrador)
         otro = crear_usuario('Coordinador')
         get_user_model().objects.filter(pk=self.coordinador.pk).update(is_active=False)
         response = self.client.delete(f'/api/accounts/coordinadores/{otro.id}/')
         self.assertEqual(response.status_code, 400)
         self.assertTrue(get_user_model().objects.filter(pk=otro.pk).exists())
+
+@override_settings(EMAIL_DOMAINS=['ecci.edu.co'])
+class UsuariosTests(APITestCase):
+    """PR4: BE-16, BE-17, BE-23 y lo que el frontend necesita de usuarios."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.coordinador = crear_usuario('Coordinador')
+
+    def setUp(self):
+        self.client.force_authenticate(self.coordinador)
+
+    def datos(self, **cambios):
+        datos = {
+            'username': 'jperez',
+            'email': 'jperez@ecci.edu.co',
+            'password': CLAVE,
+            'first_name': 'Juan',
+            'last_name': 'Pérez',
+            'documento': '1010101010',
+            'telefono': '3001112233',
+            'codigo_institucional': '',
+        }
+        datos.update(cambios)
+        return datos
+
+    def crear(self, **cambios):
+        return self.client.post(ESTUDIANTES_URL, self.datos(**cambios), format='json')
+
+    def test_crea_estudiante_con_rol_y_grupo(self):
+        response = self.crear()
+        self.assertEqual(response.status_code, 201, response.data)
+        user = get_user_model().objects.get(pk=response.data['id'])
+        self.assertEqual(user.rol, 'Estudiante')
+        self.assertTrue(user.groups.filter(name='Estudiante').exists())
+        self.assertTrue(user.check_password(CLAVE))
+
+    # BE-16
+    def test_correo_unico_sin_distinguir_mayusculas(self):
+        self.crear()
+        response = self.crear(username='otro', documento='2020', email='JPEREZ@ecci.edu.co')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('email', response.data['errors'])
+
+    def test_correo_de_dominio_no_permitido(self):
+        response = self.crear(email='jperez@gmail.com')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('email', response.data['errors'])
+
+    # BE-17
+    def test_contrasena_obligatoria_al_crear(self):
+        datos = self.datos()
+        del datos['password']
+        response = self.client.post(ESTUDIANTES_URL, datos, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('password', response.data['errors'])
+
+    def test_contrasena_debil(self):
+        response = self.crear(password='abcdefgh')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(len(response.data['errors']['password']), 2)
+
+    def test_editar_sin_contrasena_la_conserva(self):
+        user_id = self.crear().data['id']
+        response = self.client.patch(f'{ESTUDIANTES_URL}{user_id}/', {'telefono': '3110000000'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(get_user_model().objects.get(pk=user_id).check_password(CLAVE))
+
+    # 4.1: is_active y PATCH parcial
+    def test_desactivar_con_patch(self):
+        user_id = self.crear().data['id']
+        response = self.client.patch(f'{ESTUDIANTES_URL}{user_id}/', {'is_active': False}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data['is_active'])
+        self.assertFalse(get_user_model().objects.get(pk=user_id).is_active)
+
+    # 4.1: codigo_institucional vacío como nulo
+    def test_varios_estudiantes_sin_codigo(self):
+        self.assertEqual(self.crear().status_code, 201)
+        response = self.crear(username='otro', email='otro@ecci.edu.co', documento='2020')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIsNone(response.data['codigo_institucional'])
+
+    # BE-23
+    def test_login_de_usuario_inactivo_explica_el_motivo(self):
+        user = crear_usuario('Estudiante')
+        user.is_active = False
+        user.save()
+        self.client.force_authenticate(None)
+        response = self.client.post(LOGIN_URL, {'email': user.email, 'password': CLAVE}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('inactivo', str(response.data))
+
+        response = self.client.post(LOGIN_URL, {'email': user.email, 'password': 'Otra2026*'}, format='json')
+        self.assertIn('Credenciales', str(response.data))
+
+    def test_login_sin_distinguir_mayusculas(self):
+        self.client.force_authenticate(None)
+        response = self.client.post(
+            LOGIN_URL, {'email': self.coordinador.email.upper(), 'password': CLAVE}, format='json'
+        )
+        self.assertEqual(response.status_code, 200)
+
+
+class ContratoApiTests(APITestCase):
+    """PR5: /me/ y formato único de error (BE-28)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.docente = crear_usuario('Docente')
+
+    def test_me(self):
+        self.client.force_authenticate(self.docente)
+        response = self.client.get('/api/accounts/me/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['id'], self.docente.id)
+        self.assertEqual(response.data['email'], self.docente.email)
+        self.assertEqual(response.data['grupos'], ['Docente'])
+
+    def test_formato_de_error(self):
+        sin_sesion = self.client.get('/api/accounts/me/')
+        self.assertEqual(sin_sesion.status_code, 401)
+        self.assertEqual(set(sin_sesion.data), {'detail', 'code', 'errors'})
+        self.assertEqual(sin_sesion.data['code'], 'not_authenticated')
+
+        self.client.force_authenticate(self.docente)
+        prohibido = self.client.get(ESTUDIANTES_URL)
+        self.assertEqual((prohibido.status_code, prohibido.data['code']), (403, 'permission_denied'))
+
+        no_existe = self.client.get('/api/tutorias/tutorias/999999/')
+        self.assertEqual((no_existe.status_code, no_existe.data['code']), (404, 'not_found'))
+
+        invalido = self.client.post(LOGIN_URL, {'email': 'no-es-correo'}, format='json')
+        self.assertEqual(invalido.status_code, 400)
+        self.assertEqual(set(invalido.data['errors']), {'email', 'password'})
+        self.assertTrue(invalido.data['detail'])
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class RevisionCuentasTests(APITestCase):
+    """Pendientes de la revisión de #49, #50 y #52."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.coordinador = crear_usuario('Coordinador')
+        cls.docente = crear_usuario('Docente')
+        cls.estudiante = crear_usuario('Estudiante')
+
+    def setUp(self):
+        cache.clear()
+
+    def pedir_token(self, email):
+        with self.captureOnCommitCallbacks(execute=True):
+            token = self.client.post(RECOVERY_URL, {'email': email}, format='json').data['token']
+        return token, cache.get(clave_pin(RecoveryToken(token)['jti']))['pin']
+
+    def cambiar(self, token, pin):
+        cache.delete('throttle_change_password_127.0.0.1')
+        return self.client.post(CHANGE_URL, {
+            'token': token, 'pin': pin, 'password': 'Nueva2026*', 'password_confirm': 'Nueva2026*',
+        }, format='json')
+
+    # Intentos por token: fallar el PIN a propósito no bloquea a la persona.
+    def test_agotar_un_token_no_bloquea_la_recuperacion_de_la_cuenta(self):
+        token, pin = self.pedir_token(self.estudiante.email)
+        incorrecto = f'{(int(pin) + 1) % 1_000_000:06d}'
+        for _ in range(MAX_INTENTOS_PIN):
+            self.assertEqual(self.cambiar(token, incorrecto).status_code, 400)
+        self.assertEqual(self.cambiar(token, pin).status_code, 400)
+
+        cache.delete('throttle_recovery_127.0.0.1')
+        cache.delete(THROTTLE_KEY)
+        token, pin = self.pedir_token(self.estudiante.email)
+        self.assertEqual(self.cambiar(token, pin).status_code, 200)
+
+    def test_intentos_duran_lo_mismo_que_el_token(self):
+        token, pin = self.pedir_token(self.estudiante.email)
+        incorrecto = f'{(int(pin) + 1) % 1_000_000:06d}'
+        with patch('apps.accounts.serializers.cache.set', wraps=cache.set) as guardar:
+            self.cambiar(token, incorrecto)
+        clave = clave_intentos(RecoveryToken(token)['jti'])
+        guardar.assert_any_call(clave, 1, timeout=RecoveryToken.lifetime.total_seconds())
+
+    # 2.2: tiempo del login
+    def test_login_con_correo_inexistente_calcula_un_hash(self):
+        User = get_user_model()
+        original = User.set_password
+        llamadas = []
+
+        def espia(user, clave):
+            llamadas.append(clave)
+            return original(user, clave)
+
+        User.set_password = espia
+        try:
+            response = self.client.post(LOGIN_URL, {'email': 'nadie@ecci.edu.co', 'password': CLAVE}, format='json')
+        finally:
+            User.set_password = original
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(llamadas, [CLAVE])
+
+    # 3.2: grupos y superusuario
+    def test_la_migracion_crea_los_grupos(self):
+        nombres = set(Group.objects.values_list('name', flat=True))
+        self.assertTrue({'Estudiante', 'Docente', 'Coordinador'} <= nombres)
+
+    def test_superusuario_sin_grupo_pasa_los_permisos(self):
+        admin = get_user_model().objects.create_superuser('raiz', 'raiz@ecci.edu.co', CLAVE)
+        self.client.force_authenticate(admin)
+        self.assertEqual(self.client.get(ESTUDIANTES_URL).status_code, 200)
+
+    # 3.2 y 5.2: inactivos visibles para la coordinación
+    def test_coordinacion_ve_y_filtra_inactivos(self):
+        inactivo = crear_usuario('Docente')
+        get_user_model().objects.filter(pk=inactivo.pk).update(is_active=False)
+
+        self.client.force_authenticate(self.coordinador)
+        ids = {u['id'] for u in self.client.get('/api/accounts/tutores/').data}
+        self.assertIn(inactivo.id, ids)
+        datos = self.client.get('/api/accounts/tutores/', {'is_active': 'false'}).data
+        self.assertEqual([u['id'] for u in datos], [inactivo.id])
+        self.assertEqual(self.client.get(ESTUDIANTES_URL, {'is_active': 'true'}).data[0]['is_active'], True)
+
+        # El estudiante solo ve docentes activos.
+        self.client.force_authenticate(self.estudiante)
+        ids = {u['id'] for u in self.client.get('/api/accounts/tutores/').data}
+        self.assertNotIn(inactivo.id, ids)
+
+    def test_reactivar_un_docente(self):
+        get_user_model().objects.filter(pk=self.docente.pk).update(is_active=False)
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.patch(f'/api/accounts/tutores/{self.docente.id}/', {'is_active': True}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data['is_active'])
+
+    # 5.2: un coordinador no se desactiva a sí mismo
+    def test_coordinador_no_se_desactiva(self):
+        # Un administrador que también está en el grupo Coordinador.
+        admin = crear_usuario('Administrador')
+        admin.groups.add(Group.objects.get(name='Coordinador'))
+        self.client.force_authenticate(admin)
+        response = self.client.patch(
+            f'/api/accounts/coordinadores/{admin.id}/', {'is_active': False}, format='json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('is_active', response.data['errors'])
+
+
+class ContratoErroresTests(APITestCase):
+    """Pendientes de la revisión de #53: mensajes en español y forma de errors."""
+
+    def test_token_invalido_en_espanol(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer abc.def.ghi')
+        response = self.client.get('/api/accounts/me/')
+        self.assertEqual(response.status_code, 401)
+        self.assertNotIn('Given token', response.data['detail'])
+
+    def test_pagina_invalida_en_espanol(self):
+        self.client.force_authenticate(crear_usuario('Docente'))
+        response = self.client.get('/api/disponibilidad/disponibilidad/', {'page': 999})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data['detail'], 'Página inválida.')
+
+    def test_errors_siempre_trae_listas(self):
+        from rest_framework.exceptions import ValidationError
+
+        from config.api import manejar_excepcion
+        response = manejar_excepcion(ValidationError({'bloque_id': 'No disponible.'}), {})
+        self.assertEqual(response.data['errors'], {'bloque_id': ['No disponible.']})
+
+    def test_choque_de_restriccion_responde_400(self):
+        from django.db import IntegrityError
+
+        from config.api import manejar_excepcion
+        error = IntegrityError('duplicate key value violates unique constraint "ux_user_email_ci"')
+        response = manejar_excepcion(error, {})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('email', response.data['errors'])
+
+
+class RolesTests(APITestCase):
+    """RF-05 y RF-02: grupo Administrador y semestre del estudiante."""
+
+    def test_grupos_base_con_administrador(self):
+        nombres = set(Group.objects.values_list('name', flat=True))
+        self.assertTrue({'Estudiante', 'Docente', 'Coordinador', 'Administrador'} <= nombres)
+
+    @override_settings(EMAIL_DOMAINS=['ecci.edu.co'])
+    def test_semestre_del_estudiante(self):
+        self.client.force_authenticate(crear_usuario('Coordinador'))
+        datos = {
+            'username': 'nuevo', 'email': 'nuevo@ecci.edu.co', 'password': CLAVE, 'first_name': 'Ana',
+            'last_name': 'Ruiz', 'documento': '123456', 'telefono': '3001234567', 'semestre': 4,
+        }
+        response = self.client.post(ESTUDIANTES_URL, datos, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['semestre'], 4)
+
+        estudiante = get_user_model().objects.get(pk=response.data['id'])
+        self.client.force_authenticate(estudiante)
+        self.assertEqual(self.client.get('/api/accounts/me/').data['semestre'], 4)
+
+        self.client.force_authenticate(crear_usuario('Coordinador'))
+        response = self.client.patch(f'{ESTUDIANTES_URL}{estudiante.id}/', {'semestre': 0}, format='json')
+        self.assertEqual(response.status_code, 400)

@@ -1,7 +1,17 @@
-from django.db import models
 from django.conf import settings
-from .choices import ESTADO_TUTORIA_CHOICES, ESTADO_ASISTENCIA_CHOICES, ORIGEN_CANCELACION_CHOICES
+from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db import models
+
+from apps.catalogo.models import CALIFICACION_MAX, CALIFICACION_MIN
 from apps.models import BaseModel
+
+from .choices import (
+    ESTADO_ASISTENCIA_CHOICES,
+    ESTADO_TUTORIA_CHOICES,
+    ORIGEN_CANCELACION_CHOICES,
+)
+from .estados import ACTIVOS
+
 
 class Tutoria(BaseModel):
     codigo = models.CharField(max_length=20, unique=True, verbose_name='codigo')
@@ -28,11 +38,11 @@ class Tutoria(BaseModel):
                 models.UniqueConstraint(
                     fields=['bloque', 'estudiante'],
                     condition=models.Q(
-                        estado__in=['RESERVADA', 'CONFIRMADA', 'EN_CURSO']
+                        estado__in=ACTIVOS
                     ),
                     name='ux_tutoria_activa'
                 ),
-                models.CheckConstraint( check=models.Q(minutos_retraso__gte=0),name='ck_tutoria_retraso'),
+                models.CheckConstraint(condition=models.Q(minutos_retraso__gte=0), name="ck_tutoria_retraso"),
             ]
             indexes = [
                 models.Index(fields=['estudiante', 'estado'],name='idx_tutoria_estudiante'),
@@ -59,7 +69,10 @@ class Cancelacion(BaseModel):
 
 class EvaluacionTutoria(BaseModel):
     tutoria = models.OneToOneField(Tutoria, on_delete=models.CASCADE, related_name='evaluacion')
-    calificacion = models.SmallIntegerField(verbose_name='calificacion')
+    calificacion = models.SmallIntegerField(
+        validators=[MinValueValidator(CALIFICACION_MIN), MaxValueValidator(CALIFICACION_MAX)],
+        verbose_name='calificacion'
+    )
     comentario = models.TextField(null=True, blank=True, verbose_name='comentario')
 
     def __str__(self):
@@ -69,3 +82,9 @@ class EvaluacionTutoria(BaseModel):
         verbose_name = 'Evaluación de tutoría'
         verbose_name_plural = 'Evaluaciones de tutorías'
         ordering = ['id']
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(calificacion__gte=CALIFICACION_MIN, calificacion__lte=CALIFICACION_MAX),
+                name='ck_evaluacion_calificacion',
+            ),
+        ]

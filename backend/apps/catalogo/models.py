@@ -1,6 +1,17 @@
-from django.db import models
+from decimal import Decimal
+
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db import models
+
 from apps.models import BaseModel
+
+# Tope de la escala de evaluación. La tabla de evaluaciones tiene un
+# CheckConstraint con este rango, así que Configuracion no puede salirse de él.
+CALIFICACION_MIN = 1
+CALIFICACION_MAX = 10
+RANGO_CALIFICACION = [MinValueValidator(CALIFICACION_MIN), MaxValueValidator(CALIFICACION_MAX)]
+
 
 class ProgramaAcademico(BaseModel):
     codigo = models.CharField(max_length=20, unique=True, verbose_name='codigo')
@@ -30,6 +41,14 @@ class PeriodoAcademico(BaseModel):
         verbose_name = 'Periodo académico'
         verbose_name_plural = 'Periodos académicos'
         ordering = ['id']
+        constraints = [
+            # BE-25: solo un periodo activo a la vez.
+            models.UniqueConstraint(
+                fields=['activo'],
+                condition=models.Q(activo=True),
+                name='ux_periodo_un_activo',
+            ),
+        ]
 
 
 class Materia(BaseModel):
@@ -80,4 +99,36 @@ class Inscripcion(BaseModel):
         ordering = ['id']
         constraints = [
             models.UniqueConstraint(fields=['estudiante', 'materia', 'periodo'], name='ux_inscripcion')
+        ]
+
+class Configuracion(BaseModel):
+    """Parámetros de las reglas de tutorías (sección 7.1). Una sola fila,
+    que editan la coordinación y el administrador: nada fijo en el código."""
+    nota_minima = models.DecimalField(
+        max_digits=3, decimal_places=2, default=Decimal('4.00'),
+        validators=[MinValueValidator(0), MaxValueValidator(5)], verbose_name='nota_minima'
+    )
+    peso_corte1 = models.PositiveSmallIntegerField(default=30, validators=[MaxValueValidator(100)], verbose_name='peso_corte1')
+    peso_corte2 = models.PositiveSmallIntegerField(default=30, validators=[MaxValueValidator(100)], verbose_name='peso_corte2')
+    peso_corte3 = models.PositiveSmallIntegerField(default=40, validators=[MaxValueValidator(100)], verbose_name='peso_corte3')
+    semestre_minimo_tutor = models.PositiveSmallIntegerField(default=3, validators=[MinValueValidator(1)], verbose_name='semestre_minimo_tutor')
+    diferencia_semestres = models.PositiveSmallIntegerField(default=2, verbose_name='diferencia_semestres')
+    cupos_semanales_tutor = models.PositiveSmallIntegerField(default=10, validators=[MinValueValidator(1)], verbose_name='cupos_semanales_tutor')
+    horas_anticipacion_cancelar = models.PositiveSmallIntegerField(default=1, verbose_name='horas_anticipacion_cancelar')
+    horas_anticipacion_reservar = models.PositiveSmallIntegerField(default=2, verbose_name='horas_anticipacion_reservar')
+    calificacion_minima = models.PositiveSmallIntegerField(default=1, validators=RANGO_CALIFICACION, verbose_name='calificacion_minima')
+    calificacion_maxima = models.PositiveSmallIntegerField(default=10, validators=RANGO_CALIFICACION, verbose_name='calificacion_maxima')
+
+    def __str__(self):
+        return 'Configuración de tutorías'
+
+    @classmethod
+    def actual(cls):
+        return cls.objects.get_or_create(pk=1)[0]
+
+    class Meta:
+        verbose_name = 'Configuración'
+        verbose_name_plural = 'Configuración'
+        constraints = [
+            models.CheckConstraint(condition=models.Q(id=1), name='ck_configuracion_unica'),
         ]
