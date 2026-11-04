@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Loader } from '../../components/Loader';
 import { api } from '../../api/axios';
+import { analizarError, type TipoFallo } from '../../utils/api';
+import { fechaLocalISO } from '../../utils/date';
+import { AlertaFormulario } from '../../components/AlertaFormulario';
 
 export interface MateriaBackend {
   id: number;
@@ -49,6 +52,8 @@ export const Calendario: React.FC = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorTipo, setErrorTipo] = useState<TipoFallo>('validacion');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   // 1. CARGA INICIAL
@@ -58,7 +63,7 @@ export const Calendario: React.FC = () => {
     const fetchInitialData = async () => {
       try {
         const [resBloques, resMaterias] = await Promise.all([
-          api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/'),
+          api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/?incluir_pasados=1'),
           api.get<MateriaBackend[]>('/catalogo/materias/'),
         ]);
 
@@ -101,7 +106,7 @@ export const Calendario: React.FC = () => {
     setLoading(true);
     try {
       const [resBloques, resMaterias] = await Promise.all([
-        api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/'),
+        api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/?incluir_pasados=1'),
         api.get<MateriaBackend[]>('/catalogo/materias/'),
       ]);
 
@@ -193,6 +198,8 @@ export const Calendario: React.FC = () => {
     if (!editingSlot) return;
 
     setErrorMessage(null);
+    setErrorTipo('validacion');
+    setSuccessMessage(null);
 
     const hStart = editingSlot.horaInicio || '';
     const hEnd = editingSlot.horaFin || '';
@@ -202,12 +209,27 @@ export const Calendario: React.FC = () => {
       return;
     }
 
+    const materiaId = typeof editingSlot.materia === 'object' && editingSlot.materia !== null
+      ? editingSlot.materia.id
+      : Number(editingSlot.materia);
+
+    if (!materiaId) {
+      setErrorMessage('Debes seleccionar una materia.');
+      return;
+    }
+
+    if (!editingSlot.periodo) {
+      setErrorMessage('Este bloque no tiene periodo académico. Contacta al coordinador.');
+      return;
+    }
+
+    if (!editingSlot.cupo_total || Number(editingSlot.cupo_total) < 1) {
+      setErrorMessage('El cupo debe ser mayor que cero.');
+      return;
+    }
+
     setSaving(true);
     try {
-      const materiaId = typeof editingSlot.materia === 'object' && editingSlot.materia !== null
-        ? editingSlot.materia.id
-        : Number(editingSlot.materia);
-
       const docenteId = typeof editingSlot.docente === 'object' && editingSlot.docente !== null
         ? editingSlot.docente.id
         : editingSlot.docente;
@@ -217,25 +239,28 @@ export const Calendario: React.FC = () => {
 
       const payload = {
         docente: docenteId,
-        materia: materiaId || (materias[0]?.id ?? 1),
-        periodo: editingSlot.periodo || 1,
+        materia: materiaId,
+        periodo: editingSlot.periodo,
         fecha: editingSlot.fecha,
         hora_inicio: hStart,
         hora_fin: hEnd,
         modalidad: modVal,
         lugar: isPresencial ? editingSlot.ubicacionOEnlace : '',
         enlace_virtual: !isPresencial ? editingSlot.ubicacionOEnlace : '',
-        cupo_total: editingSlot.cupo_total || 1,
+        cupo_total: Number(editingSlot.cupo_total),
         estado: editingSlot.estado,
-        observaciones: editingSlot.observaciones || '',
+        observaciones: editingSlot.observaciones || null,
       };
 
       await api.put(`/disponibilidad/${editingSlot.id}/actualizar/`, payload);
       await refetchData();
       closeDrawer();
+      setSuccessMessage(`Actualizaste el horario del ${editingSlot.fecha} (${hStart} a ${hEnd}).`);
     } catch (err: unknown) {
-      console.error('Error al actualizar disponibilidad:', err);
-      setErrorMessage('Error al actualizar el horario en el servidor.');
+      // Si se cruza con otro bloque, el backend lo rechaza y se muestra el aviso de cruce.
+      const fallo = analizarError(err);
+      setErrorTipo(fallo.tipo);
+      setErrorMessage(fallo.mensaje);
     } finally {
       setSaving(false);
     }
@@ -243,12 +268,19 @@ export const Calendario: React.FC = () => {
 
   const handleConfirmSuspender = async () => {
     if (!editingSlot) return;
+
+    const materiaId = typeof editingSlot.materia === 'object' && editingSlot.materia !== null
+      ? editingSlot.materia.id
+      : Number(editingSlot.materia);
+
+    if (!materiaId || !editingSlot.periodo || !editingSlot.cupo_total) {
+      setErrorMessage('No se puede suspender: al bloque le faltan datos obligatorios.');
+      setShowConfirmModal(false);
+      return;
+    }
+
     setSaving(true);
     try {
-      const materiaId = typeof editingSlot.materia === 'object' && editingSlot.materia !== null
-        ? editingSlot.materia.id
-        : Number(editingSlot.materia);
-
       const docenteId = typeof editingSlot.docente === 'object' && editingSlot.docente !== null
         ? editingSlot.docente.id
         : editingSlot.docente;
@@ -258,15 +290,15 @@ export const Calendario: React.FC = () => {
 
       await api.put(`/disponibilidad/${editingSlot.id}/actualizar/`, {
         docente: docenteId,
-        materia: materiaId || (materias[0]?.id ?? 1),
-        periodo: editingSlot.periodo || 1,
+        materia: materiaId,
+        periodo: editingSlot.periodo,
         fecha: editingSlot.fecha,
-        hora_inicio: editingSlot.horaInicio || '08:00',
-        hora_fin: editingSlot.horaFin || '09:00',
+        hora_inicio: editingSlot.horaInicio || '',
+        hora_fin: editingSlot.horaFin || '',
         modalidad: modVal,
         lugar: isPresencial ? editingSlot.ubicacionOEnlace || editingSlot.lugar || '' : '',
         enlace_virtual: !isPresencial ? editingSlot.ubicacionOEnlace || editingSlot.enlace_virtual || '' : '',
-        cupo_total: editingSlot.cupo_total || 1,
+        cupo_total: Number(editingSlot.cupo_total),
         estado: 'CANCELADO',
         observaciones: 'Horario suspendido por el docente',
       });
@@ -274,8 +306,9 @@ export const Calendario: React.FC = () => {
       await refetchData();
       closeDrawer();
     } catch (err) {
-      console.error('Error al suspender el horario:', err);
-      setErrorMessage('Error al suspender el horario.');
+      const fallo = analizarError(err);
+      setErrorTipo(fallo.tipo);
+      setErrorMessage(fallo.mensaje);
     } finally {
       setSaving(false);
     }
@@ -309,6 +342,10 @@ export const Calendario: React.FC = () => {
             Haz clic en cualquier horario para ver su detalle, modificar sus ajustes o eliminarlo si ya no puedes atenderlo.
           </p>
         </div>
+
+        {successMessage && (
+          <AlertaFormulario tipo="exito" titulo="Horario actualizado" mensaje={successMessage} onCerrar={() => setSuccessMessage(null)} />
+        )}
 
         <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex-1 flex flex-col justify-between overflow-hidden">
           <div className="flex items-center justify-between mb-4 text-xs">
@@ -350,7 +387,7 @@ export const Calendario: React.FC = () => {
               {DIAS_SEMANA.map((dia, index) => {
                 const colDate = new Date(monday);
                 colDate.setDate(monday.getDate() + index);
-                const colDateStr = colDate.toISOString().split('T')[0];
+                const colDateStr = fechaLocalISO(colDate);
 
                 const daySlots = slots.filter(
                   (s) => s.fecha === colDateStr && s.estado !== 'CANCELADO'
@@ -416,9 +453,7 @@ export const Calendario: React.FC = () => {
 
             <form id="editSlotForm" onSubmit={handleSaveEdit} className="p-5 space-y-3.5 flex-1 overflow-y-auto text-xs">
               {errorMessage && (
-                <div className="p-3 bg-rose-100 border border-rose-300 text-rose-800 rounded-md">
-                  {errorMessage}
-                </div>
+                <AlertaFormulario tipo={errorTipo} mensaje={errorMessage} onCerrar={() => setErrorMessage(null)} />
               )}
 
               <div>
@@ -506,6 +541,20 @@ export const Calendario: React.FC = () => {
                     className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Cupo máximo</label>
+                <input
+                  type="number"
+                  min={1}
+                  required
+                  value={editingSlot.cupo_total ?? ''}
+                  onChange={(e) =>
+                    setEditingSlot({ ...editingSlot, cupo_total: Number(e.target.value) })
+                  }
+                  className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
+                />
               </div>
 
               <div>

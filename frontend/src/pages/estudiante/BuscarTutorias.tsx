@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../api/axios';
+import { hoyLocalISO } from '../../utils/date';
+import { mensajeError } from '../../utils/api';
 
 interface TutorBackend {
   id?: string | number;
@@ -39,15 +41,6 @@ export interface TutoriaBackend {
   materia?: string | number | { id?: number | string; nombre?: string; codigo?: string } | null;
   docente_nombre?: string;
   docente?: { id?: number | string; first_name?: string; last_name?: string; nombre?: string; email?: string; username?: string } | null;
-}
-
-interface ApiErrorResponse {
-  response?: {
-    data?: {
-      detail?: string;
-      non_field_errors?: string[];
-    };
-  };
 }
 
 interface UserExtended {
@@ -183,7 +176,7 @@ export const BuscarTutorias: React.FC = () => {
         setTutoresApi(rawT);
       }
 
-      const resBloques = await api.get('/disponibilidad/disponibilidad/').catch(() => null);
+      const resBloques = await api.get('/disponibilidad/disponibilidad/?estado=DISPONIBLE').catch(() => null);
       if (resBloques && resBloques.data) {
         const rawB = Array.isArray(resBloques.data)
           ? resBloques.data
@@ -216,7 +209,7 @@ export const BuscarTutorias: React.FC = () => {
           setTutoresApi(rawT);
         }
 
-        const resBloques = await api.get('/disponibilidad/disponibilidad/').catch(() => null);
+        const resBloques = await api.get('/disponibilidad/disponibilidad/?estado=DISPONIBLE').catch(() => null);
         if (resBloques && resBloques.data && isMounted) {
           const rawB = Array.isArray(resBloques.data)
             ? resBloques.data
@@ -302,9 +295,22 @@ export const BuscarTutorias: React.FC = () => {
   }, [bloques]);
 
   const bloquesFiltrados = useMemo(() => {
+    const hoy = hoyLocalISO();
+
     return bloques.filter((b) => {
       const estadoUpper = (b.estado || '').toUpperCase();
-      if (estadoUpper === 'RESERVADO' || estadoUpper === 'RESERVADA' || estadoUpper === 'COMPLETO') {
+      if (
+        estadoUpper === 'RESERVADO' ||
+        estadoUpper === 'RESERVADA' ||
+        estadoUpper === 'COMPLETO' ||
+        estadoUpper === 'CANCELADO' ||
+        estadoUpper === 'CERRADO'
+      ) {
+        return false;
+      }
+
+      // Solo bloques de hoy en adelante
+      if (!b.fecha || b.fecha < hoy) {
         return false;
       }
 
@@ -363,11 +369,11 @@ export const BuscarTutorias: React.FC = () => {
   };
 
   const misTutoriasProximas = useMemo(() => {
-    const todayISO = new Date().toISOString().split('T')[0];
+    const todayISO = hoyLocalISO();
     return misTutorias.filter((tut) => {
       const detalles = obtenerDetallesTutoriaLocal(tut);
       const fechaTutoria = detalles.fecha || tut.fecha || '';
-      if (!fechaTutoria) return true;
+      if (!fechaTutoria) return false;
       return fechaTutoria >= todayISO;
     });
   }, [misTutorias, bloques]);
@@ -406,14 +412,10 @@ export const BuscarTutorias: React.FC = () => {
         await refrescarDatos();
       }, 1200);
     } catch (err) {
-      console.error('Error al reservar tutoría:', err);
-      const apiErr = err as ApiErrorResponse;
-      const errMsg = apiErr.response?.data?.detail 
-        || apiErr.response?.data?.non_field_errors?.[0]
-        || 'Ocurrió un error al procesar la reserva.';
+      // GT-184: también los errores por campo ({"bloque_id": [...]}) del backend.
       setFeedbackMsg({
         type: 'error',
-        text: errMsg,
+        text: mensajeError(err),
       });
     } finally {
       setSubmitting(false);
