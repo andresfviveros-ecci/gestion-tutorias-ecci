@@ -41,6 +41,35 @@ export const mensajeError = (error: unknown): string => {
   return 'No pudimos completar la operación. Intenta de nuevo.';
 };
 
+/** Tipo de aviso que merece un error al guardar un horario (GT-197, GT-201). */
+export type TipoFallo = 'conflicto' | 'validacion' | 'permiso' | 'sin_conexion' | 'servidor';
+
+export interface FalloApi {
+  tipo: TipoFallo;
+  mensaje: string;
+}
+
+/**
+ * Clasifica un error de la API para mostrar el aviso correcto. El cruce de
+ * horarios se reconoce por el mensaje del backend ("…presenta conflicto con
+ * otra disponibilidad existente.").
+ */
+export const analizarError = (error: unknown): FalloApi => {
+  const respuesta = (error as { response?: { status?: number } })?.response;
+  if (!respuesta) {
+    return { tipo: 'sin_conexion', mensaje: 'No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.' };
+  }
+  const status = respuesta.status ?? 0;
+  if (status >= 500) {
+    return { tipo: 'servidor', mensaje: 'El servidor tuvo un problema. Inténtalo de nuevo en unos minutos.' };
+  }
+
+  const mensaje = mensajeError(error);
+  if (status === 403) return { tipo: 'permiso', mensaje };
+  if (/conflicto|se cruza|solapa/i.test(mensaje)) return { tipo: 'conflicto', mensaje };
+  return { tipo: 'validacion', mensaje };
+};
+
 /** Acepta una lista plana o una respuesta paginada de DRF (`{ results }`). */
 export const extraerLista = <T,>(data: unknown): T[] => {
   if (Array.isArray(data)) return data as T[];
