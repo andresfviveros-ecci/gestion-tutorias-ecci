@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Loader } from '../../components/Loader';
 import { api } from '../../api/axios';
 import { analizarError, type TipoFallo } from '../../utils/api';
@@ -43,6 +44,7 @@ const normalizarModalidad = (mod?: string): 'PRESENCIAL' | 'VIRTUAL' => {
 };
 
 export const Calendario: React.FC = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [materias, setMaterias] = useState<MateriaBackend[]>([]);
@@ -193,79 +195,6 @@ export const Calendario: React.FC = () => {
     return encontrada ? encontrada.nombre : 'Materia';
   };
 
-  const handleSaveEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingSlot) return;
-
-    setErrorMessage(null);
-    setErrorTipo('validacion');
-    setSuccessMessage(null);
-
-    const hStart = editingSlot.horaInicio || '';
-    const hEnd = editingSlot.horaFin || '';
-
-    if (hStart >= hEnd) {
-      setErrorMessage('La hora de inicio debe ser anterior a la hora de fin.');
-      return;
-    }
-
-    const materiaId = typeof editingSlot.materia === 'object' && editingSlot.materia !== null
-      ? editingSlot.materia.id
-      : Number(editingSlot.materia);
-
-    if (!materiaId) {
-      setErrorMessage('Debes seleccionar una materia.');
-      return;
-    }
-
-    if (!editingSlot.periodo) {
-      setErrorMessage('Este bloque no tiene periodo académico. Contacta al coordinador.');
-      return;
-    }
-
-    if (!editingSlot.cupo_total || Number(editingSlot.cupo_total) < 1) {
-      setErrorMessage('El cupo debe ser mayor que cero.');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const docenteId = typeof editingSlot.docente === 'object' && editingSlot.docente !== null
-        ? editingSlot.docente.id
-        : editingSlot.docente;
-
-      const modVal = normalizarModalidad(editingSlot.modalidad);
-      const isPresencial = modVal === 'PRESENCIAL';
-
-      const payload = {
-        docente: docenteId,
-        materia: materiaId,
-        periodo: editingSlot.periodo,
-        fecha: editingSlot.fecha,
-        hora_inicio: hStart,
-        hora_fin: hEnd,
-        modalidad: modVal,
-        lugar: isPresencial ? editingSlot.ubicacionOEnlace : '',
-        enlace_virtual: !isPresencial ? editingSlot.ubicacionOEnlace : '',
-        cupo_total: Number(editingSlot.cupo_total),
-        estado: editingSlot.estado,
-        observaciones: editingSlot.observaciones || null,
-      };
-
-      await api.put(`/disponibilidad/${editingSlot.id}/actualizar/`, payload);
-      await refetchData();
-      closeDrawer();
-      setSuccessMessage(`Actualizaste el horario del ${editingSlot.fecha} (${hStart} a ${hEnd}).`);
-    } catch (err: unknown) {
-      // Si se cruza con otro bloque, el backend lo rechaza y se muestra el aviso de cruce.
-      const fallo = analizarError(err);
-      setErrorTipo(fallo.tipo);
-      setErrorMessage(fallo.mensaje);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleConfirmSuspender = async () => {
     if (!editingSlot) return;
 
@@ -279,6 +208,7 @@ export const Calendario: React.FC = () => {
 
       await refetchData();
       closeDrawer();
+      setSuccessMessage('Suspendiste el horario correctamente.');
     } catch (err) {
       const fallo = analizarError(err);
       setErrorTipo(fallo.tipo);
@@ -425,7 +355,7 @@ export const Calendario: React.FC = () => {
               </button>
             </div>
 
-            <form id="editSlotForm" onSubmit={handleSaveEdit} className="p-5 space-y-3.5 flex-1 overflow-y-auto text-xs">
+            <div className="p-5 space-y-4 flex-1 overflow-y-auto text-xs">
               {errorMessage && (
                 <AlertaFormulario tipo={errorTipo} mensaje={errorMessage} onCerrar={() => setErrorMessage(null)} />
               )}
@@ -444,134 +374,60 @@ export const Calendario: React.FC = () => {
                 </span>
               </div>
 
-              {editingSlot.estudiante && (
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Reservado por</label>
-                  <input
-                    type="text"
-                    disabled
-                    value={editingSlot.estudiante}
-                    className="w-full h-9 px-3 bg-slate-100 border border-slate-200 rounded-md text-slate-700 font-semibold"
-                  />
+              <div className="space-y-2.5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-slate-500">Materia</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {getMateriaNombre(editingSlot.materia)}
+                  </span>
                 </div>
-              )}
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Materia</label>
-                <select
-                  value={
-                    (typeof editingSlot.materia === 'object' && editingSlot.materia !== null
-                      ? editingSlot.materia.id
-                      : editingSlot.materia) ?? ''
-                  }
-                  onChange={(e) =>
-                    setEditingSlot({ ...editingSlot, materia: Number(e.target.value) })
-                  }
-                  className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-                >
-                  {materias.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Fecha</label>
-                <input
-                  type="date"
-                  required
-                  value={editingSlot.fecha}
-                  onChange={(e) =>
-                    setEditingSlot({ ...editingSlot, fecha: e.target.value })
-                  }
-                  className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Hora inicio</label>
-                  <input
-                    type="time"
-                    required
-                    value={editingSlot.horaInicio || ''}
-                    onChange={(e) =>
-                      setEditingSlot({ ...editingSlot, horaInicio: e.target.value })
-                    }
-                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-                  />
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-slate-500">Fecha</span>
+                  <span className="text-right font-semibold text-slate-800">{editingSlot.fecha}</span>
                 </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Hora fin</label>
-                  <input
-                    type="time"
-                    required
-                    value={editingSlot.horaFin || ''}
-                    onChange={(e) =>
-                      setEditingSlot({ ...editingSlot, horaFin: e.target.value })
-                    }
-                    className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-                  />
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-slate-500">Horario</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {editingSlot.horaInicio} – {editingSlot.horaFin}
+                  </span>
                 </div>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-slate-500">Modalidad</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {normalizarModalidad(editingSlot.modalidad) === 'VIRTUAL' ? 'Virtual' : 'Presencial'}
+                  </span>
+                </div>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-slate-500">Cupo</span>
+                  <span className="text-right font-semibold text-slate-800">
+                    {editingSlot.cupo_ocupado ?? 0}/{editingSlot.cupo_total ?? 0}
+                  </span>
+                </div>
+                {editingSlot.estudiante && (
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-slate-500">Reservado por</span>
+                    <span className="text-right font-semibold text-slate-800">
+                      {editingSlot.estudiante}
+                    </span>
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Cupo máximo</label>
-                <input
-                  type="number"
-                  min={1}
-                  required
-                  value={editingSlot.cupo_total ?? ''}
-                  onChange={(e) =>
-                    setEditingSlot({ ...editingSlot, cupo_total: Number(e.target.value) })
-                  }
-                  className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Modalidad</label>
-                <select
-                  value={normalizarModalidad(editingSlot.modalidad)}
-                  onChange={(e) =>
-                    setEditingSlot({
-                      ...editingSlot,
-                      modalidad: e.target.value as 'PRESENCIAL' | 'VIRTUAL',
-                    })
-                  }
-                  className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-                >
-                  <option value="VIRTUAL">Virtual</option>
-                  <option value="PRESENCIAL">Presencial</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  {normalizarModalidad(editingSlot.modalidad) === 'VIRTUAL' ? 'Enlace de reunión' : 'Lugar / Aula'}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingSlot.ubicacionOEnlace || ''}
-                  onChange={(e) =>
-                    setEditingSlot({ ...editingSlot, ubicacionOEnlace: e.target.value })
-                  }
-                  className="w-full h-9 px-3 bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-                />
-              </div>
-            </form>
+              <p className="text-[11px] leading-relaxed text-slate-500">
+                La edición de los datos se hace en la vista de modificar disponibilidad. Aquí puedes revisar el bloque o suspenderlo.
+              </p>
+            </div>
 
             <div className="p-5 border-t border-slate-100 bg-white space-y-2 shrink-0">
               <button
-                type="submit"
-                form="editSlotForm"
-                disabled={saving}
-                className="w-full h-10 bg-[#0d1b2a] hover:bg-[#1e2d4a] text-white font-semibold text-xs rounded-md transition-colors disabled:opacity-50 cursor-pointer"
+                type="button"
+                onClick={() => {
+                  closeDrawer();
+                  navigate(`/tutor/mi-disponibilidad/${editingSlot.id}/editar`);
+                }}
+                className="w-full h-10 bg-[#0d1b2a] hover:bg-[#1e2d4a] text-white font-semibold text-xs rounded-md transition-colors cursor-pointer"
               >
-                {saving ? 'Guardando...' : 'Guardar cambios'}
+                Modificar disponibilidad
               </button>
 
               <button
