@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Loader } from '../../components/Loader';
 import { api } from '../../api/axios';
-import { mensajeError } from '../../utils/api';
+import { analizarError, type TipoFallo } from '../../utils/api';
 import { fechaLocalISO } from '../../utils/date';
+import { AlertaFormulario } from '../../components/AlertaFormulario';
 
 export interface MateriaBackend {
   id: number;
@@ -51,6 +52,8 @@ export const Calendario: React.FC = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorTipo, setErrorTipo] = useState<TipoFallo>('validacion');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   // 1. CARGA INICIAL
@@ -195,6 +198,8 @@ export const Calendario: React.FC = () => {
     if (!editingSlot) return;
 
     setErrorMessage(null);
+    setErrorTipo('validacion');
+    setSuccessMessage(null);
 
     const hStart = editingSlot.horaInicio || '';
     const hEnd = editingSlot.horaFin || '';
@@ -250,9 +255,12 @@ export const Calendario: React.FC = () => {
       await api.put(`/disponibilidad/${editingSlot.id}/actualizar/`, payload);
       await refetchData();
       closeDrawer();
+      setSuccessMessage(`Actualizaste el horario del ${editingSlot.fecha} (${hStart} a ${hEnd}).`);
     } catch (err: unknown) {
-      console.error('Error al actualizar disponibilidad:', err);
-      setErrorMessage(mensajeError(err));
+      // Si se cruza con otro bloque, el backend lo rechaza y se muestra el aviso de cruce.
+      const fallo = analizarError(err);
+      setErrorTipo(fallo.tipo);
+      setErrorMessage(fallo.mensaje);
     } finally {
       setSaving(false);
     }
@@ -298,8 +306,9 @@ export const Calendario: React.FC = () => {
       await refetchData();
       closeDrawer();
     } catch (err) {
-      console.error('Error al suspender el horario:', err);
-      setErrorMessage(mensajeError(err));
+      const fallo = analizarError(err);
+      setErrorTipo(fallo.tipo);
+      setErrorMessage(fallo.mensaje);
     } finally {
       setSaving(false);
     }
@@ -333,6 +342,10 @@ export const Calendario: React.FC = () => {
             Haz clic en cualquier horario para ver su detalle, modificar sus ajustes o eliminarlo si ya no puedes atenderlo.
           </p>
         </div>
+
+        {successMessage && (
+          <AlertaFormulario tipo="exito" titulo="Horario actualizado" mensaje={successMessage} onCerrar={() => setSuccessMessage(null)} />
+        )}
 
         <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex-1 flex flex-col justify-between overflow-hidden">
           <div className="flex items-center justify-between mb-4 text-xs">
@@ -440,9 +453,7 @@ export const Calendario: React.FC = () => {
 
             <form id="editSlotForm" onSubmit={handleSaveEdit} className="p-5 space-y-3.5 flex-1 overflow-y-auto text-xs">
               {errorMessage && (
-                <div className="p-3 bg-rose-100 border border-rose-300 text-rose-800 rounded-md">
-                  {errorMessage}
-                </div>
+                <AlertaFormulario tipo={errorTipo} mensaje={errorMessage} onCerrar={() => setErrorMessage(null)} />
               )}
 
               <div>

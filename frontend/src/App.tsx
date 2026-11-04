@@ -16,19 +16,12 @@ import { StudentPanel } from './pages/estudiante/StudentPanel';
 import { BuscarTutorias } from './pages/estudiante/BuscarTutorias';
 import { MisReservas } from './pages/estudiante/MisReservas';
 import { Layout } from './components/Layout';
+import { MODULOS, normalizarRol, RUTA_INICIO } from './navigation/modulos';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles: UserRole[];
 }
-
-// Normaliza el rol sin importar si viene de Django como 'Estudiante', 'Docente', 'role' o 'rol'
-const normalizeRole = (role?: string): UserRole => {
-  const r = String(role || '').toLowerCase();
-  if (r.includes('admin') || r.includes('coordinador')) return 'admin';
-  if (r.includes('tutor') || r.includes('docente')) return 'tutor';
-  return 'estudiante';
-};
 
 const cardContainerVariants: Variants = {
   hidden: { opacity: 0, scale: 0.92, y: 30 },
@@ -57,11 +50,7 @@ const itemVariants: Variants = {
 const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
   const navigate = useNavigate();
 
-  const handleRedirect = () => {
-    if (role === 'admin') navigate('/dashboard');
-    else if (role === 'tutor') navigate('/tutor/dashboard');
-    else navigate('/estudiante/dashboard');
-  };
+  const handleRedirect = () => navigate(RUTA_INICIO[role]);
 
   const roleFormatted =
     role === 'admin' ? 'Coordinador / Admin' : role === 'tutor' ? 'Docente / Tutor' : 'Estudiante';
@@ -224,10 +213,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
-  const userRole = normalizeRole(user.role || user.rol);
+  const userRole = normalizarRol(user.role || user.rol);
   const isAllowed = allowedRoles.map((r) => r.toLowerCase()).includes(userRole);
+  // Los módulos que exigen un grupo (Coordinadores → Administrador) se cuidan también aquí.
+  const modulo = MODULOS.find((m) => m.ruta === location.pathname);
+  const faltaGrupo = Boolean(modulo?.grupos && !modulo.grupos.some((g) => user.grupos?.includes(g)));
 
-  if (!isAllowed) {
+  if (!isAllowed || faltaGrupo) {
     return <AccessDeniedView role={userRole} />;
   }
 
