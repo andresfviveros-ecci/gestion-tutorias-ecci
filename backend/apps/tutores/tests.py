@@ -2,16 +2,17 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core import mail
-from django.test import override_settings
+from django.test import SimpleTestCase, override_settings
 from rest_framework.test import APITestCase
 
 from apps.accounts.pruebas import asignar_materia, crear_catalogo, crear_usuario
-from apps.catalogo.models import Inscripcion, Materia, PeriodoAcademico
+from apps.catalogo.models import Configuracion, Inscripcion, Materia, PeriodoAcademico
 from apps.disponibilidad.models import BloqueDisponibilidad
 from apps.notificaciones.models import Notificacion
 from apps.tutorias.models import Tutoria
 
 from .models import SolicitudTutor
+from .services import calcular_nota_final
 
 URL = '/api/tutores/solicitudes/'
 BLOQUES_URL = '/api/disponibilidad/disponibilidad/'
@@ -237,3 +238,17 @@ class ReglasTutorEstudianteTests(APITestCase):
         bloque_id = self.publicar().data['id']
         SolicitudTutor.objects.filter(pk=self.solicitud.pk).update(estado='REVOCADA')
         self.assertEqual(self.reservar(bloque_id).status_code, 400)
+
+    def test_editar_el_lugar_no_revisa_el_tope_semanal(self):
+        bloque_id = self.publicar(cupo=6).data['id']
+        Configuracion.objects.filter(pk=1).update(cupos_semanales_tutor=2)
+        url = f'/api/disponibilidad/{bloque_id}/actualizar/'
+        self.assertEqual(self.client.patch(url, {'lugar': 'Sala 2'}, format='json').status_code, 200)
+        self.assertEqual(self.client.patch(url, {'cupo_total': 7}, format='json').status_code, 400)
+
+
+class NotaFinalTests(SimpleTestCase):
+    def test_redondea_la_mitad_hacia_arriba(self):
+        # 4,005 con el redondeo por defecto (al par) daba 4,00.
+        config = Configuracion(peso_corte1=50, peso_corte2=50, peso_corte3=0)
+        self.assertEqual(calcular_nota_final(Decimal('4.01'), Decimal('4.00'), Decimal(0), config), Decimal('4.01'))
