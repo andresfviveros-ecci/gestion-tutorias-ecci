@@ -31,14 +31,14 @@ import type {
   Tutor,
 } from '../../types/panel';
 import { extraerLista } from '../../utils/api';
+import { fechaLocalISO, hoyLocalISO } from '../../utils/date';
 import {
-  aISOFecha,
   diaSemanaCorto,
   diaYNumero,
   diasDeLaSemana,
   etiquetaRelativa,
   fechaLarga,
-  hoyISO,
+  horaActual,
   horaCorta,
 } from '../../utils/fechas';
 import { modalidadLegible, nombreTutor } from '../../utils/panel';
@@ -135,17 +135,6 @@ export const StudentPanel = () => {
     return () => window.clearTimeout(id);
   }, [toast]);
 
-  useEffect(() => {
-    if (!bloqueReserva && !tutoriaCancelar) return;
-    const alPresionar = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setBloqueReserva(null);
-      setTutoriaCancelar(null);
-    };
-    window.addEventListener('keydown', alPresionar);
-    return () => window.removeEventListener('keydown', alPresionar);
-  }, [bloqueReserva, tutoriaCancelar]);
-
   /* -------------------------- catálogos --------------------------- */
 
   const materiasPorId = useMemo(() => {
@@ -212,15 +201,17 @@ export const StudentPanel = () => {
   }, [tutoriasActivas, obtenerBloque]);
 
   const disponibles = useMemo(() => {
-    const referencia = hoyISO();
+    const referencia = hoyLocalISO();
+    const hora = horaActual();
     return bloques
-      .filter(
-        (bloque) =>
-          (bloque.estado || '').toUpperCase() === 'DISPONIBLE' &&
-          bloque.cupo_ocupado < bloque.cupo_total &&
-          bloque.fecha >= referencia &&
-          !bloquesReservados.has(String(bloque.id)),
-      )
+      .filter((bloque) => {
+        if ((bloque.estado || '').toUpperCase() !== 'DISPONIBLE') return false;
+        if (bloque.cupo_ocupado >= bloque.cupo_total) return false;
+        if (!bloque.fecha || bloque.fecha < referencia) return false;
+        // Un bloque de hoy que ya empezó no se puede reservar.
+        if (bloque.fecha === referencia && horaCorta(bloque.hora_inicio) <= hora) return false;
+        return !bloquesReservados.has(String(bloque.id));
+      })
       .sort((a, b) =>
         `${a.fecha}T${a.hora_inicio}`.localeCompare(`${b.fecha}T${b.hora_inicio}`),
       );
@@ -242,8 +233,9 @@ export const StudentPanel = () => {
       })
       .filter((item) => {
         if (!item.fecha) return false;
-        const inicio = new Date(`${item.fecha}T${item.horaInicio || '23:59'}:00`);
-        return inicio.getTime() >= ahora.getTime();
+        // La tutoría sigue visible mientras dura, no solo hasta que empieza.
+        const fin = new Date(`${item.fecha}T${item.horaFin || item.horaInicio || '23:59'}:00`);
+        return fin.getTime() >= ahora.getTime();
       })
       .sort((a, b) =>
         `${a.fecha}T${a.horaInicio}`.localeCompare(`${b.fecha}T${b.horaInicio}`),
@@ -271,7 +263,7 @@ export const StudentPanel = () => {
 
   const dias = useMemo(() => diasDeLaSemana(), []);
 
-  const referenciaHoy = hoyISO();
+  const referenciaHoy = hoyLocalISO();
 
   const conteoPorDia = useMemo(() => {
     const mapa = new Map<string, number>();
@@ -312,7 +304,7 @@ export const StudentPanel = () => {
   const visibles = filtrados.slice(0, 10);
 
   const opcionesDia: DiaOpcion[] = dias.map((dia) => {
-    const iso = aISOFecha(dia);
+    const iso = fechaLocalISO(dia);
     const cantidad = conteoPorDia.get(iso) || 0;
 
     return {
