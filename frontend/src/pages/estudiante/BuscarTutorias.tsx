@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../api/axios';
+import { hoyLocalISO } from '../../utils/date';
 
 interface TutorBackend {
   id?: string | number;
@@ -183,7 +184,7 @@ export const BuscarTutorias: React.FC = () => {
         setTutoresApi(rawT);
       }
 
-      const resBloques = await api.get('/disponibilidad/disponibilidad/').catch(() => null);
+      const resBloques = await api.get('/disponibilidad/disponibilidad/?estado=DISPONIBLE').catch(() => null);
       if (resBloques && resBloques.data) {
         const rawB = Array.isArray(resBloques.data)
           ? resBloques.data
@@ -216,7 +217,7 @@ export const BuscarTutorias: React.FC = () => {
           setTutoresApi(rawT);
         }
 
-        const resBloques = await api.get('/disponibilidad/disponibilidad/').catch(() => null);
+        const resBloques = await api.get('/disponibilidad/disponibilidad/?estado=DISPONIBLE').catch(() => null);
         if (resBloques && resBloques.data && isMounted) {
           const rawB = Array.isArray(resBloques.data)
             ? resBloques.data
@@ -302,9 +303,22 @@ export const BuscarTutorias: React.FC = () => {
   }, [bloques]);
 
   const bloquesFiltrados = useMemo(() => {
+    const hoy = hoyLocalISO();
+
     return bloques.filter((b) => {
       const estadoUpper = (b.estado || '').toUpperCase();
-      if (estadoUpper === 'RESERVADO' || estadoUpper === 'RESERVADA' || estadoUpper === 'COMPLETO') {
+      if (
+        estadoUpper === 'RESERVADO' ||
+        estadoUpper === 'RESERVADA' ||
+        estadoUpper === 'COMPLETO' ||
+        estadoUpper === 'CANCELADO' ||
+        estadoUpper === 'CERRADO'
+      ) {
+        return false;
+      }
+
+      // Solo bloques de hoy en adelante
+      if (!b.fecha || b.fecha < hoy) {
         return false;
       }
 
@@ -363,11 +377,11 @@ export const BuscarTutorias: React.FC = () => {
   };
 
   const misTutoriasProximas = useMemo(() => {
-    const todayISO = new Date().toISOString().split('T')[0];
+    const todayISO = hoyLocalISO();
     return misTutorias.filter((tut) => {
       const detalles = obtenerDetallesTutoriaLocal(tut);
       const fechaTutoria = detalles.fecha || tut.fecha || '';
-      if (!fechaTutoria) return true;
+      if (!fechaTutoria) return false;
       return fechaTutoria >= todayISO;
     });
   }, [misTutorias, bloques]);

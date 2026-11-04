@@ -12,7 +12,7 @@ import { DashboardTutor } from './pages/tutor/DashboardTutor';
 import { MiDisponibilidad } from './pages/tutor/MiDisponibilidad';
 import { Calendario } from './pages/tutor/Calendario';
 import { StudentHome } from './pages/estudiante/StudentHome';
-import { DashboardEstudiante } from './pages/estudiante/DashboardEstudiante';
+import { StudentPanel } from './pages/estudiante/StudentPanel';
 import { BuscarTutorias } from './pages/estudiante/BuscarTutorias';
 import { MisReservas } from './pages/estudiante/MisReservas';
 import { Layout } from './components/Layout';
@@ -224,7 +224,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
-  const userRole = normalizeRole(user.role || (user as unknown as { rol?: string }).rol);
+  const userRole = normalizeRole(user.role || user.rol);
   const isAllowed = allowedRoles.map((r) => r.toLowerCase()).includes(userRole);
 
   if (!isAllowed) {
@@ -256,9 +256,7 @@ export const App: React.FC = () => {
           path="/estudiante/dashboard"
           element={
             <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
-              <Layout>
-                <DashboardEstudiante />
-              </Layout>
+              <StudentPanel />
             </ProtectedRoute>
           }
         />
@@ -360,9 +358,7 @@ export const App: React.FC = () => {
           path="/tutor/mi-disponibilidad"
           element={
             <ProtectedRoute allowedRoles={['tutor', 'admin']}>
-              <Layout>
-                <MiDisponibilidad />
-              </Layout>
+              <MiDisponibilidad />
             </ProtectedRoute>
           }
         />
