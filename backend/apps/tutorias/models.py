@@ -8,6 +8,7 @@ from .choices import (
     ESTADO_TUTORIA_CHOICES,
     ORIGEN_CANCELACION_CHOICES,
 )
+from .estados import ACTIVOS
 
 
 class Tutoria(BaseModel):
@@ -35,7 +36,7 @@ class Tutoria(BaseModel):
                 models.UniqueConstraint(
                     fields=['bloque', 'estudiante'],
                     condition=models.Q(
-                        estado__in=['RESERVADA', 'CONFIRMADA', 'EN_CURSO']
+                        estado__in=ACTIVOS
                     ),
                     name='ux_tutoria_activa'
                 ),
