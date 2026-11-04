@@ -63,7 +63,7 @@ export const Calendario: React.FC = () => {
     const fetchInitialData = async () => {
       try {
         const [resBloques, resMaterias] = await Promise.all([
-          api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/?incluir_pasados=1'),
+          api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/?incluir_pasados=1&docente=me'),
           api.get<MateriaBackend[]>('/catalogo/materias/'),
         ]);
 
@@ -106,7 +106,7 @@ export const Calendario: React.FC = () => {
     setLoading(true);
     try {
       const [resBloques, resMaterias] = await Promise.all([
-        api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/?incluir_pasados=1'),
+        api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/?incluir_pasados=1&docente=me'),
         api.get<MateriaBackend[]>('/catalogo/materias/'),
       ]);
 
@@ -269,38 +269,12 @@ export const Calendario: React.FC = () => {
   const handleConfirmSuspender = async () => {
     if (!editingSlot) return;
 
-    const materiaId = typeof editingSlot.materia === 'object' && editingSlot.materia !== null
-      ? editingSlot.materia.id
-      : Number(editingSlot.materia);
-
-    if (!materiaId || !editingSlot.periodo || !editingSlot.cupo_total) {
-      setErrorMessage('No se puede suspender: al bloque le faltan datos obligatorios.');
-      setShowConfirmModal(false);
-      return;
-    }
-
     setSaving(true);
     try {
-      const docenteId = typeof editingSlot.docente === 'object' && editingSlot.docente !== null
-        ? editingSlot.docente.id
-        : editingSlot.docente;
-
-      const modVal = normalizarModalidad(editingSlot.modalidad);
-      const isPresencial = modVal === 'PRESENCIAL';
-
-      await api.put(`/disponibilidad/${editingSlot.id}/actualizar/`, {
-        docente: docenteId,
-        materia: materiaId,
-        periodo: editingSlot.periodo,
-        fecha: editingSlot.fecha,
-        hora_inicio: editingSlot.horaInicio || '',
-        hora_fin: editingSlot.horaFin || '',
-        modalidad: modVal,
-        lugar: isPresencial ? editingSlot.ubicacionOEnlace || editingSlot.lugar || '' : '',
-        enlace_virtual: !isPresencial ? editingSlot.ubicacionOEnlace || editingSlot.enlace_virtual || '' : '',
-        cupo_total: Number(editingSlot.cupo_total),
-        estado: 'CANCELADO',
-        observaciones: 'Horario suspendido por el docente',
+      // El estado del bloque es de solo lectura: suspender es un DELETE. El
+      // backend cancela las reservas activas y avisa a cada estudiante.
+      await api.delete(`/disponibilidad/${editingSlot.id}/actualizar/`, {
+        data: { motivo: 'Horario suspendido por el docente' },
       });
 
       await refetchData();

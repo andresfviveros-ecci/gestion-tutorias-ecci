@@ -129,17 +129,31 @@ export const MiDisponibilidad = () => {
     let ignore = false;
 
     const cargarCatalogos = async () => {
-      const [resMaterias, resPeriodos] = await Promise.allSettled([
+      const [resMaterias, resPeriodos, resAsignaciones] = await Promise.allSettled([
         api.get('/catalogo/materias/'),
         api.get('/catalogo/periodos/'),
+        // El backend solo deja publicar en las materias asignadas al docente.
+        api.get('/catalogo/docentes-materias/?docente=me'),
       ]);
 
       if (ignore) return;
 
+      const listaPeriodos =
+        resPeriodos.status === 'fulfilled' ? extraerLista<PeriodoBackend>(resPeriodos.value.data) : [];
+      const periodoActivo = listaPeriodos.find((periodo) => periodo.activo) || listaPeriodos[0];
+
       if (resMaterias.status === 'fulfilled') {
-        const activas = extraerLista<MateriaBackend>(resMaterias.value.data).filter(
+        let activas = extraerLista<MateriaBackend>(resMaterias.value.data).filter(
           (materia) => materia.activa !== false,
         );
+        if (resAsignaciones.status === 'fulfilled') {
+          const asignadas = new Set(
+            extraerLista<{ materia: number | string; periodo: number | string }>(resAsignaciones.value.data)
+              .filter((asignacion) => !periodoActivo || String(asignacion.periodo) === String(periodoActivo.id))
+              .map((asignacion) => String(asignacion.materia)),
+          );
+          activas = activas.filter((materia) => asignadas.has(String(materia.id)));
+        }
         setMaterias(activas);
         if (activas.length > 0) {
           setMateriaId((previo) => previo || activas[0].id);
@@ -147,11 +161,9 @@ export const MiDisponibilidad = () => {
       }
 
       if (resPeriodos.status === 'fulfilled') {
-        const lista = extraerLista<PeriodoBackend>(resPeriodos.value.data);
-        setPeriodos(lista);
-        const activo = lista.find((periodo) => periodo.activo) || lista[0];
-        if (activo) {
-          setPeriodoId((previo) => previo || activo.id);
+        setPeriodos(listaPeriodos);
+        if (periodoActivo) {
+          setPeriodoId((previo) => previo || periodoActivo.id);
         }
       }
 
@@ -293,6 +305,8 @@ export const MiDisponibilidad = () => {
       };
 
       await api.post('/disponibilidad/disponibilidad/', payload);
+      // Se limpia el formulario: un segundo clic publicaría el mismo bloque.
+      limpiar();
       setExito('El horario se guardó correctamente y ya está visible para los estudiantes.');
     } catch (err) {
       const detalle = mensajeError(err);
@@ -488,7 +502,7 @@ export const MiDisponibilidad = () => {
                       className={`${inputClass} cursor-pointer`}
                     >
                       {materias.length === 0 ? (
-                        <option value="">No hay materias registradas</option>
+                        <option value="">No tienes materias asignadas en este periodo</option>
                       ) : (
                         materias.map((materia) => (
                           <option key={materia.id} value={materia.id}>

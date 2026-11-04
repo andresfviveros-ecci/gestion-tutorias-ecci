@@ -45,6 +45,8 @@ export interface Tutoria {
   fecha?: string;
   hora_inicio?: string;
   hora_fin?: string;
+  /** Lo calcula el backend: estado activo y antes del plazo de cancelación. */
+  puede_cancelar?: boolean;
 }
 
 export type ModalidadFiltro = 'TODAS' | 'VIRTUAL' | 'PRESENCIAL';

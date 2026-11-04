@@ -86,7 +86,7 @@ export const MisReservas: React.FC = () => {
         // se cruzan los datos en el cliente mientras el backend los anida.
         const [tutoriasRes, bloquesRes, materiasRes] = await Promise.all([
           api.get<unknown>('/tutorias/tutorias/'),
-          api.get<unknown>('/disponibilidad/disponibilidad/').catch(() => null),
+          api.get<unknown>('/disponibilidad/disponibilidad/?incluir_pasados=1').catch(() => null),
           api.get<unknown>('/catalogo/materias/').catch(() => null),
         ]);
 
@@ -178,8 +178,9 @@ export const MisReservas: React.FC = () => {
     const proximas: TutoriaBackend[] = [];
 
     tutorias.forEach((t) => {
-      const estadoLower = (t.estado || '').toLowerCase();
-      if (estadoLower.includes('cancel') || estadoLower.includes('finaliz')) return;
+      // Solo las activas: canceladas, anuladas, completadas y no asistidas van al historial.
+      const estado = (t.estado || 'RESERVADA').toUpperCase();
+      if (!['RESERVADA', 'CONFIRMADA'].includes(estado)) return;
 
       if (t.fecha === hoyISO) {
         hoy.push(t);

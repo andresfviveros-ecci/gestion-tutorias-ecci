@@ -51,7 +51,8 @@ const OPCIONES_MODALIDAD: OpcionSegmento<ModalidadFiltro>[] = [
 
 const consultarPanel = async (): Promise<DatosPanel> => {
   const [resBloques, resTutorias, resMaterias, resTutores] = await Promise.allSettled([
-    api.get('/disponibilidad/disponibilidad/'),
+    // Con los pasados: las tutorías de hoy que ya empezaron necesitan su bloque.
+    api.get('/disponibilidad/disponibilidad/?incluir_pasados=1'),
     api.get('/tutorias/tutorias/'),
     api.get('/catalogo/materias/'),
     api.get('/accounts/tutores/'),
@@ -352,7 +353,7 @@ export const StudentPanel = () => {
     if (!tutoriaCancelar) return;
 
     await api.delete(`/tutorias/tutorias/${tutoriaCancelar.id}/`, {
-      data: { origen: 'ESTUDIANTE', motivo },
+      data: { motivo },
     });
 
     setTutoriaCancelar(null);
@@ -391,7 +392,9 @@ export const StudentPanel = () => {
     modalidad: item.bloque
       ? modalidadLegible(item.bloque.modalidad)
       : 'Modalidad por confirmar',
-    puedeCancelar: (item.tutoria.estado || '').toUpperCase() === 'RESERVADA',
+    puedeCancelar:
+      item.tutoria.puede_cancelar ??
+      ['RESERVADA', 'CONFIRMADA'].includes((item.tutoria.estado || '').toUpperCase()),
   }));
 
   const bloqueCancelar = tutoriaCancelar ? obtenerBloque(tutoriaCancelar) : null;
