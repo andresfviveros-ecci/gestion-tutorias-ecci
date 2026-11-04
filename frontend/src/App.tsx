@@ -8,7 +8,7 @@ import { Estudiantes } from './pages/Estudiantes';
 import { Tutores } from './pages/Tutores';
 import { Coordinadores } from './pages/Coordinadores';
 import { GestionarUsuarios } from './pages/GestionarUsuarios';
-import { DashboardTutor } from './pages/tutor/DashboardTutor';
+import { TutorPanel } from './pages/tutor/TutorPanel';
 import { MiDisponibilidad } from './pages/tutor/MiDisponibilidad';
 import { Calendario } from './pages/tutor/Calendario';
 import { StudentHome } from './pages/estudiante/StudentHome';
@@ -60,7 +60,7 @@ const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
   const handleRedirect = () => {
     if (role === 'admin') navigate('/dashboard');
     else if (role === 'tutor') navigate('/tutor/dashboard');
-    else navigate('/inicio');
+    else navigate('/estudiante/dashboard');
   };
 
   const roleFormatted =
@@ -250,7 +250,7 @@ export const App: React.FC = () => {
             </ProtectedRoute>
           }
         />
-        <Route path="/estudiante" element={<Navigate to="/inicio" replace />} />
+        <Route path="/estudiante" element={<Navigate to="/estudiante/dashboard" replace />} />
         
         <Route
           path="/estudiante/dashboard"
@@ -348,9 +348,7 @@ export const App: React.FC = () => {
           path="/tutor/dashboard"
           element={
             <ProtectedRoute allowedRoles={['tutor', 'admin']}>
-              <Layout>
-                <DashboardTutor />
-              </Layout>
+              <TutorPanel />
             </ProtectedRoute>
           }
         />
