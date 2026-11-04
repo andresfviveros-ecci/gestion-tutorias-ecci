@@ -111,6 +111,16 @@ def notificar_cancelacion(tutoria, origen, motivo):
     notificar(destinatario, 'CANCELACION', 'Tutoría cancelada', mensaje, tutoria=tutoria, correo=True)
 
 
+def bloquear_tutoria(tutoria):
+    """Bloquea primero el bloque y después la tutoría, en el mismo orden que
+    reservar y cancelar_bloque, para que dos operaciones no se bloqueen entre
+    sí. Debe llamarse dentro de una transacción."""
+    BloqueDisponibilidad.objects.select_for_update().get(pk=tutoria.bloque_id)
+    return Tutoria.objects.select_for_update(of=('self',)).select_related(
+        'bloque__docente', 'estudiante'
+    ).get(pk=tutoria.pk)
+
+
 @transaction.atomic
 def cancelar_tutoria(tutoria, usuario, motivo, anular=False):
     """Cancela la tutoría, libera el cupo y avisa a la otra parte.
@@ -120,12 +130,7 @@ def cancelar_tutoria(tutoria, usuario, motivo, anular=False):
       tutor, hasta el inicio del bloque.
     - Con anular=True la cancela el sistema (ANULADA, origen SISTEMA), por
       ejemplo al revocar la habilitación de un tutor."""
-    # Primero el bloque y después la tutoría, en el mismo orden que reservar
-    # y cancelar_bloque, para que dos operaciones no se bloqueen entre sí.
-    BloqueDisponibilidad.objects.select_for_update().get(pk=tutoria.bloque_id)
-    tutoria = Tutoria.objects.select_for_update(of=('self',)).select_related(
-        'bloque__docente', 'estudiante'
-    ).get(pk=tutoria.pk)
+    tutoria = bloquear_tutoria(tutoria)
 
     if anular:
         origen, estado = 'SISTEMA', 'ANULADA'
@@ -159,3 +164,54 @@ def cancelar_tutoria(tutoria, usuario, motivo, anular=False):
 
     notificar_cancelacion(tutoria, origen, motivo)
     return cancelacion
+
+
+# Estados a los que el tutor lleva una tutoría de sus bloques.
+ESTADOS_DEL_TUTOR = ('CONFIRMADA', 'COMPLETADA', 'NO_ASISTIO', 'CANCELADA_DOCENTE')
+# Tope de minutos_retraso: un día. La columna es SmallInteger y con más de
+# 32767 la base respondía 500.
+MAX_MINUTOS_RETRASO = 1440
+
+
+def estados_para_tutor(tutoria):
+    """Lo que el tutor puede hacer hoy con la tutoría: confirmar o cancelar
+    antes del inicio; marcar completada o no asistió desde el inicio."""
+    if tutoria.estado not in ACTIVOS:
+        return []
+    if bloque_iniciado(tutoria.bloque):
+        return ['COMPLETADA', 'NO_ASISTIO']
+    return ['CONFIRMADA', 'CANCELADA_DOCENTE'] if tutoria.estado == 'RESERVADA' else ['CANCELADA_DOCENTE']
+
+
+@transaction.atomic
+def cambiar_estado_por_tutor(tutoria, usuario, estado, motivo=None, **datos):
+    """Cambio de estado desde la lista de tutorías recibidas. Cancelar pasa
+    por cancelar_tutoria (libera el cupo y avisa por correo)."""
+    if estado == 'CANCELADA_DOCENTE':
+        cancelar_tutoria(tutoria, usuario, motivo)
+        tutoria.refresh_from_db()
+        return tutoria
+
+    tutoria = bloquear_tutoria(tutoria)
+    validar_transicion(tutoria, estado)
+    if estado not in estados_para_tutor(tutoria):
+        cuando = 'desde el inicio' if estado in ('COMPLETADA', 'NO_ASISTIO') else 'antes del inicio'
+        raise ValidationError({'estado': f'La tutoría solo puede pasar a {estado} {cuando} del bloque.'})
+
+    tutoria.estado = estado
+    if estado == 'COMPLETADA':
+        tutoria.asistencia = 'ASISTIO_TARDE' if datos.get('minutos_retraso') else 'ASISTIO'
+    elif estado == 'NO_ASISTIO':
+        tutoria.asistencia = 'NO_ASISTIO'
+    for campo, valor in datos.items():
+        setattr(tutoria, campo, valor)
+    tutoria.save()
+
+    if estado == 'CONFIRMADA':
+        notificar(
+            tutoria.estudiante, 'RESERVA_CONFIRMADA', 'Tutoría confirmada',
+            f'{tutoria.bloque.docente.get_full_name()} confirmó la tutoría {tutoria.codigo} del '
+            f'{_cuando(tutoria.bloque)}.',
+            tutoria=tutoria,
+        )
+    return tutoria

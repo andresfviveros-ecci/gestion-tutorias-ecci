@@ -273,3 +273,76 @@ class PlazosTests(APITestCase):
         self.assertEqual(
             sorted(m.to[0] for m in mail.outbox), sorted([self.docente.email, self.estudiante.email])
         )
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class TutoriasRecibidasTests(APITestCase):
+    """Listado del tutor y cambio de estado (RF-10)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.docente = crear_usuario('Docente')
+        cls.estudiante = crear_usuario('Estudiante')
+        _, cls.periodo, cls.materia = crear_catalogo()
+
+    def setUp(self):
+        self.client.force_authenticate(self.docente)
+        self.futuro = crear_bloque(self.docente, self.periodo, self.materia)
+        self.pasado = crear_bloque(self.docente, self.periodo, self.materia, fecha=date.today() - timedelta(days=1))
+
+    def cambiar(self, tutoria, **datos):
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.patch(f'/api/tutorias/recibidas/{tutoria.id}/', datos, format='json')
+
+    def test_confirmar_antes_del_inicio(self):
+        tutoria = crear_tutoria(self.futuro, self.estudiante)
+        self.assertEqual(
+            self.client.get('/api/tutorias/recibidas/').data[0]['estados_siguientes'],
+            ['CONFIRMADA', 'CANCELADA_DOCENTE'],
+        )
+        response = self.cambiar(tutoria, estado='CONFIRMADA')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['estado'], 'CONFIRMADA')
+        self.assertTrue(Notificacion.objects.filter(usuario=self.estudiante, tutoria=tutoria).exists())
+
+    def test_completar_desde_el_inicio(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante, estado='CONFIRMADA')
+        response = self.cambiar(tutoria, estado='COMPLETADA', minutos_retraso=10, notas_docente='Se repasó.')
+        self.assertEqual(response.status_code, 200, response.data)
+        tutoria.refresh_from_db()
+        self.assertEqual((tutoria.estado, tutoria.asistencia, tutoria.minutos_retraso), ('COMPLETADA', 'ASISTIO_TARDE', 10))
+        self.assertEqual(response.data['estados_siguientes'], [])
+
+    def test_minutos_retraso_con_tope(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante, estado='CONFIRMADA')
+        response = self.cambiar(tutoria, estado='COMPLETADA', minutos_retraso=99999)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('minutos_retraso', response.data['errors'])
+
+    def test_no_asistio(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante)
+        self.assertEqual(self.cambiar(tutoria, estado='NO_ASISTIO').status_code, 200)
+        tutoria.refresh_from_db()
+        self.assertEqual(tutoria.asistencia, 'NO_ASISTIO')
+
+    def test_no_completa_antes_del_inicio(self):
+        tutoria = crear_tutoria(self.futuro, self.estudiante)
+        self.assertEqual(self.cambiar(tutoria, estado='COMPLETADA').status_code, 400)
+
+    def test_estado_final_no_cambia(self):
+        tutoria = crear_tutoria(self.pasado, self.estudiante, estado='COMPLETADA')
+        response = self.cambiar(tutoria, estado='NO_ASISTIO')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['code'], 'transicion_invalida')
+
+    def test_cancelar_exige_motivo_y_avisa_por_correo(self):
+        tutoria = crear_tutoria(self.futuro, self.estudiante)
+        self.assertEqual(self.cambiar(tutoria, estado='CANCELADA_DOCENTE').status_code, 400)
+        response = self.cambiar(tutoria, estado='CANCELADA_DOCENTE', motivo='Calamidad')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['estado'], 'CANCELADA_DOCENTE')
+        self.assertEqual([m.to for m in mail.outbox], [[self.estudiante.email]])
+
+    def test_no_toca_tutorias_de_otro_tutor(self):
+        ajena = crear_tutoria(crear_bloque(crear_usuario('Docente'), self.periodo, self.materia), self.estudiante)
+        self.assertEqual(self.cambiar(ajena, estado='CONFIRMADA').status_code, 404)
