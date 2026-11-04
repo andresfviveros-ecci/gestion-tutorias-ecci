@@ -56,6 +56,10 @@ services:
       EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
       EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
       SEED_DEMO: ${SEED_DEMO:-1}
+      # Misma lista que el frontend: una sola variable para los dos.
+      EMAIL_DOMAINS: ${VITE_EMAIL_DOMAINS:-ecci.edu.co,aulalibre.test}
+      # Consola por defecto en desarrollo: el PIN de recuperación sale en los logs.
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
       JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-60}
       JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-7}
     depends_on:

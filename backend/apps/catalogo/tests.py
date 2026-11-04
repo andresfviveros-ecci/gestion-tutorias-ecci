@@ -1,6 +1,15 @@
+from contextlib import redirect_stdout
+from datetime import date, timedelta
+from io import StringIO
+
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.test import TransactionTestCase
 from rest_framework.test import APITestCase
 
 from apps.accounts.pruebas import crear_bloque, crear_catalogo, crear_tutoria, crear_usuario
+
+from .models import PeriodoAcademico
 
 
 class PermisosCatalogoTests(APITestCase):
@@ -35,9 +44,79 @@ class PermisosCatalogoTests(APITestCase):
         self.assertEqual(response.status_code, 409)
         self.assertIn('detail', response.data)
 
+    # BE-25
+    def test_activar_un_periodo_desactiva_los_demas(self):
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.post('/api/catalogo/periodos/', {
+            'codigo': '2027-1', 'fecha_inicio': '2027-01-20', 'fecha_fin': '2027-06-10', 'activo': True,
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.periodo.refresh_from_db()
+        self.assertFalse(self.periodo.activo)
+        self.assertEqual(PeriodoAcademico.objects.filter(activo=True).count(), 1)
+
+        response = self.client.patch(f'/api/catalogo/periodos/{self.periodo.id}/', {'activo': True}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(list(PeriodoAcademico.objects.filter(activo=True)), [self.periodo])
+
+    def test_asignar_materias_a_docentes(self):
+        docente = crear_usuario('Docente')
+        datos = {'docente': docente.id, 'materia': self.materia.id, 'periodo': self.periodo.id}
+
+        self.client.force_authenticate(self.estudiante)
+        self.assertEqual(self.client.post('/api/catalogo/docentes-materias/', datos, format='json').status_code, 403)
+
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.post('/api/catalogo/docentes-materias/', datos, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['materia_nombre'], self.materia.nombre)
+
+        repetida = self.client.post('/api/catalogo/docentes-materias/', datos, format='json')
+        self.assertEqual(repetida.status_code, 400)
+
+        otro = dict(datos, docente=self.estudiante.id)
+        self.assertEqual(self.client.post('/api/catalogo/docentes-materias/', otro, format='json').status_code, 400)
+
+        self.client.force_authenticate(docente)
+        response = self.client.get('/api/catalogo/docentes-materias/', {'docente': 'me'})
+        self.assertEqual(len(response.data), 1)
+
+    def test_inscribir_estudiantes(self):
+        datos = {'estudiante': self.estudiante.id, 'materia': self.materia.id, 'periodo': self.periodo.id}
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.post('/api/catalogo/inscripciones/', datos, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(self.client.delete(f"/api/catalogo/inscripciones/{response.data['id']}/").status_code, 204)
+
     def test_periodo_con_tutorias_responde_409(self):
         bloque = crear_bloque(crear_usuario('Docente'), self.periodo, self.materia)
         crear_tutoria(bloque, self.estudiante)
         self.client.force_authenticate(self.coordinador)
         response = self.client.delete(f'/api/catalogo/periodos/{self.periodo.id}/')
         self.assertEqual(response.status_code, 409)
+
+
+class MigracionPeriodoActivoTests(TransactionTestCase):
+    """catalogo/0002 no falla si la base ya tiene varios periodos activos."""
+
+    antes = [('catalogo', '0001_initial')]
+    despues = [('catalogo', '0002_periodo_un_activo')]
+
+    def tearDown(self):
+        # Deja la base en la última migración para las demás pruebas.
+        MigrationExecutor(connection).migrate(MigrationExecutor(connection).loader.graph.leaf_nodes())
+
+    def test_deja_activo_solo_el_mas_reciente(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.antes)
+        Periodo = executor.loader.project_state(self.antes).apps.get_model('catalogo', 'PeriodoAcademico')
+        for codigo, inicio in (('2025-2', date(2025, 7, 1)), ('2026-1', date(2026, 1, 15)), ('2026-2', date(2026, 7, 1))):
+            Periodo.objects.create(codigo=codigo, fecha_inicio=inicio, fecha_fin=inicio + timedelta(days=150), activo=True)
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        with redirect_stdout(StringIO()):
+            executor.migrate(self.despues)
+
+        Periodo = executor.loader.project_state(self.despues).apps.get_model('catalogo', 'PeriodoAcademico')
+        self.assertEqual(list(Periodo.objects.filter(activo=True).values_list('codigo', flat=True)), ['2026-2'])

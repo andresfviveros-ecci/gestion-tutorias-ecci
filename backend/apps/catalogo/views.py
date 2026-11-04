@@ -1,8 +1,8 @@
-from rest_framework import status, views
+from rest_framework import generics, status, views
 from django.db.models import ProtectedError
 from apps.accounts.permisos import LecturaOCoordinador
 from rest_framework.response import Response
-from .models import Materia
+from .models import DocenteMateria, Inscripcion, Materia
 from .serializer import *
 from drf_spectacular.utils import extend_schema
 from .models import PeriodoAcademico
@@ -373,3 +373,48 @@ class PeriodoAcademicoDetailView(views.APIView):
             periodo,
             'No se puede eliminar el periodo porque tiene tutorías registradas.'
         )
+
+""" APIS DE ASIGNACIÓN DE DOCENTES E INSCRIPCIONES
+Existen en la base y los requisitos nuevos los necesitan. Se filtran con
+?docente= / ?estudiante=, ?materia= y ?periodo=. """
+class AsignacionMixin:
+    permission_classes = [LecturaOCoordinador]
+    filtros = ()
+
+    def get_queryset(self):
+        queryset = self.queryset.select_related('materia', 'periodo', *self.filtros[:1])
+        for campo in self.filtros + ('materia', 'periodo'):
+            valor = self.request.query_params.get(campo)
+            if valor == 'me':
+                valor = self.request.user.id
+            if valor:
+                queryset = queryset.filter(**{f'{campo}_id': valor})
+        return queryset
+
+
+@extend_schema(tags=['Docentes - Materias'])
+class DocenteMateriaView(AsignacionMixin, generics.ListCreateAPIView):
+    queryset = DocenteMateria.objects.all()
+    serializer_class = DocenteMateriaSerializer
+    filtros = ('docente',)
+
+
+@extend_schema(tags=['Docentes - Materias'])
+class DocenteMateriaDetailView(AsignacionMixin, generics.RetrieveDestroyAPIView):
+    queryset = DocenteMateria.objects.all()
+    serializer_class = DocenteMateriaSerializer
+    filtros = ('docente',)
+
+
+@extend_schema(tags=['Inscripciones'])
+class InscripcionView(AsignacionMixin, generics.ListCreateAPIView):
+    queryset = Inscripcion.objects.all()
+    serializer_class = InscripcionSerializer
+    filtros = ('estudiante',)
+
+
+@extend_schema(tags=['Inscripciones'])
+class InscripcionDetailView(AsignacionMixin, generics.RetrieveDestroyAPIView):
+    queryset = Inscripcion.objects.all()
+    serializer_class = InscripcionSerializer
+    filtros = ('estudiante',)

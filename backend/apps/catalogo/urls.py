@@ -1,5 +1,9 @@
 from django.urls import path
-from .views import MateriaDetailView, MateriaView, PeriodoAcademicoDetailView, PeriodoAcademicoView,ProgramaAcademicoView,ProgramaAcademicoDetailView
+from .views import (
+    DocenteMateriaDetailView, DocenteMateriaView, InscripcionDetailView, InscripcionView,
+    MateriaDetailView, MateriaView, PeriodoAcademicoDetailView, PeriodoAcademicoView,
+    ProgramaAcademicoView, ProgramaAcademicoDetailView,
+)
 
 urlpatterns = [
     path('materias/',MateriaView.as_view(),name='crear-materia'),
@@ -8,4 +12,8 @@ urlpatterns = [
     path('programas/<int:pk>/',ProgramaAcademicoDetailView.as_view(),name='programa-academico-detalle'),
     path('periodos/',PeriodoAcademicoView.as_view(),name='periodos'),
     path('periodos/<int:pk>/',PeriodoAcademicoDetailView.as_view(),name='periodo-detalle'),
+    path('docentes-materias/', DocenteMateriaView.as_view(), name='docentes-materias'),
+    path('docentes-materias/<int:pk>/', DocenteMateriaDetailView.as_view(), name='docente-materia-detalle'),
+    path('inscripciones/', InscripcionView.as_view(), name='inscripciones'),
+    path('inscripciones/<int:pk>/', InscripcionDetailView.as_view(), name='inscripcion-detalle'),
 ]
