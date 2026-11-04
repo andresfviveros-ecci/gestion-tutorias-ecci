@@ -9,7 +9,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
 from .pruebas import crear_bloque, crear_catalogo, crear_tutoria, crear_usuario
-from .serializers import MAX_INTENTOS_PIN, clave_pin
+from .serializers import MAX_INTENTOS_PIN, clave_intentos, clave_pin
 from .tokens import RecoveryToken
 
 LOGIN_URL = '/api/accounts/login/'
@@ -464,8 +464,8 @@ class RevisionCuentasTests(APITestCase):
         incorrecto = f'{(int(pin) + 1) % 1_000_000:06d}'
         with patch('apps.accounts.serializers.cache.set', wraps=cache.set) as guardar:
             self.cambiar(token, incorrecto)
-        guardar.assert_called_once()
-        self.assertEqual(guardar.call_args.kwargs['timeout'], RecoveryToken.lifetime.total_seconds())
+        clave = clave_intentos(RecoveryToken(token)['jti'])
+        guardar.assert_any_call(clave, 1, timeout=RecoveryToken.lifetime.total_seconds())
 
     # 2.2: tiempo del login
     def test_login_con_correo_inexistente_calcula_un_hash(self):
