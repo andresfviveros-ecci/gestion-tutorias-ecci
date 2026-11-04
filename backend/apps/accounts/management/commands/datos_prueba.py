@@ -13,6 +13,7 @@ Uso:
 import random
 import unicodedata
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -31,6 +32,8 @@ from apps.catalogo.models import (
     ProgramaAcademico,
 )
 from apps.disponibilidad.models import BloqueDisponibilidad
+from apps.tutores.models import SolicitudTutor
+from apps.tutores.services import calcular_nota_final
 from apps.tutorias.models import Cancelacion, EvaluacionTutoria, Tutoria
 
 DOMINIO = 'aulalibre.test'
@@ -125,7 +128,7 @@ class Command(BaseCommand):
 
             grupos = {nombre: Group.objects.get_or_create(name=nombre)[0] for nombre in GRUPOS}
             Configuracion.actual()
-            periodo = self._periodos()
+            periodo, anterior = self._periodos()
             materias = self._catalogo()
             self.hash = make_password(PASSWORD)
             coordinadores, docentes, estudiantes = self._usuarios(grupos, materias)
@@ -133,10 +136,12 @@ class Command(BaseCommand):
             inscritos = self._inscribir(estudiantes, materias, periodo)
             bloques = self._bloques(asignaciones, periodo)
             tutorias = self._tutorias(bloques, inscritos)
+            solicitudes = self._solicitudes(estudiantes, materias, periodo, anterior, docentes)
 
         self.stdout.write(self.style.SUCCESS(
             f'Listo: {len(materias)} materias, {len(coordinadores)} coordinadores, {len(docentes)} docentes, '
-            f'{len(estudiantes)} estudiantes, {len(bloques)} bloques y {tutorias} tutorías.'
+            f'{len(estudiantes)} estudiantes, {len(bloques)} bloques, {tutorias} tutorías '
+            f'y {solicitudes} solicitudes de tutor.'
         ))
         self.stdout.write(f'Contraseña de todos los usuarios: {PASSWORD}')
         self.stdout.write(f'Accesos rápidos: coordinador@{DOMINIO}, docente@{DOMINIO}, estudiante@{DOMINIO}')
@@ -159,12 +164,12 @@ class Command(BaseCommand):
         else:
             actual = (f'{anio}-2', date(anio, 8, 3), date(anio, 12, 5))
             anterior = (f'{anio}-1', date(anio, 2, 2), date(anio, 6, 13))
-        PeriodoAcademico.objects.update_or_create(
+        previo, _ = PeriodoAcademico.objects.update_or_create(
             codigo=anterior[0], defaults={'fecha_inicio': anterior[1], 'fecha_fin': anterior[2], 'activo': False})
         periodo, _ = PeriodoAcademico.objects.update_or_create(
             codigo=actual[0], defaults={'fecha_inicio': actual[1], 'fecha_fin': actual[2], 'activo': True})
         PeriodoAcademico.objects.exclude(pk=periodo.pk).filter(activo=True).update(activo=False)
-        return periodo
+        return periodo, previo
 
     def _catalogo(self):
         materias = []
@@ -364,3 +369,36 @@ class Command(BaseCommand):
                 penalizada=not por_docente and horas < 12,
             )
         return tutoria
+
+    def _solicitudes(self, estudiantes, materias, periodo, anterior, docentes):
+        """RF-02: los estudiantes desde tercer semestre cursaron materias el
+        periodo anterior. La cuenta de acceso rápido queda habilitada como
+        tutora de una y algunos más tienen solicitudes pendientes."""
+        config = Configuracion.actual()
+        total = 0
+        for estudiante in estudiantes:
+            if (estudiante.semestre or 0) < config.semestre_minimo_tutor:
+                continue
+            propias = [m for m in materias if m.programa_id == estudiante.programa.id]
+            cursadas = self.rng.sample(propias, k=min(2, len(propias)))
+            for materia in cursadas:
+                Inscripcion.objects.get_or_create(estudiante=estudiante, materia=materia, periodo=anterior)
+
+            principal = estudiante.email == f'estudiante@{DOMINIO}'
+            if not principal and self.rng.random() > 0.25:
+                continue
+            notas = [Decimal(self.rng.choice(['4.0', '4.3', '4.5', '4.8', '5.0'])) for _ in range(3)]
+            SolicitudTutor.objects.create(
+                estudiante=estudiante,
+                materia=cursadas[0],
+                periodo=periodo,
+                nota_corte1=notas[0],
+                nota_corte2=notas[1],
+                nota_corte3=notas[2],
+                nota_final=calcular_nota_final(*notas, config),
+                estado='APROBADA' if principal else 'PENDIENTE',
+                revisada_por=cursadas[0].docentes.get(periodo=periodo).docente if principal else None,
+                fecha_revision=timezone.now() if principal else None,
+            )
+            total += 1
+        return total

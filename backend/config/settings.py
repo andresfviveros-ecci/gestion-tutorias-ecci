@@ -79,6 +79,7 @@ LOCAL_APPS = [
     'apps.notificaciones',
     'apps.reportes',
     'apps.tutorias',
+    'apps.tutores',
 ]
 
 INSTALLED_APPS = BASE_APPS + THIRD_PARTY_APPS + LOCAL_APPS
