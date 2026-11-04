@@ -1,6 +1,5 @@
 import re
 import secrets
-from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -19,7 +18,6 @@ from .tokens import RecoveryToken
 # Intentos fallidos de PIN antes de invalidar la recuperación (BE-02), y
 # cuánto dura el bloqueo de la cuenta después del último fallo.
 MAX_INTENTOS_PIN = 5
-BLOQUEO_PIN = timedelta(minutes=15)
 
 
 def validar_clave(password):
@@ -49,9 +47,10 @@ def clave_pin(jti):
     return f'password_recovery_{jti}'
 
 
-def clave_intentos(user_id):
-    # Por usuario y no por token: pedir un token nuevo no reinicia la cuenta.
-    return f'password_recovery_intentos_{user_id}'
+def clave_intentos(jti):
+    # Por token y no por usuario: si no, cualquiera que conozca un correo le
+    # bloquea la recuperación a esa persona fallando el PIN a propósito.
+    return f'password_recovery_intentos_{jti}'
 
 
 def cerrar_sesiones(user):
@@ -110,12 +109,9 @@ class ChangePasswordSerializer(serializers.Serializer):
             jti = token['jti']
             # El usuario va en la caché junto al PIN, no en el token (BE-24).
             guardado = cache.get(clave_pin(jti))
-            if guardado and cache.get(clave_intentos(guardado['user_id']), 0) >= MAX_INTENTOS_PIN:
-                cache.delete(clave_pin(jti))
-                guardado = None
             if not guardado or not secrets.compare_digest(guardado['pin'].encode(), attrs['pin'].encode()):
                 if guardado:
-                    self._registrar_intento_fallido(jti, guardado['user_id'])
+                    self._registrar_intento_fallido(jti)
                 raise serializers.ValidationError(
                     'Código de recuperación incorrecto o expirado.'
                 )
@@ -140,19 +136,21 @@ class ChangePasswordSerializer(serializers.Serializer):
         attrs['jti'] = jti
         return attrs
 
-    def _registrar_intento_fallido(self, jti, user_id):
-        clave = clave_intentos(user_id)
-        cache.add(clave, 0, timeout=BLOQUEO_PIN.total_seconds())
-        if cache.incr(clave) >= MAX_INTENTOS_PIN:
-            # El contador se queda: bloquea también los tokens que pida después.
-            cache.delete(clave_pin(jti))
+    def _registrar_intento_fallido(self, jti):
+        clave = clave_intentos(jti)
+        intentos = cache.get(clave, 0) + 1
+        if intentos >= MAX_INTENTOS_PIN:
+            cache.delete_many([clave_pin(jti), clave])
+        else:
+            # cache.set y no cache.incr: incr vuelve al TTL por defecto (300 s).
+            cache.set(clave, intentos, timeout=RecoveryToken.lifetime.total_seconds())
 
     def save(self, **kwargs):
         user = self.validated_data['user']
         jti = self.validated_data['jti']
         user.set_password(self.validated_data['password'])
         user.save()
-        cache.delete_many([clave_pin(jti), clave_intentos(user.id)])
+        cache.delete_many([clave_pin(jti), clave_intentos(jti)])
         cerrar_sesiones(user)
         return user
     
