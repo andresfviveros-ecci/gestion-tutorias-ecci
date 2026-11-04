@@ -1,802 +1,809 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import { useAuthStore } from '../../store/useAuthStore';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { FormEvent, ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { api } from '../../api/axios';
+import { StudentRail } from '../../components/estudiante/StudentRail';
+import {
+  CalendarIcon,
+  CheckIcon,
+  ClockIcon,
+} from '../../components/constelacion/Icons';
+import { EmptyState } from '../../components/constelacion/EmptyState';
+import { extraerLista, mensajeError } from '../../utils/api';
 import { hoyLocalISO } from '../../utils/date';
+import {
+  capitalizar,
+  diaSemanaCorto,
+  duracionLegible,
+  fechaLarga,
+  hora12,
+  horaActual,
+  horaCorta,
+  parseFecha,
+} from '../../utils/fechas';
+import { modalidadLegible } from '../../utils/panel';
 
-interface TutorBackend {
-  id?: string | number;
-  username?: string;
-  first_name?: string;
-  last_name?: string;
-  nombre?: string;
-  nombres?: string;
-  apellidos?: string;
-  email?: string;
-}
-
-export interface BloqueBackend {
-  id: number | string;
-  docente?: number | string | { id?: number | string; nombre?: string; email?: string; first_name?: string; last_name?: string; username?: string } | null;
-  materia?: string | number | { id?: number | string; nombre?: string; codigo?: string } | null;
-  fecha?: string;
-  hora_inicio?: string;
-  hora_fin?: string;
-  modalidad?: string;
-  lugar?: string;
-  enlace_virtual?: string;
-  docente_nombre?: string;
-  tutorNombre?: string;
-  estado?: string;
-}
-
-export interface TutoriaBackend {
-  id: number | string;
-  bloque?: BloqueBackend | number | string | null;
-  tema?: string;
-  descripcion?: string;
-  estado?: string;
-  fecha?: string;
-  materia?: string | number | { id?: number | string; nombre?: string; codigo?: string } | null;
-  docente_nombre?: string;
-  docente?: { id?: number | string; first_name?: string; last_name?: string; nombre?: string; email?: string; username?: string } | null;
-}
-
-interface ApiErrorResponse {
-  response?: {
-    data?: {
-      detail?: string;
-      non_field_errors?: string[];
-    };
-  };
-}
-
-interface UserExtended {
-  nombre?: string;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  email?: string;
-}
-
-interface DetallesTutoria {
-  docenteNombre: string;
+interface BloqueAPI {
+  id: number;
+  docente: number | { id?: number };
+  materia: number | { id?: number; nombre?: string; codigo?: string };
   fecha: string;
-  horaInicio: string;
-  horaFin: string;
-  materiaNombre: string;
-  materiaCodigo: string;
+  hora_inicio: string;
+  hora_fin: string;
   modalidad: string;
-  lugar: string;
-  enlaceVirtual: string;
+  lugar?: string | null;
+  enlace_virtual?: string | null;
+  cupo_total: number;
+  cupo_ocupado: number;
+  estado: string;
 }
 
-const extraerNombreDocenteObj = (d: unknown): string => {
-  if (!d) return '';
-  if (typeof d === 'string') return d;
-  if (typeof d === 'object' && d !== null) {
-    const obj = d as { first_name?: string; last_name?: string; nombre?: string; username?: string; email?: string };
-    const full = `${obj.first_name || ''} ${obj.last_name || ''}`.trim();
-    if (full) return full;
-    if (obj.nombre) return obj.nombre;
-    if (obj.username) return obj.username;
-    if (obj.email) return obj.email;
+interface MateriaAPI {
+  id: number;
+  nombre: string;
+  codigo?: string;
+  activa?: boolean;
+}
+
+interface TutorAPI {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  email?: string;
+}
+
+interface TutoriaAPI {
+  id: number | string;
+  bloque?: number | string | { id?: number | string } | null;
+  estado?: string;
+}
+
+const ESTADOS_ACTIVOS = ['RESERVADA', 'CONFIRMADA', 'EN_CURSO'];
+
+/** Extrae un id numérico de un PK o de un objeto anidado. */
+const idReferencia = (valor: unknown): number | null => {
+  if (typeof valor === 'number' && Number.isFinite(valor)) return valor;
+  if (typeof valor === 'string' && valor.trim() !== '') {
+    const numero = Number(valor);
+    return Number.isFinite(numero) ? numero : null;
   }
-  return '';
+  if (valor && typeof valor === 'object') {
+    const id = (valor as { id?: unknown }).id;
+    if (typeof id === 'number' && Number.isFinite(id)) return id;
+    if (typeof id === 'string' && id.trim() !== '') {
+      const numero = Number(id);
+      return Number.isFinite(numero) ? numero : null;
+    }
+  }
+  return null;
 };
 
-const extraerInfoMateriaCompleta = (target: unknown): { nombre: string; codigo: string } => {
-  if (!target) return { nombre: '', codigo: '' };
-
-  if (typeof target === 'string') {
-    if (target.includes('—')) {
-      const parts = target.split('—');
-      return { codigo: parts[0].trim(), nombre: parts[1].trim() };
-    }
-    if (target.includes(' - ')) {
-      const parts = target.split(' - ');
-      return { codigo: parts[0].trim(), nombre: parts[1].trim() };
-    }
-    return { nombre: target.trim(), codigo: '' };
-  }
-
-  if (typeof target === 'object' && target !== null) {
-    const rec = target as Record<string, unknown>;
-
-    if (rec.materia) {
-      const res = extraerInfoMateriaCompleta(rec.materia);
-      if (res.nombre || res.codigo) return res;
-    }
-
-    const nombre = String(
-      rec.nombre || rec.materia_nombre || rec.nombre_materia || rec.title || rec.name || ''
-    ).trim();
-
-    const codigo = String(
-      rec.codigo || rec.materia_codigo || rec.codigo_materia || rec.code || ''
-    ).trim();
-
-    if (nombre || codigo) {
-      return { nombre, codigo };
-    }
-  }
-
-  return { nombre: '', codigo: '' };
+const minutosEntre = (inicio?: string, fin?: string): number => {
+  if (!inicio || !fin) return 0;
+  const [h1, m1] = inicio.split(':').map(Number);
+  const [h2, m2] = fin.split(':').map(Number);
+  if ([h1, m1, h2, m2].some((valor) => Number.isNaN(valor))) return 0;
+  return Math.max(h2 * 60 + m2 - (h1 * 60 + m1), 0);
 };
 
-export const BuscarTutorias: React.FC = () => {
-  const { user } = useAuthStore();
-  const location = useLocation();
+const nombreDeTutor = (tutor?: TutorAPI): string => {
+  if (!tutor) return 'Docente por confirmar';
+  const completo = `${tutor.first_name || ''} ${tutor.last_name || ''}`.trim();
+  return completo || tutor.username || tutor.email || 'Docente por confirmar';
+};
 
-  const [tutoresApi, setTutoresApi] = useState<TutorBackend[]>([]);
-  const [bloques, setBloques] = useState<BloqueBackend[]>([]);
-  const [misTutorias, setMisTutorias] = useState<TutoriaBackend[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+const iniciales = (nombre: string): string => {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return 'T';
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return `${partes[0][0]}${partes[1][0]}`.toUpperCase();
+};
 
-  // Inicializar estado del filtro
-  const initialTutor = (location.state as { tutorNombre?: string })?.tutorNombre || 'todos';
+/** 'Jueves 29 de octubre de 2026' */
+const fechaCompleta = (iso: string): string => {
+  const fecha = parseFecha(iso);
+  return `${fechaLarga(fecha)} de ${fecha.getFullYear()}`;
+};
 
-  const [selectedTutor, setSelectedTutor] = useState<string>(initialTutor);
-  const [selectedMateria, setSelectedMateria] = useState<string>('todas');
-  const [selectedModalidad, setSelectedModalidad] = useState<string>('todas');
+/** 'Jueves 29 de octubre', sin año, para el resumen lateral. */
+const fechaResumen = (iso: string): string => {
+  const fecha = parseFecha(iso);
+  const mes = fecha.toLocaleDateString('es-ES', { month: 'long' }).replace('.', '');
+  return `${capitalizar(diaSemanaCorto(iso).toLowerCase())} ${fecha.getDate()} de ${mes}`;
+};
 
-  // Estado del Modal de Reserva
-  const [selectedBloque, setSelectedBloque] = useState<BloqueBackend | null>(null);
-  const [modalOpen, setModalOpen] = useState<boolean>(false);
-  const [temaTutoria, setTemaTutoria] = useState<string>('');
-  const [descripcionTutoria, setDescripcionTutoria] = useState<string>('');
-  const [submitting, setSubmitting] = useState<boolean>(false);
-  const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+interface FilaResumenProps {
+  icono: ReactNode;
+  titulo: string;
+  detalle: string;
+}
 
-  // Mapa para resolver ID de tutores a Nombres
-  const tutoresMap = useMemo(() => {
-    const map = new Map<string, string>();
-    tutoresApi.forEach((t) => {
-      const nom = `${t.first_name || t.nombres || ''} ${t.last_name || t.apellidos || ''}`.trim();
-      const fullName = nom || t.nombre || t.username || '';
-      if (t.id !== undefined && fullName) {
-        map.set(String(t.id), fullName);
-      }
-    });
-    return map;
-  }, [tutoresApi]);
+/** Icono local para no acoplar este PR con los iconos del panel. */
+const TutorIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none" aria-hidden="true">
+    <circle cx="8" cy="5.2" r="2.7" stroke="currentColor" strokeWidth="1.3" />
+    <path
+      d="M2.8 13.4c.5-2.4 2.5-3.9 5.2-3.9s4.7 1.5 5.2 3.9"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+    />
+  </svg>
+);
 
-  const resolverNombreDocente = (b: BloqueBackend): string => {
-    if (b.docente_nombre) return b.docente_nombre;
-    if (b.tutorNombre) return b.tutorNombre;
-    const desdeObj = extraerNombreDocenteObj(b.docente);
-    if (desdeObj) return desdeObj;
+const FilaResumen = ({ icono, titulo, detalle }: FilaResumenProps) => (
+  <div className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-mist text-slate-ink">
+      {icono}
+    </span>
+    <div className="min-w-0">
+      <p className="text-[11.5px] font-semibold text-tinta">{titulo}</p>
+      <p className="mt-0.5 truncate text-[11px] text-muted">{detalle}</p>
+    </div>
+  </div>
+);
 
-    if (typeof b.docente === 'number' || typeof b.docente === 'string') {
-      const desdeMap = tutoresMap.get(String(b.docente));
-      if (desdeMap) return desdeMap;
-    }
-    return '';
+interface DatosPanel {
+  bloques: BloqueAPI[];
+  materias: MateriaAPI[];
+  tutores: TutorAPI[];
+  tutorias: TutoriaAPI[];
+  fallo: boolean;
+}
+
+const consultarPanel = async (): Promise<DatosPanel> => {
+  const [resBloques, resMaterias, resTutores, resTutorias] = await Promise.allSettled([
+    api.get('/disponibilidad/disponibilidad/?estado=DISPONIBLE'),
+    api.get('/catalogo/materias/'),
+    api.get('/accounts/tutores/'),
+    api.get('/tutorias/tutorias/'),
+  ]);
+
+  return {
+    bloques: resBloques.status === 'fulfilled' ? extraerLista<BloqueAPI>(resBloques.value.data) : [],
+    materias: resMaterias.status === 'fulfilled' ? extraerLista<MateriaAPI>(resMaterias.value.data) : [],
+    tutores: resTutores.status === 'fulfilled' ? extraerLista<TutorAPI>(resTutores.value.data) : [],
+    tutorias: resTutorias.status === 'fulfilled' ? extraerLista<TutoriaAPI>(resTutorias.value.data) : [],
+    fallo: resBloques.status === 'rejected',
   };
+};
 
-  const refrescarDatos = async () => {
-    try {
-      const resTutores = await api.get('/accounts/tutores/').catch(() => null);
-      if (resTutores && resTutores.data) {
-        const rawT = Array.isArray(resTutores.data)
-          ? resTutores.data
-          : resTutores.data.results || [];
-        setTutoresApi(rawT);
-      }
+/**
+ * Reserva de tutoría con el sistema visual Constelación.
+ * Reemplaza la vista anterior de "Consultar horarios".
+ */
+export const BuscarTutorias = () => {
+  const [bloques, setBloques] = useState<BloqueAPI[]>([]);
+  const [materias, setMaterias] = useState<MateriaAPI[]>([]);
+  const [tutores, setTutores] = useState<TutorAPI[]>([]);
+  const [misTutorias, setMisTutorias] = useState<TutoriaAPI[]>([]);
 
-      const resBloques = await api.get('/disponibilidad/disponibilidad/?estado=DISPONIBLE').catch(() => null);
-      if (resBloques && resBloques.data) {
-        const rawB = Array.isArray(resBloques.data)
-          ? resBloques.data
-          : resBloques.data.results || [];
-        setBloques(rawB);
-      }
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [errorReserva, setErrorReserva] = useState<string | null>(null);
+  const [reservando, setReservando] = useState(false);
 
-      const resTutorias = await api.get('/tutorias/tutorias/').catch(() => null);
-      if (resTutorias && resTutorias.data) {
-        const rawTut = Array.isArray(resTutorias.data)
-          ? resTutorias.data
-          : resTutorias.data.results || [];
-        setMisTutorias(rawTut);
-      }
-    } catch (err) {
-      console.error('Error al refrescar datos:', err);
-    }
-  };
+  const [materiaId, setMateriaId] = useState<number | null>(null);
+  const [modalidad, setModalidad] = useState('');
+  const [fecha, setFecha] = useState('');
+  const [bloqueId, setBloqueId] = useState<number | null>(null);
+  const [tema, setTema] = useState('');
 
-  useEffect(() => {
-    let isMounted = true;
+  const [confirmada, setConfirmada] = useState<BloqueAPI | null>(null);
 
-    const cargarDatosIniciales = async () => {
-      try {
-        const resTutores = await api.get('/accounts/tutores/').catch(() => null);
-        if (resTutores && resTutores.data && isMounted) {
-          const rawT = Array.isArray(resTutores.data)
-            ? resTutores.data
-            : resTutores.data.results || [];
-          setTutoresApi(rawT);
-        }
+  const hoy = hoyLocalISO();
 
-        const resBloques = await api.get('/disponibilidad/disponibilidad/?estado=DISPONIBLE').catch(() => null);
-        if (resBloques && resBloques.data && isMounted) {
-          const rawB = Array.isArray(resBloques.data)
-            ? resBloques.data
-            : resBloques.data.results || [];
-          setBloques(rawB);
-        }
-
-        const resTutorias = await api.get('/tutorias/tutorias/').catch(() => null);
-        if (resTutorias && resTutorias.data && isMounted) {
-          const rawTut = Array.isArray(resTutorias.data)
-            ? resTutorias.data
-            : resTutorias.data.results || [];
-          setMisTutorias(rawTut);
-        }
-      } catch (err) {
-        console.error('Error al cargar datos iniciales:', err);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    cargarDatosIniciales();
-
-    return () => {
-      isMounted = false;
-    };
+  const aplicarDatos = useCallback((datos: DatosPanel) => {
+    setBloques(datos.bloques);
+    setMaterias(datos.materias);
+    setTutores(datos.tutores);
+    setMisTutorias(datos.tutorias);
+    setErrorCarga(
+      datos.fallo ? 'No pudimos cargar los horarios disponibles. Intenta de nuevo en un momento.' : null,
+    );
+    setCargando(false);
   }, []);
 
-  const idsBloquesReservados = useMemo(() => {
-    const setIds = new Set<string>();
-    misTutorias.forEach((tut) => {
-      if (tut.bloque) {
-        if (typeof tut.bloque === 'object' && tut.bloque !== null && tut.bloque.id) {
-          setIds.add(String(tut.bloque.id));
-        } else if (typeof tut.bloque === 'number' || typeof tut.bloque === 'string') {
-          setIds.add(String(tut.bloque));
-        }
-      }
+  const recargar = useCallback(async () => {
+    const datos = await consultarPanel();
+    aplicarDatos(datos);
+  }, [aplicarDatos]);
+
+  useEffect(() => {
+    let activo = true;
+
+    const ejecutar = async () => {
+      const datos = await consultarPanel();
+      if (!activo) return;
+      aplicarDatos(datos);
+    };
+
+    void ejecutar();
+
+    return () => {
+      activo = false;
+    };
+  }, [aplicarDatos]);
+
+  const materiasPorId = useMemo(() => {
+    const mapa = new Map<number, MateriaAPI>();
+    materias.forEach((materia) => mapa.set(materia.id, materia));
+    return mapa;
+  }, [materias]);
+
+  const tutoresPorId = useMemo(() => {
+    const mapa = new Map<number, TutorAPI>();
+    tutores.forEach((tutor) => mapa.set(tutor.id, tutor));
+    return mapa;
+  }, [tutores]);
+
+  const idsReservados = useMemo(() => {
+    const ids = new Set<number>();
+    misTutorias.forEach((tutoria) => {
+      const estado = (tutoria.estado || '').toUpperCase();
+      if (estado && !ESTADOS_ACTIVOS.includes(estado)) return;
+      const id = idReferencia(tutoria.bloque);
+      if (id !== null) ids.add(id);
     });
-    return setIds;
+    return ids;
   }, [misTutorias]);
 
-  // Lista combinada de tutores para el filtro
-  const listaTutores = useMemo(() => {
-    const setNombres = new Set<string>();
-    tutoresApi.forEach((t) => {
-      const nom = `${t.first_name || t.nombres || ''} ${t.last_name || t.apellidos || ''}`.trim();
-      const fullName = nom || t.nombre || t.username || '';
-      if (fullName) setNombres.add(fullName);
-    });
-
-    bloques.forEach((b) => {
-      const nombre = resolverNombreDocente(b);
-      if (nombre) setNombres.add(nombre);
-    });
-
-    return Array.from(setNombres);
-  }, [tutoresApi, bloques, tutoresMap]);
-
-  const listaMaterias = useMemo(() => {
-    const setMaterias = new Set<string>();
-    bloques.forEach((b) => {
-      const { nombre } = extraerInfoMateriaCompleta(b);
-      if (nombre) setMaterias.add(nombre);
-    });
-    return Array.from(setMaterias);
-  }, [bloques]);
-
-  const listaModalidades = useMemo(() => {
-    const setModalidades = new Set<string>();
-    bloques.forEach((b) => {
-      if (b.modalidad) {
-        const modClean = b.modalidad.trim();
-        if (modClean) {
-          const formateada = modClean.charAt(0).toUpperCase() + modClean.slice(1).toLowerCase();
-          setModalidades.add(formateada);
-        }
-      }
-    });
-    return Array.from(setModalidades);
-  }, [bloques]);
-
-  const bloquesFiltrados = useMemo(() => {
-    const hoy = hoyLocalISO();
-
-    return bloques.filter((b) => {
-      const estadoUpper = (b.estado || '').toUpperCase();
-      if (
-        estadoUpper === 'RESERVADO' ||
-        estadoUpper === 'RESERVADA' ||
-        estadoUpper === 'COMPLETO' ||
-        estadoUpper === 'CANCELADO' ||
-        estadoUpper === 'CERRADO'
-      ) {
-        return false;
-      }
-
-      // Solo bloques de hoy en adelante
-      if (!b.fecha || b.fecha < hoy) {
-        return false;
-      }
-
-      if (idsBloquesReservados.has(String(b.id))) {
-        return false;
-      }
-
-      const docenteNombre = resolverNombreDocente(b);
-      const { nombre: materiaNombre } = extraerInfoMateriaCompleta(b);
-
-      const matchTutor = selectedTutor === 'todos' || docenteNombre.toLowerCase() === selectedTutor.toLowerCase();
-      const matchMateria = selectedMateria === 'todas' || materiaNombre.toLowerCase() === selectedMateria.toLowerCase();
-      const matchModalidad = selectedModalidad === 'todas' || (b.modalidad && b.modalidad.toLowerCase() === selectedModalidad.toLowerCase());
-
-      return matchTutor && matchMateria && matchModalidad;
-    });
-  }, [bloques, selectedTutor, selectedMateria, selectedModalidad, idsBloquesReservados, tutoresMap]);
-
-  const obtenerDetallesTutoriaLocal = (tut: TutoriaBackend): DetallesTutoria => {
-    let bloqueObj: BloqueBackend | null = null;
-
-    if (typeof tut.bloque === 'object' && tut.bloque !== null) {
-      bloqueObj = tut.bloque;
-    } else if (tut.bloque) {
-      bloqueObj = bloques.find((b) => String(b.id) === String(tut.bloque)) || null;
-    }
-
-    const docenteNombre = tut.docente_nombre 
-      || extraerNombreDocenteObj(tut.docente)
-      || (bloqueObj ? resolverNombreDocente(bloqueObj) : '');
-
-    const fecha = tut.fecha || (bloqueObj ? bloqueObj.fecha || '' : '');
-    const horaInicio = bloqueObj ? bloqueObj.hora_inicio || '' : '';
-    const horaFin = bloqueObj ? bloqueObj.hora_fin || '' : '';
-
-    let matInfo = bloqueObj ? extraerInfoMateriaCompleta(bloqueObj) : { nombre: '', codigo: '' };
-    if (!matInfo.nombre) {
-      matInfo = extraerInfoMateriaCompleta(tut);
-    }
-
-    const modalidad = bloqueObj ? bloqueObj.modalidad || '' : '';
-    const lugar = bloqueObj ? bloqueObj.lugar || '' : '';
-    const enlaceVirtual = bloqueObj ? bloqueObj.enlace_virtual || '' : '';
-
-    return {
-      docenteNombre,
-      fecha,
-      horaInicio,
-      horaFin,
-      materiaNombre: matInfo.nombre,
-      materiaCodigo: matInfo.codigo,
-      modalidad,
-      lugar,
-      enlaceVirtual,
-    };
+  const nombreMateria = (bloque: BloqueAPI): string => {
+    const id = idReferencia(bloque.materia);
+    return (id !== null ? materiasPorId.get(id)?.nombre : undefined) || 'Tutoría académica';
   };
 
-  const misTutoriasProximas = useMemo(() => {
-    const todayISO = hoyLocalISO();
-    return misTutorias.filter((tut) => {
-      const detalles = obtenerDetallesTutoriaLocal(tut);
-      const fechaTutoria = detalles.fecha || tut.fecha || '';
-      if (!fechaTutoria) return false;
-      return fechaTutoria >= todayISO;
-    });
-  }, [misTutorias, bloques]);
-
-  const handleOpenReservaModal = (bloque: BloqueBackend) => {
-    setSelectedBloque(bloque);
-    setTemaTutoria('');
-    setDescripcionTutoria('');
-    setFeedbackMsg(null);
-    setModalOpen(true);
+  const tutorDeBloque = (bloque: BloqueAPI): string => {
+    const id = idReferencia(bloque.docente);
+    return nombreDeTutor(id !== null ? tutoresPorId.get(id) : undefined);
   };
 
-  const handleConfirmReserva = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedBloque) return;
+  const disponibles = useMemo(() => {
+    const ahora = horaActual();
 
-    setSubmitting(true);
-    setFeedbackMsg(null);
+    return bloques
+      .filter((bloque) => {
+        if ((bloque.estado || '').toUpperCase() !== 'DISPONIBLE') return false;
+        if (!bloque.fecha || bloque.fecha < hoy) return false;
+        if ((bloque.cupo_ocupado || 0) >= (bloque.cupo_total || 1)) return false;
+        if (idsReservados.has(bloque.id)) return false;
+        if (bloque.fecha === hoy && horaCorta(bloque.hora_fin) <= ahora) return false;
+        return true;
+      })
+      .sort((a, b) => `${a.fecha}T${a.hora_inicio}`.localeCompare(`${b.fecha}T${b.hora_inicio}`));
+  }, [bloques, hoy, idsReservados]);
 
-    const payload = {
-      bloque_id: Number(selectedBloque.id),
-      tema: temaTutoria.trim(),
-      descripcion: descripcionTutoria.trim(),
-    };
+  const opcionesMateria = useMemo(() => {
+    const ids = new Set<number>();
+    disponibles.forEach((bloque) => {
+      const id = idReferencia(bloque.materia);
+      if (id !== null) ids.add(id);
+    });
+    return Array.from(ids)
+      .map((id) => ({ id, nombre: materiasPorId.get(id)?.nombre || `Materia ${id}` }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [disponibles, materiasPorId]);
 
+  const materiaActiva = useMemo(() => {
+    if (materiaId !== null && opcionesMateria.some((opcion) => opcion.id === materiaId)) {
+      return materiaId;
+    }
+    return opcionesMateria[0]?.id ?? null;
+  }, [materiaId, opcionesMateria]);
+
+  const opcionesModalidad = useMemo(() => {
+    const valores = new Set<string>();
+    disponibles.forEach((bloque) => {
+      if (idReferencia(bloque.materia) !== materiaActiva) return;
+      const valor = (bloque.modalidad || '').toUpperCase();
+      if (valor) valores.add(valor);
+    });
+    return Array.from(valores).sort();
+  }, [disponibles, materiaActiva]);
+
+  const modalidadActiva = useMemo(() => {
+    if (modalidad && opcionesModalidad.includes(modalidad.toUpperCase())) {
+      return modalidad.toUpperCase();
+    }
+    return opcionesModalidad[0] ?? '';
+  }, [modalidad, opcionesModalidad]);
+
+  const opcionesFecha = useMemo(() => {
+    const valores = new Set<string>();
+    disponibles.forEach((bloque) => {
+      if (idReferencia(bloque.materia) !== materiaActiva) return;
+      if ((bloque.modalidad || '').toUpperCase() !== modalidadActiva) return;
+      if (bloque.fecha) valores.add(bloque.fecha);
+    });
+    return Array.from(valores).sort();
+  }, [disponibles, materiaActiva, modalidadActiva]);
+
+  const fechaActiva = useMemo(() => {
+    if (fecha && opcionesFecha.includes(fecha)) return fecha;
+    return opcionesFecha[0] ?? '';
+  }, [fecha, opcionesFecha]);
+
+  const bloquesDelDia = useMemo(
+    () =>
+      disponibles.filter(
+        (bloque) =>
+          idReferencia(bloque.materia) === materiaActiva &&
+          (bloque.modalidad || '').toUpperCase() === modalidadActiva &&
+          bloque.fecha === fechaActiva,
+      ),
+    [disponibles, materiaActiva, modalidadActiva, fechaActiva],
+  );
+
+  const bloqueSeleccionado = useMemo(
+    () => bloquesDelDia.find((bloque) => bloque.id === bloqueId) ?? bloquesDelDia[0] ?? null,
+    [bloquesDelDia, bloqueId],
+  );
+
+  const confirmar = async (evento: FormEvent) => {
+    evento.preventDefault();
+    setErrorReserva(null);
+
+    if (!bloqueSeleccionado) {
+      setErrorReserva('Selecciona un horario disponible para continuar.');
+      return;
+    }
+
+    const textoTema = tema.trim();
+    if (!textoTema) {
+      setErrorReserva('Escribe el tema de tu consulta.');
+      return;
+    }
+
+    setReservando(true);
     try {
-      await api.post('/tutorias/tutorias/', payload);
-
-      setFeedbackMsg({
-        type: 'success',
-        text: '¡Tutoría reservada exitosamente!',
+      await api.post('/tutorias/tutorias/', {
+        bloque_id: bloqueSeleccionado.id,
+        tema: textoTema,
+        descripcion: '',
       });
-
-      setTimeout(async () => {
-        setModalOpen(false);
-        await refrescarDatos();
-      }, 1200);
-    } catch (err) {
-      console.error('Error al reservar tutoría:', err);
-      const apiErr = err as ApiErrorResponse;
-      const errMsg = apiErr.response?.data?.detail 
-        || apiErr.response?.data?.non_field_errors?.[0]
-        || 'Ocurrió un error al procesar la reserva.';
-      setFeedbackMsg({
-        type: 'error',
-        text: errMsg,
-      });
+      setConfirmada(bloqueSeleccionado);
+      setTema('');
+      await recargar();
+    } catch (error) {
+      setErrorReserva(mensajeError(error));
     } finally {
-      setSubmitting(false);
+      setReservando(false);
     }
   };
 
-  const userExtended = user as UserExtended | null;
-  const usuarioNombre = userExtended?.nombre 
-    || `${userExtended?.first_name || ''} ${userExtended?.last_name || ''}`.trim() 
-    || userExtended?.username 
-    || userExtended?.email 
-    || '';
+  const nuevaReserva = () => {
+    setConfirmada(null);
+    setErrorReserva(null);
+  };
+
+  const tutorNombre = bloqueSeleccionado ? tutorDeBloque(bloqueSeleccionado) : 'Docente por confirmar';
+  const materiaNombre = bloqueSeleccionado ? nombreMateria(bloqueSeleccionado) : 'Tutoría académica';
+  const horaFin = horaCorta(bloqueSeleccionado?.hora_fin);
+  const duracion = duracionLegible(
+    minutosEntre(bloqueSeleccionado?.hora_inicio, bloqueSeleccionado?.hora_fin),
+  );
+
+  const tutorConfirmado = confirmada ? tutorDeBloque(confirmada) : '';
+  const materiaConfirmada = confirmada ? nombreMateria(confirmada) : '';
+  const modalidadConfirmada = confirmada ? modalidadLegible(confirmada.modalidad) : '';
+  const inicioConfirmado = horaCorta(confirmada?.hora_inicio);
+  const finConfirmado = horaCorta(confirmada?.hora_fin);
+
+  // En la confirmación, el resumen debe seguir mostrando la reserva ya hecha.
+  const bloqueResumen = confirmada ?? bloqueSeleccionado;
+  const resumenTutor = bloqueResumen ? tutorDeBloque(bloqueResumen) : 'Sin horario seleccionado';
+  const resumenFechaHora = bloqueResumen
+    ? `${fechaResumen(bloqueResumen.fecha)} · ${hora12(horaCorta(bloqueResumen.hora_inicio))}`
+    : 'Sin horario seleccionado';
+  const resumenArea = bloqueResumen
+    ? `${nombreMateria(bloqueResumen)} · ${modalidadLegible(bloqueResumen.modalidad)}`
+    : 'Sin horario seleccionado';
 
   return (
-    <div className="w-full min-h-screen bg-[#f8f6f0] text-[#0f172a] font-sans flex flex-col overflow-y-auto">
-      {/* HEADER SUPERIOR */}
-      <header className="h-14 px-6 sm:px-8 flex items-center justify-between border-b border-slate-200/80 bg-[#f8f6f0] sticky top-0 z-10">
-        <div className="text-xs text-slate-500 font-medium">
-          Tutorías <span className="mx-1">/</span> <span className="text-slate-800 font-semibold">Consultar horarios disponibles</span>
-        </div>
+    <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
+      <StudentRail />
 
-        {usuarioNombre && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-white rounded-full border border-slate-200 shadow-xs text-xs font-semibold text-slate-700">
-            <span>{usuarioNombre}</span>
-          </div>
-        )}
-      </header>
-
-      {/* CONTENIDO PRINCIPAL */}
-      <div className="p-6 sm:p-8 w-full max-w-7xl mx-auto space-y-8 flex-1">
-        <div>
-          <h1 className="font-serif italic text-3xl font-bold text-slate-900 tracking-tight">
-            Consultar horarios disponibles
-          </h1>
-          <p className="text-xs text-slate-500 mt-1 font-medium">
-            Elige un horario disponible y resérvalo al instante.
-          </p>
-        </div>
-
-        {/* TARJETA DE FILTROS */}
-        <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs relative">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-                Tutor
-              </label>
-              <select
-                value={selectedTutor}
-                onChange={(e) => setSelectedTutor(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-all cursor-pointer"
-              >
-                <option value="todos">Todos los tutores</option>
-                {listaTutores.map((nombre, i) => (
-                  <option key={i} value={nombre}>
-                    {nombre}
-                  </option>
-                ))}
-              </select>
+      <main className="min-w-0 flex-1">
+        <div className="mx-auto w-full max-w-[1500px] p-5 pb-24 sm:p-6 md:pb-6 lg:p-8">
+          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[11.5px] text-muted">Mi trabajo · Estudiante</p>
+              <h1 className="mt-1 text-[30px] font-semibold leading-tight tracking-[-0.02em] text-tinta sm:text-[34px]">
+                {confirmada ? 'Reserva confirmada' : 'Reservar una tutoría'}
+              </h1>
+              <p className="mt-1 max-w-[620px] text-[12.5px] leading-relaxed text-muted">
+                {confirmada
+                  ? 'Tu tutoría quedó registrada. Revisa los detalles de la sesión programada.'
+                  : 'Elige un horario disponible y reserva tu tutoría para recibir apoyo académico cuando lo necesites.'}
+              </p>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-                Materia
-              </label>
-              <select
-                value={selectedMateria}
-                onChange={(e) => setSelectedMateria(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-all cursor-pointer"
-              >
-                <option value="todas">Todas las materias</option>
-                {listaMaterias.map((mat, i) => (
-                  <option key={i} value={mat}>
-                    {mat}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-                Modalidad
-              </label>
-              <select
-                value={selectedModalidad}
-                onChange={(e) => setSelectedModalidad(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 transition-all cursor-pointer"
-              >
-                <option value="todas">Todas</option>
-                {listaModalidades.map((mod, i) => (
-                  <option key={i} value={mod.toLowerCase()}>
-                    {mod}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center text-[11px]">
-            {selectedTutor !== 'todos' && (
-              <button
-                onClick={() => setSelectedTutor('todos')}
-                className="text-indigo-600 font-semibold hover:underline cursor-pointer"
-              >
-                ← Mostrar todos los tutores
-              </button>
-            )}
-            <span className="font-medium text-slate-400 ml-auto">
-              {bloquesFiltrados.length} horario{bloquesFiltrados.length === 1 ? '' : 's'} disponible{bloquesFiltrados.length === 1 ? '' : 's'}
-            </span>
-          </div>
-        </div>
-
-        {/* ALERTA CUANDO UN TUTOR SELECCIONADO NO TIENE HORARIOS */}
-        {selectedTutor !== 'todos' && bloquesFiltrados.length === 0 && (
-          <div className="p-4 bg-amber-50 border border-amber-200/80 rounded-xl text-amber-900 text-xs font-medium flex items-center justify-between shadow-xs">
-            <div className="flex items-center gap-2.5">
-              <i className="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i>
-              <span>
-                El docente <strong>{selectedTutor}</strong> no tiene tutorías ni horarios disponibles creados en este momento.
+            <div className="flex flex-col items-end gap-2">
+              <span className="text-[11px] text-muted">
+                Hoy, {fechaLarga(new Date()).replace(',', '').toLowerCase()}
               </span>
-            </div>
-            <button
-              onClick={() => setSelectedTutor('todos')}
-              className="px-3 py-1 bg-amber-200/60 hover:bg-amber-200 text-amber-900 rounded-lg font-bold transition-all text-[11px] cursor-pointer"
-            >
-              Ver todos
-            </button>
-          </div>
-        )}
-
-        {/* HORARIOS DISPONIBLES */}
-        <section className="space-y-4">
-          <h2 className="font-serif font-bold text-lg text-slate-900">
-            Horarios disponibles
-          </h2>
-
-          {loading ? (
-            <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-xs font-medium">
-              Cargando horarios de tutorías...
-            </div>
-          ) : bloquesFiltrados.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-xs font-medium">
-              No se encontraron horarios disponibles con los filtros seleccionados.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {bloquesFiltrados.map((bloque) => {
-                const docNombre = resolverNombreDocente(bloque) || 'Docente Tutor';
-                const { nombre: materiaNombre, codigo: materiaCodigo } = extraerInfoMateriaCompleta(bloque);
-                const esVirtual = bloque.modalidad?.toUpperCase() === 'VIRTUAL';
-
-                return (
-                  <div
-                    key={bloque.id}
-                    className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h3 className="font-bold text-sm text-slate-900">{docNombre}</h3>
-                        </div>
-                        <div className="text-right">
-                          {bloque.fecha && <span className="block text-xs font-semibold text-slate-800">{bloque.fecha}</span>}
-                          {(bloque.hora_inicio || bloque.hora_fin) && (
-                            <span className="block text-xs font-bold text-slate-900 mt-0.5">
-                              {bloque.hora_inicio?.substring(0, 5)} - {bloque.hora_fin?.substring(0, 5)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 mt-4 flex-wrap">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100/80 text-amber-900 border border-amber-200/60 uppercase">
-                          {materiaCodigo ? `${materiaCodigo} — ` : ''}{materiaNombre || 'Tutoría Académica'}
-                        </span>
-                        {bloque.modalidad && (
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${esVirtual ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}>
-                            {bloque.modalidad}
-                          </span>
-                        )}
-                      </div>
-
-                      {esVirtual ? (
-                        bloque.enlace_virtual && (
-                          <p className="text-[10px] text-slate-500 mt-2 font-medium truncate">
-                            {bloque.enlace_virtual}
-                          </p>
-                        )
-                      ) : (
-                        bloque.lugar && (
-                          <p className="text-[10px] text-slate-500 mt-2 font-medium">
-                            {bloque.lugar}
-                          </p>
-                        )
-                      )}
-                    </div>
-
-                    <button
-                      onClick={() => handleOpenReservaModal(bloque)}
-                      className="w-full mt-5 py-2.5 rounded-lg bg-[#0d182e] hover:bg-slate-800 text-white text-xs font-semibold transition-colors cursor-pointer text-center"
-                    >
-                      Reservar
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* MIS PRÓXIMAS TUTORÍAS */}
-        <section className="space-y-4 pt-4 border-t border-slate-200/80">
-          <h2 className="font-serif font-bold text-lg text-slate-900">
-            Mis próximas tutorías
-          </h2>
-
-          {misTutoriasProximas.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-200/90 p-8 text-center text-xs text-slate-400 font-medium">
-              Aún no tienes tutorías próximas reservadas.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {misTutoriasProximas.map((tut) => {
-                const detalles = obtenerDetallesTutoriaLocal(tut);
-                const esVirtual = detalles.modalidad?.toUpperCase() === 'VIRTUAL';
-
-                return (
-                  <div
-                    key={tut.id}
-                    className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h3 className="font-bold text-sm text-slate-900">{detalles.docenteNombre || 'Docente Tutor'}</h3>
-                        </div>
-                        <div className="text-right">
-                          {detalles.fecha && (
-                            <span className="block text-xs font-semibold text-slate-800">{detalles.fecha}</span>
-                          )}
-                          {(detalles.horaInicio || detalles.horaFin) && (
-                            <span className="block text-xs font-bold text-slate-900 mt-0.5">
-                              {detalles.horaInicio?.substring(0, 5)} - {detalles.horaFin?.substring(0, 5)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 mt-3 flex-wrap">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100/80 text-amber-900 border border-amber-200/60 uppercase">
-                          {detalles.materiaCodigo ? `${detalles.materiaCodigo} — ` : ''}{detalles.materiaNombre || 'Tutoría Académica'}
-                        </span>
-                        {detalles.modalidad && (
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${esVirtual ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}>
-                            {detalles.modalidad}
-                          </span>
-                        )}
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-emerald-600 text-white shadow-xs">
-                          {tut.estado || 'RESERVADA'}
-                        </span>
-                      </div>
-
-                      {esVirtual ? (
-                        detalles.enlaceVirtual && (
-                          <p className="text-[10px] text-slate-500 mt-2 font-medium truncate">
-                            {detalles.enlaceVirtual}
-                          </p>
-                        )
-                      ) : (
-                        detalles.lugar && (
-                          <p className="text-[10px] text-slate-500 mt-2 font-medium">
-                            {detalles.lugar}
-                          </p>
-                        )
-                      )}
-
-                      <div className="mt-4 pt-3 border-t border-slate-100 space-y-1">
-                        {tut.tema && (
-                          <p className="text-xs font-bold text-slate-800">
-                            <span className="text-slate-400 font-normal">Tema: </span>{tut.tema}
-                          </p>
-                        )}
-                        {tut.descripcion && (
-                          <p className="text-[11px] text-slate-600 font-medium">
-                            <span className="text-slate-400 font-normal">Descripción: </span>{tut.descripcion}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-      </div>
-
-      {/* MODAL DE CONFIRMACIÓN */}
-      {modalOpen && selectedBloque && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-200 relative">
-            <h3 className="font-serif font-bold text-xl text-slate-900 mb-1">
-              Confirmar Reserva
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Completa la información sobre tu consulta para agendar la tutoría.
-            </p>
-
-            {feedbackMsg && (
-              <div
-                className={`mb-4 p-3 rounded-lg text-xs font-medium ${
-                  feedbackMsg.type === 'success'
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                    : 'bg-rose-50 text-rose-800 border border-rose-200'
-                }`}
+              <Link
+                to="/estudiante/mis-reservas"
+                className="inline-flex items-center gap-2 rounded-full border border-faint bg-white px-4 py-2.5 text-[11.5px] font-semibold text-tinta transition-colors hover:bg-mist"
               >
-                {feedbackMsg.text}
-              </div>
-            )}
+                Mis tutorías
+              </Link>
+            </div>
+          </header>
 
-            <form onSubmit={handleConfirmReserva} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Tema o Asunto
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Escribe el tema de tu consulta"
-                  value={temaTutoria}
-                  onChange={(e) => setTemaTutoria(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900"
-                />
-              </div>
+          {errorCarga && (
+            <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-peligro/20 bg-white px-5 py-4 text-[12px] text-peligro sm:flex-row sm:items-center sm:justify-between">
+              <span>{errorCarga}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCargando(true);
+                  setErrorCarga(null);
+                  void recargar();
+                }}
+                className="self-start rounded-full bg-peligro px-4 py-2 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+              >
+                Reintentar
+              </button>
+            </div>
+          )}
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Descripción adicional (Opcional)
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Detalla un poco más tus dudas para el docente..."
-                  value={descripcionTutoria}
-                  onChange={(e) => setDescripcionTutoria(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900"
-                ></textarea>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  disabled={submitting}
-                  onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+            <div className="min-w-0 flex-1">
+              {confirmada ? (
+                <motion.section
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-7"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 rounded-lg bg-[#0d182e] hover:bg-slate-800 text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  <h2 className="text-[22px] font-semibold tracking-[-0.01em] text-tinta">
+                    ¡Tu tutoría está programada!
+                  </h2>
+                  <p className="mt-1 text-[12px] text-muted">
+                    La reserva se registró correctamente y el horario ya no está disponible para
+                    otros estudiantes.
+                  </p>
+
+                  <div className="mt-5 flex items-center gap-3 border-y border-faint py-4">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-arena text-[12px] font-semibold text-tinta">
+                      {iniciales(tutorConfirmado)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold text-tinta">
+                        {tutorConfirmado}
+                      </p>
+                      <p className="truncate text-[11px] text-muted">Tutor · {materiaConfirmada}</p>
+                    </div>
+                  </div>
+
+                  <dl className="divide-y divide-faint">
+                    <div className="py-3">
+                      <dt className="text-[11.5px] font-semibold text-tinta">Fecha</dt>
+                      <dd className="mt-0.5 text-[11.5px] text-muted">
+                        {fechaCompleta(confirmada.fecha)}
+                      </dd>
+                    </div>
+                    <div className="py-3">
+                      <dt className="text-[11.5px] font-semibold text-tinta">Hora</dt>
+                      <dd className="mt-0.5 text-[11.5px] text-muted">
+                        {hora12(inicioConfirmado)} - {hora12(finConfirmado)}
+                      </dd>
+                    </div>
+                    <div className="py-3">
+                      <dt className="text-[11.5px] font-semibold text-tinta">Modalidad y área</dt>
+                      <dd className="mt-0.5 text-[11.5px] text-muted">
+                        {modalidadConfirmada} · {materiaConfirmada}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="mt-2 flex items-start gap-3 rounded-2xl border border-exito/20 bg-salvia/25 px-4 py-3">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-exito text-white">
+                      <CheckIcon className="h-3.5 w-3.5" />
+                    </span>
+                    <div>
+                      <p className="text-[11.5px] font-semibold text-exito">Notificaciones enviadas</p>
+                      <p className="mt-0.5 text-[10.5px] leading-relaxed text-exito/80">
+                        Se envió una confirmación con los detalles de la tutoría al estudiante y al
+                        tutor.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex flex-col items-start gap-3 border-t border-faint pt-5 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-[10.5px] text-muted">
+                      La sesión se verá en “Mis tutorías programadas”.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={nuevaReserva}
+                        className="rounded-full border border-faint px-5 py-2.5 text-[11.5px] font-medium text-slate-ink transition-colors hover:bg-mist"
+                      >
+                        Reservar otra
+                      </button>
+                      <Link
+                        to="/estudiante/mis-reservas"
+                        className="inline-flex items-center justify-center rounded-full bg-violeta-accion px-5 py-2.5 text-[11.5px] font-semibold text-white transition-colors hover:bg-violeta-profundo"
+                      >
+                        Ver mis tutorías
+                      </Link>
+                    </div>
+                  </div>
+                </motion.section>
+              ) : (
+                <motion.section
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-7"
                 >
-                  {submitting ? 'Reservando...' : 'Confirmar Reserva'}
-                </button>
-              </div>
-            </form>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-[20px] font-semibold tracking-[-0.01em] text-tinta">
+                        Horarios disponibles
+                      </h2>
+                      <p className="mt-1 text-[11.5px] text-muted">
+                        Selecciona un espacio y confirma tu reserva.
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-3 py-1.5 text-[10px] font-semibold ${
+                        bloqueSeleccionado
+                          ? 'bg-violet-wash/40 text-violeta-accion'
+                          : 'bg-mist text-muted'
+                      }`}
+                    >
+                      {bloqueSeleccionado ? 'Disponible' : 'Sin horarios'}
+                    </span>
+                  </div>
+
+                  {cargando ? (
+                    <div className="mt-5 space-y-3">
+                      <div className="h-[68px] animate-pulse rounded-2xl bg-mist" />
+                      <div className="h-[232px] animate-pulse rounded-2xl bg-mist" />
+                    </div>
+                  ) : disponibles.length === 0 ? (
+                    <div className="mt-5">
+                      <EmptyState
+                        titulo="No hay horarios disponibles"
+                        detalle="Cuando los tutores publiquen nuevos horarios aparecerán aquí."
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-5 flex items-center gap-3 border-y border-faint py-4">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-arena text-[12px] font-semibold text-tinta">
+                          {iniciales(tutorNombre)}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13px] font-semibold text-tinta">
+                            {tutorNombre}
+                          </p>
+                          <p className="truncate text-[11px] text-muted">
+                            Tutor · {materiaNombre}
+                          </p>
+                        </div>
+                        {bloqueSeleccionado && (
+                          <span className="shrink-0 rounded-full bg-mist px-3 py-1 text-[10px] font-semibold text-slate-ink">
+                            {modalidadLegible(bloqueSeleccionado.modalidad)}
+                          </span>
+                        )}
+                      </div>
+
+                      <form onSubmit={confirmar} className="mt-5">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <label className="block" htmlFor="area-academica">
+                            <span className="text-[11px] font-semibold text-tinta">
+                              Área académica
+                            </span>
+                            <select
+                              id="area-academica"
+                              value={materiaActiva ?? ''}
+                              onChange={(evento) => {
+                                setMateriaId(Number(evento.target.value));
+                                setModalidad('');
+                                setFecha('');
+                                setBloqueId(null);
+                              }}
+                              className="mt-1.5 h-11 w-full rounded-full border border-faint bg-white px-4 text-[12px] text-tinta outline-none transition focus:border-violeta-accion focus:ring-4 focus:ring-violeta-accion/15"
+                            >
+                              {opcionesMateria.map((opcion) => (
+                                <option key={opcion.id} value={opcion.id}>
+                                  {opcion.nombre}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block" htmlFor="modalidad">
+                            <span className="text-[11px] font-semibold text-tinta">Modalidad</span>
+                            <select
+                              id="modalidad"
+                              value={modalidadActiva}
+                              onChange={(evento) => {
+                                setModalidad(evento.target.value);
+                                setFecha('');
+                                setBloqueId(null);
+                              }}
+                              className="mt-1.5 h-11 w-full rounded-full border border-faint bg-white px-4 text-[12px] text-tinta outline-none transition focus:border-violeta-accion focus:ring-4 focus:ring-violeta-accion/15"
+                            >
+                              {opcionesModalidad.map((valor) => (
+                                <option key={valor} value={valor}>
+                                  {modalidadLegible(valor)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block sm:col-span-2" htmlFor="fecha-disponible">
+                            <span className="text-[11px] font-semibold text-tinta">
+                              Fecha disponible
+                            </span>
+                            <select
+                              id="fecha-disponible"
+                              value={fechaActiva}
+                              onChange={(evento) => {
+                                setFecha(evento.target.value);
+                                setBloqueId(null);
+                              }}
+                              className="mt-1.5 h-11 w-full rounded-full border border-faint bg-white px-4 text-[12px] text-tinta outline-none transition focus:border-violeta-accion focus:ring-4 focus:ring-violeta-accion/15"
+                            >
+                              {opcionesFecha.map((iso) => (
+                                <option key={iso} value={iso}>
+                                  {fechaCompleta(iso)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block" htmlFor="hora-inicio">
+                            <span className="text-[11px] font-semibold text-tinta">
+                              Hora de inicio
+                            </span>
+                            <select
+                              id="hora-inicio"
+                              value={bloqueSeleccionado?.id ?? ''}
+                              onChange={(evento) => setBloqueId(Number(evento.target.value))}
+                              className="mt-1.5 h-11 w-full rounded-full border border-faint bg-white px-4 text-[12px] text-tinta outline-none transition focus:border-violeta-accion focus:ring-4 focus:ring-violeta-accion/15"
+                            >
+                              {bloquesDelDia.map((bloque) => (
+                                <option key={bloque.id} value={bloque.id}>
+                                  {hora12(horaCorta(bloque.hora_inicio))}
+                                  {bloquesDelDia.length > 1 ? ` · ${tutorDeBloque(bloque)}` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="block" htmlFor="hora-fin">
+                            <span className="text-[11px] font-semibold text-tinta">
+                              Hora de finalización
+                            </span>
+                            <input
+                              id="hora-fin"
+                              readOnly
+                              value={hora12(horaFin)}
+                              className="mt-1.5 h-11 w-full rounded-full border border-faint bg-mist px-4 text-[12px] text-muted outline-none"
+                            />
+                          </label>
+
+                          <label className="block sm:col-span-2" htmlFor="tema">
+                            <span className="text-[11px] font-semibold text-tinta">
+                              Tema de la consulta
+                            </span>
+                            <input
+                              id="tema"
+                              type="text"
+                              required
+                              maxLength={200}
+                              placeholder="Ej. Repaso para el parcial"
+                              value={tema}
+                              onChange={(evento) => setTema(evento.target.value)}
+                              className="mt-1.5 h-11 w-full rounded-full border border-faint bg-white px-4 text-[12px] text-tinta outline-none transition placeholder:text-pebble focus:border-violeta-accion focus:ring-4 focus:ring-violeta-accion/15"
+                            />
+                          </label>
+                        </div>
+
+                        <p className="mt-3 text-[10.5px] text-muted">
+                          {duracion
+                            ? `Duración de la tutoría: ${duracion}`
+                            : 'Duración por confirmar'}
+                        </p>
+
+                        {errorReserva && (
+                          <p
+                            role="alert"
+                            className="mt-4 rounded-xl border border-peligro/20 bg-peligro/5 px-4 py-2.5 text-[11px] text-peligro"
+                          >
+                            {errorReserva}
+                          </p>
+                        )}
+
+                        <div className="mt-6 flex flex-col items-start gap-3 border-t border-faint pt-5 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="text-[10.5px] text-muted">
+                            Al confirmar, el horario queda reservado.
+                          </p>
+                          <button
+                            type="submit"
+                            disabled={reservando || !bloqueSeleccionado}
+                            className="inline-flex items-center justify-center rounded-full bg-violeta-accion px-6 py-3 text-[12px] font-semibold text-white transition-colors hover:bg-violeta-profundo disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {reservando ? 'Reservando...' : 'Confirmar reserva'}
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  )}
+                </motion.section>
+              )}
+            </div>
+
+            <aside className="flex w-full shrink-0 flex-col gap-5 lg:w-[340px]">
+              <motion.section
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.08 }}
+                className="rounded-[28px] bg-white p-5 shadow-[0_1px_2px_rgba(28,26,30,0.04)]"
+              >
+                <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-tinta">
+                  Resumen de la reserva
+                </h2>
+                <p className="mt-1 text-[11px] text-muted">
+                  Revisa los detalles antes de confirmar.
+                </p>
+
+                <div className="mt-4 divide-y divide-faint">
+                  <FilaResumen
+                    icono={<CalendarIcon className="h-4 w-4" />}
+                    titulo="Fecha y hora"
+                    detalle={resumenFechaHora}
+                  />
+                  <FilaResumen
+                    icono={<ClockIcon className="h-4 w-4" />}
+                    titulo="Área académica"
+                    detalle={resumenArea}
+                  />
+                  <FilaResumen
+                    icono={<TutorIcon className="h-4 w-4" />}
+                    titulo="Tutor"
+                    detalle={resumenTutor}
+                  />
+                </div>
+              </motion.section>
+
+              <motion.section
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.12 }}
+                className="rounded-[28px] bg-white p-5 shadow-[0_1px_2px_rgba(28,26,30,0.04)]"
+              >
+                <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-tinta">
+                  Después de reservar
+                </h2>
+
+                <div className="mt-4 divide-y divide-faint">
+                  <FilaResumen
+                    icono={<CheckIcon className="h-4 w-4" />}
+                    titulo="Confirmación al reservar"
+                    detalle="Se notificará al docente de la tutoría."
+                  />
+                  <FilaResumen
+                    icono={<ClockIcon className="h-4 w-4" />}
+                    titulo="Recordatorios"
+                    detalle="Se enviará un aviso 24 h y 15 minutos antes del inicio."
+                  />
+                </div>
+              </motion.section>
+            </aside>
           </div>
         </div>
-      )}
+      </main>
     </div>
   );
 };
+
+export default BuscarTutorias;
