@@ -10,7 +10,7 @@ from apps.accounts.pruebas import (
     crear_tutoria,
     crear_usuario,
 )
-from apps.catalogo.models import Materia, PeriodoAcademico
+from apps.catalogo.models import DocenteMateria, Materia, PeriodoAcademico
 
 from .models import BloqueDisponibilidad
 
@@ -285,3 +285,21 @@ class RevisionDisponibilidadTests(APITestCase):
         pasado = crear_bloque(self.docente, self.periodo, self.materia, fecha=date.today() - timedelta(days=2))
         response = self.client.get(URL, {'hasta': date.today() - timedelta(days=1)})
         self.assertEqual([b['id'] for b in response.data], [pasado.id])
+
+    # La asignación solo se revisa si cambian la materia o el periodo.
+    def test_editar_el_lugar_sin_tener_ya_la_asignacion(self):
+        bloque = crear_bloque(self.docente, self.periodo, self.materia)
+        DocenteMateria.objects.filter(docente=self.docente).delete()
+        response = self.client.patch(f'/api/disponibilidad/{bloque.id}/actualizar/', {'lugar': 'Sala 2'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_cambiar_a_una_materia_no_asignada_responde_400(self):
+        bloque = crear_bloque(self.docente, self.periodo, self.materia)
+        otra = Materia.objects.create(programa=self.materia.programa, codigo='FIS-2', nombre='Física II', semestre=2)
+        response = self.client.patch(f'/api/disponibilidad/{bloque.id}/actualizar/', {'materia': otra.id}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('materia', response.data['errors'])
+
+    def test_cupo_fuera_de_rango_responde_400(self):
+        response = self.client.post(URL, self.datos(cupo_total=99999), format='json')
+        self.assertEqual(response.status_code, 400)
