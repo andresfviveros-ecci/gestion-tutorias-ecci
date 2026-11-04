@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { Loader } from '../components/Loader';
 import { api } from '../api/axios';
+import { mensajeError } from '../utils/api';
 
 interface UserAccount {
   id: string; // ID único para el estado de React
@@ -203,7 +204,7 @@ const describeError = (err: unknown): { status?: number; data?: unknown; message
       return { status, data, message: 'Registro no encontrado en el servidor (404).' };
     }
     if (data && typeof data === 'object') {
-      return { status, data, message: `Error ${status ?? ''}: ${JSON.stringify(data).slice(0, 140)}` };
+      return { status, data, message: mensajeError(err) };
     }
     return { status, data, message: err.message };
   }

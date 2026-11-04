@@ -56,6 +56,7 @@ export const ReservaModal = ({
       tituloId="titulo-reserva"
       eyebrow="Nueva reserva"
       titulo="Reservar tutoría"
+      cerrable={!enviando}
     >
       <form onSubmit={confirmar} className="px-6 pb-6 pt-4 sm:px-7 sm:pb-7">
         <div className="rounded-2xl bg-mist px-4 py-3.5">
@@ -113,7 +114,8 @@ export const ReservaModal = ({
           <button
             type="button"
             onClick={onCerrar}
-            className="h-11 rounded-full border border-faint px-5 text-[12px] font-medium text-slate-ink transition-colors hover:bg-mist"
+            disabled={enviando}
+            className="h-11 rounded-full border border-faint px-5 text-[12px] font-medium text-slate-ink transition-colors hover:bg-mist disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancelar
           </button>

@@ -307,7 +307,13 @@ export const BuscarTutorias: React.FC = () => {
 
     return bloques.filter((b) => {
       const estadoUpper = (b.estado || '').toUpperCase();
-      if (estadoUpper === 'RESERVADO' || estadoUpper === 'RESERVADA' || estadoUpper === 'COMPLETO') {
+      if (
+        estadoUpper === 'RESERVADO' ||
+        estadoUpper === 'RESERVADA' ||
+        estadoUpper === 'COMPLETO' ||
+        estadoUpper === 'CANCELADO' ||
+        estadoUpper === 'CERRADO'
+      ) {
         return false;
       }
 
@@ -375,7 +381,7 @@ export const BuscarTutorias: React.FC = () => {
     return misTutorias.filter((tut) => {
       const detalles = obtenerDetallesTutoriaLocal(tut);
       const fechaTutoria = detalles.fecha || tut.fecha || '';
-      if (!fechaTutoria) return true;
+      if (!fechaTutoria) return false;
       return fechaTutoria >= todayISO;
     });
   }, [misTutorias, bloques]);
