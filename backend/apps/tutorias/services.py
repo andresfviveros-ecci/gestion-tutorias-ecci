@@ -123,7 +123,7 @@ def cancelar_tutoria(tutoria, usuario, motivo, anular=False):
     # Primero el bloque y después la tutoría, en el mismo orden que reservar
     # y cancelar_bloque, para que dos operaciones no se bloqueen entre sí.
     BloqueDisponibilidad.objects.select_for_update().get(pk=tutoria.bloque_id)
-    tutoria = Tutoria.objects.select_for_update().select_related(
+    tutoria = Tutoria.objects.select_for_update(of=('self',)).select_related(
         'bloque__docente', 'estudiante'
     ).get(pk=tutoria.pk)
 
