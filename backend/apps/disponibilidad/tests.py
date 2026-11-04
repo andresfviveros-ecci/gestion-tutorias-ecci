@@ -3,7 +3,12 @@ from datetime import date, time, timedelta
 from django.core import mail
 from rest_framework.test import APITestCase
 
-from apps.accounts.pruebas import crear_bloque, crear_catalogo, crear_tutoria, crear_usuario
+from apps.accounts.pruebas import (
+    crear_bloque,
+    crear_catalogo,
+    crear_tutoria,
+    crear_usuario,
+)
 from apps.catalogo.models import PeriodoAcademico
 
 from .models import BloqueDisponibilidad
@@ -91,19 +96,19 @@ class ReglasDisponibilidadTests(APITestCase):
     def test_rechaza_fechas_pasadas(self):
         response = self.client.post(URL, self.datos(fecha=str(date.today() - timedelta(days=1))), format='json')
         self.assertEqual(response.status_code, 400)
-        self.assertIn('fecha', response.data)
+        self.assertIn('fecha', response.data['errors'])
 
     def test_rechaza_fechas_fuera_del_periodo(self):
         response = self.client.post(URL, self.datos(fecha=str(self.periodo.fecha_fin + timedelta(days=1))), format='json')
         self.assertEqual(response.status_code, 400)
-        self.assertIn('fecha', response.data)
+        self.assertIn('fecha', response.data['errors'])
 
     def test_rechaza_periodos_inactivos(self):
         _, periodo, _ = crear_catalogo()
         PeriodoAcademico.objects.filter(pk=periodo.pk).update(activo=False)
         response = self.client.post(URL, self.datos(periodo=periodo.id), format='json')
         self.assertEqual(response.status_code, 400)
-        self.assertIn('periodo', response.data)
+        self.assertIn('periodo', response.data['errors'])
 
     # BE-11
     def test_editar_no_cambia_dueno_estado_ni_cupo_ocupado(self):
@@ -186,3 +191,50 @@ class ReglasDisponibilidadTests(APITestCase):
         response = self.client.patch(f'/api/disponibilidad/{bloque.id}/actualizar/', {'cupo_total': 2}, format='json')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['estado'], 'COMPLETO')
+
+class ListadoBloquesTests(APITestCase):
+    """PR5: BE-27 (rango por defecto y filtros) y paginación opcional."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.docente = crear_usuario('Docente')
+        _, periodo, materia = crear_catalogo()
+        hoy = date.today()
+        cls.pasado = crear_bloque(cls.docente, periodo, materia, fecha=hoy - timedelta(days=2))
+        cls.cancelado = crear_bloque(cls.docente, periodo, materia, fecha=hoy + timedelta(days=1), estado='CANCELADO')
+        cls.futuros = [
+            crear_bloque(cls.docente, periodo, materia, fecha=hoy + timedelta(days=dias))
+            for dias in range(1, 26)
+        ]
+
+    def setUp(self):
+        self.client.force_authenticate(self.docente)
+
+    def ids(self, response):
+        datos = response.data['results'] if isinstance(response.data, dict) else response.data
+        return {b['id'] for b in datos}
+
+    def test_por_defecto_solo_futuros_y_no_cancelados(self):
+        response = self.client.get(URL)
+        self.assertIsInstance(response.data, list)
+        self.assertEqual(self.ids(response), {b.id for b in self.futuros})
+
+    def test_incluir_pasados_y_cancelados(self):
+        ids = self.ids(self.client.get(URL, {'incluir_pasados': 1}))
+        self.assertIn(self.pasado.id, ids)
+        self.assertIn(self.cancelado.id, self.ids(self.client.get(URL, {'estado': 'CANCELADO'})))
+
+    def test_rango_desde_hasta(self):
+        hoy = date.today()
+        response = self.client.get(URL, {'desde': hoy - timedelta(days=3), 'hasta': hoy + timedelta(days=2)})
+        self.assertEqual(self.ids(response), {self.pasado.id, self.futuros[0].id, self.futuros[1].id})
+
+    def test_paginacion_solo_con_page(self):
+        response = self.client.get(URL, {'page': 1})
+        self.assertEqual(response.data['count'], 25)
+        self.assertEqual(len(response.data['results']), 20)
+        self.assertEqual(len(self.client.get(URL, {'page': 2}).data['results']), 5)
+        self.assertEqual(len(self.client.get(URL, {'page': 1, 'page_size': 500}).data['results']), 25)
+
+    def test_filtro_docente_invalido_no_devuelve_nada(self):
+        self.assertEqual(self.client.get(URL, {'docente': 'abc'}).data, [])

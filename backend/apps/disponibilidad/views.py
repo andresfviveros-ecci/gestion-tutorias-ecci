@@ -1,80 +1,40 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import status, views
-from apps.accounts.permisos import LecturaODocente
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import generics, serializers, status, views
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from apps.accounts.permisos import LecturaODocente
 from apps.disponibilidad.models import BloqueDisponibilidad
 from apps.tutorias.services import bloque_iniciado
+
+from .filters import BloqueDisponibilidadFilter
 from .serializers import BloqueDisponibilidadSerializer
 from .services import cancelar_bloque
-from drf_spectacular.utils import OpenApiParameter, extend_schema
 
 MOTIVO_CANCELACION_BLOQUE = 'El docente canceló la disponibilidad.'
 
 
 @extend_schema(tags=['Disponibilidad'])
-class BloqueDisponibilidadView(views.APIView):
+class BloqueDisponibilidadView(generics.ListCreateAPIView):
+    """Listado con filtros (BloqueDisponibilidadFilter) y paginación con ?page=."""
     permission_classes = [LecturaODocente]
+    serializer_class = BloqueDisponibilidadSerializer
+    filterset_class = BloqueDisponibilidadFilter
+    queryset = BloqueDisponibilidad.objects.select_related(
+        'docente',
+        'materia',
+        'periodo'
+    ).order_by('fecha', 'hora_inicio')
 
-    @extend_schema(
-        parameters=[
-            OpenApiParameter('docente', str, description='Id del docente, o "me" para el docente en sesión.'),
-            OpenApiParameter('materia', int),
-            OpenApiParameter('fecha', str),
-            OpenApiParameter('estado', str),
-        ],
-        responses={200: BloqueDisponibilidadSerializer(many=True)}
-    )
-    def get(self, request, format=None):
-        disponibilidades = BloqueDisponibilidad.objects.select_related(
-            'docente',
-            'materia',
-            'periodo'
-        ).all().order_by('fecha', 'hora_inicio')
-        docente_id = request.query_params.get('docente')
-        materia_id = request.query_params.get('materia')
-        fecha = request.query_params.get('fecha')
-        estado = request.query_params.get('estado')
-        if docente_id == 'me':
-            docente_id = request.user.id
-        if docente_id:
-            disponibilidades = disponibilidades.filter(
-                docente_id=docente_id
-            )
-        if materia_id:
-            disponibilidades = disponibilidades.filter(
-                materia_id=materia_id
-            )
-        if fecha:
-            disponibilidades = disponibilidades.filter(fecha=fecha)
-        if estado:
-            disponibilidades = disponibilidades.filter(estado=estado)
-        serializer = BloqueDisponibilidadSerializer(
-            disponibilidades,
-            many=True
-        )
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
-
-    @extend_schema(
-        request=BloqueDisponibilidadSerializer,
-        responses={201: BloqueDisponibilidadSerializer}
-    )
-    def post(self, request, format=None):
-        serializer = BloqueDisponibilidadSerializer(
-            data=request.data,
-            context={'request': request}
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save(docente=request.user)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    def perform_create(self, serializer):
+        serializer.save(docente=self.request.user)
 
 
 @extend_schema(tags=['Disponibilidad'])
 class DisponibilidadUpdateView(views.APIView):
     permission_classes = [LecturaODocente]
+    serializer_class = BloqueDisponibilidadSerializer
 
     def get_disponibilidad(self, pk):
         return get_object_or_404(
@@ -121,16 +81,22 @@ class DisponibilidadUpdateView(views.APIView):
     def patch(self, request, pk, format=None):
         return self.actualizar(request, pk, partial=True)
 
-    @extend_schema(responses={200: dict, 204: None})
+    @extend_schema(
+        request=inline_serializer('CancelarBloque', {'motivo': serializers.CharField(required=False)}),
+        responses={
+            200: inline_serializer('BloqueCancelado', {
+                'detail': serializers.CharField(),
+                'tutorias_canceladas': serializers.IntegerField(),
+            }),
+            204: None,
+        }
+    )
     def delete(self, request, pk, format=None):
         disponibilidad = self.get_propia(request, pk)
 
         # Un bloque que ya empezó es historial: cambiarlo alteraría los reportes.
         if bloque_iniciado(disponibilidad):
-            return Response(
-                {'detail': 'Este bloque ya inició o terminó, así que no se puede eliminar ni cancelar.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            raise ValidationError('Este bloque ya inició o terminó, así que no se puede eliminar ni cancelar.')
 
         # Sin tutorías se borra. Con tutorías se cancela: las reservas
         # activas pasan a CANCELADA_DOCENTE y se avisa a cada estudiante.

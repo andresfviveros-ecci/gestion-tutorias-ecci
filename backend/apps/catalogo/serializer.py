@@ -1,6 +1,14 @@
 from django.db import transaction
 from rest_framework import serializers
-from .models import DocenteMateria, Inscripcion, ProgramaAcademico, Materia, PeriodoAcademico
+
+from .models import (
+    DocenteMateria,
+    Inscripcion,
+    Materia,
+    PeriodoAcademico,
+    ProgramaAcademico,
+)
+
 
 class ProgramaAcademicoSerializer(serializers.ModelSerializer):
     class Meta:

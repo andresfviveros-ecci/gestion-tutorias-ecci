@@ -1,13 +1,18 @@
-from django.conf import settings
-from rest_framework import serializers
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import get_user_model
-import secrets
-from django.contrib.auth.models import Group
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 import re
+import secrets
+
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.cache import cache
+from rest_framework import serializers
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.token_blacklist.models import (
+    BlacklistedToken,
+    OutstandingToken,
+)
+from rest_framework_simplejwt.tokens import RefreshToken
+
 from .tokens import RecoveryToken
 
 # Intentos fallidos de PIN antes de invalidar la recuperación (BE-02).
@@ -173,6 +178,30 @@ class RecoveryTokenSerializer(serializers.Serializer):
         attrs['token'] = str(token)
 
         return attrs
+
+
+""" SERIALIZER DEL USUARIO EN SESION
+El frontend lo usa para conocer su id, su nombre y sus grupos. """
+class MeSerializer(serializers.ModelSerializer):
+    nombre = serializers.CharField(source='get_full_name', read_only=True)
+    grupos = serializers.SerializerMethodField()
+
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'nombre',
+            'rol',
+            'grupos',
+        ]
+        read_only_fields = fields
+
+    def get_grupos(self, user) -> list[str]:
+        return list(user.groups.values_list('name', flat=True))
 
 
 """ SERIALIZER DE USUARIOS

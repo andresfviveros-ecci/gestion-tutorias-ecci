@@ -1,5 +1,6 @@
 from django.urls import path
-from .views import TutoriaView, TutoriaDetailView, TutoriasRecibidasView
+
+from .views import TutoriaDetailView, TutoriasRecibidasView, TutoriaView
 
 urlpatterns = [
     path('tutorias/', TutoriaView.as_view(), name='tutorias'),

@@ -1,8 +1,16 @@
 from django.urls import path
+
 from .views import (
-    DocenteMateriaDetailView, DocenteMateriaView, InscripcionDetailView, InscripcionView,
-    MateriaDetailView, MateriaView, PeriodoAcademicoDetailView, PeriodoAcademicoView,
-    ProgramaAcademicoView, ProgramaAcademicoDetailView,
+    DocenteMateriaDetailView,
+    DocenteMateriaView,
+    InscripcionDetailView,
+    InscripcionView,
+    MateriaDetailView,
+    MateriaView,
+    PeriodoAcademicoDetailView,
+    PeriodoAcademicoView,
+    ProgramaAcademicoDetailView,
+    ProgramaAcademicoView,
 )
 
 urlpatterns = [

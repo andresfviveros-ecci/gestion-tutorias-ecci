@@ -40,7 +40,7 @@ def calcular_horas_previas(bloque):
     """Horas entre ahora y el inicio del bloque (BE-21)."""
     segundos = (inicio_bloque(bloque) - timezone.now()).total_seconds()
     horas = Decimal(segundos / 3600).quantize(Decimal('0.01'))
-    return min(max(horas, Decimal('0')), MAX_HORAS_PREVIAS)
+    return min(max(horas, Decimal(0)), MAX_HORAS_PREVIAS)
 
 
 def liberar_cupo(bloque_id):

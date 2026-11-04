@@ -1,5 +1,6 @@
 from django.urls import path
-from .views import *
+
+from .views import BloqueDisponibilidadView, DisponibilidadUpdateView
 
 urlpatterns = [
     path('disponibilidad/', BloqueDisponibilidadView.as_view(), name= 'bloque-disponibilidad'),

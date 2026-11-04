@@ -1,6 +1,5 @@
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
-
 """ PERMISOS POR GRUPO
 Reemplazan los if not request.user.groups.filter(...) de cada método.
 Las clases Lectura* dejan pasar GET/HEAD/OPTIONS a cualquier usuario

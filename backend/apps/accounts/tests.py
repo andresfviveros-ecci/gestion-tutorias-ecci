@@ -324,12 +324,12 @@ class UsuariosTests(APITestCase):
         self.crear()
         response = self.crear(username='otro', documento='2020', email='JPEREZ@ecci.edu.co')
         self.assertEqual(response.status_code, 400)
-        self.assertIn('email', response.data)
+        self.assertIn('email', response.data['errors'])
 
     def test_correo_de_dominio_no_permitido(self):
         response = self.crear(email='jperez@gmail.com')
         self.assertEqual(response.status_code, 400)
-        self.assertIn('email', response.data)
+        self.assertIn('email', response.data['errors'])
 
     # BE-17
     def test_contrasena_obligatoria_al_crear(self):
@@ -337,12 +337,12 @@ class UsuariosTests(APITestCase):
         del datos['password']
         response = self.client.post(ESTUDIANTES_URL, datos, format='json')
         self.assertEqual(response.status_code, 400)
-        self.assertIn('password', response.data)
+        self.assertIn('password', response.data['errors'])
 
     def test_contrasena_debil(self):
         response = self.crear(password='abcdefgh')
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(len(response.data['password']), 2)
+        self.assertEqual(len(response.data['errors']['password']), 2)
 
     def test_editar_sin_contrasena_la_conserva(self):
         user_id = self.crear().data['id']
@@ -384,3 +384,37 @@ class UsuariosTests(APITestCase):
             LOGIN_URL, {'email': self.coordinador.email.upper(), 'password': CLAVE}, format='json'
         )
         self.assertEqual(response.status_code, 200)
+
+
+class ContratoApiTests(APITestCase):
+    """PR5: /me/ y formato único de error (BE-28)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.docente = crear_usuario('Docente')
+
+    def test_me(self):
+        self.client.force_authenticate(self.docente)
+        response = self.client.get('/api/accounts/me/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['id'], self.docente.id)
+        self.assertEqual(response.data['email'], self.docente.email)
+        self.assertEqual(response.data['grupos'], ['Docente'])
+
+    def test_formato_de_error(self):
+        sin_sesion = self.client.get('/api/accounts/me/')
+        self.assertEqual(sin_sesion.status_code, 401)
+        self.assertEqual(set(sin_sesion.data), {'detail', 'code', 'errors'})
+        self.assertEqual(sin_sesion.data['code'], 'not_authenticated')
+
+        self.client.force_authenticate(self.docente)
+        prohibido = self.client.get(ESTUDIANTES_URL)
+        self.assertEqual((prohibido.status_code, prohibido.data['code']), (403, 'permission_denied'))
+
+        no_existe = self.client.get('/api/tutorias/tutorias/999999/')
+        self.assertEqual((no_existe.status_code, no_existe.data['code']), (404, 'not_found'))
+
+        invalido = self.client.post(LOGIN_URL, {'email': 'no-es-correo'}, format='json')
+        self.assertEqual(invalido.status_code, 400)
+        self.assertEqual(set(invalido.data['errors']), {'email', 'password'})
+        self.assertTrue(invalido.data['detail'])

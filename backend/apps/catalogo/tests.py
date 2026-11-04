@@ -7,7 +7,12 @@ from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
 from rest_framework.test import APITestCase
 
-from apps.accounts.pruebas import crear_bloque, crear_catalogo, crear_tutoria, crear_usuario
+from apps.accounts.pruebas import (
+    crear_bloque,
+    crear_catalogo,
+    crear_tutoria,
+    crear_usuario,
+)
 
 from .models import PeriodoAcademico
 

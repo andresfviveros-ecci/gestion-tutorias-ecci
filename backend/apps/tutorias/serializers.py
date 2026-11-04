@@ -1,9 +1,12 @@
 from uuid import uuid4
 
 from django.db import transaction
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
-from apps.tutorias.models import Tutoria, Cancelacion
+
 from apps.disponibilidad.models import BloqueDisponibilidad
+from apps.tutorias.models import Cancelacion, Tutoria
+
 from .services import bloque_iniciado, puede_cancelar, puede_editar
 
 
@@ -102,6 +105,11 @@ class TutoriaRegisterSerializer(serializers.ModelSerializer):
         return tutoria
 
 
+class ReferenciaSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    nombre = serializers.CharField()
+
+
 class BloqueResumenSerializer(serializers.ModelSerializer):
     """Datos del bloque que necesita la pantalla de una tutoría (BE-22)."""
     materia = serializers.SerializerMethodField()
@@ -122,11 +130,13 @@ class BloqueResumenSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(ReferenciaSerializer(allow_null=True))
     def get_materia(self, bloque):
         if bloque.materia is None:
             return None
         return {'id': bloque.materia_id, 'nombre': bloque.materia.nombre}
 
+    @extend_schema_field(ReferenciaSerializer)
     def get_docente(self, bloque):
         return {'id': bloque.docente_id, 'nombre': bloque.docente.get_full_name()}
 
