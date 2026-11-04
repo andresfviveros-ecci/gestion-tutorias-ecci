@@ -1,6 +1,15 @@
 from django.db import transaction
 from rest_framework import serializers
-from .models import DocenteMateria, Inscripcion, ProgramaAcademico, Materia, PeriodoAcademico
+
+from .models import (
+    Configuracion,
+    DocenteMateria,
+    Inscripcion,
+    Materia,
+    PeriodoAcademico,
+    ProgramaAcademico,
+)
+
 
 class ProgramaAcademicoSerializer(serializers.ModelSerializer):
     class Meta:
@@ -138,3 +147,30 @@ class InscripcionSerializer(serializers.ModelSerializer):
         if not value.groups.filter(name='Estudiante').exists():
             raise serializers.ValidationError('El usuario no es estudiante.')
         return value
+
+class ConfiguracionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Configuracion
+        fields = [
+            'nota_minima',
+            'peso_corte1',
+            'peso_corte2',
+            'peso_corte3',
+            'semestre_minimo_tutor',
+            'diferencia_semestres',
+            'cupos_semanales_tutor',
+            'horas_anticipacion_cancelar',
+            'horas_anticipacion_reservar',
+            'calificacion_minima',
+            'calificacion_maxima',
+        ]
+
+    def validate(self, attrs):
+        datos = {campo: attrs.get(campo, getattr(self.instance, campo)) for campo in self.Meta.fields}
+        if datos['peso_corte1'] + datos['peso_corte2'] + datos['peso_corte3'] != 100:
+            raise serializers.ValidationError({'peso_corte3': 'Los pesos de los tres cortes deben sumar 100.'})
+        if datos['calificacion_minima'] >= datos['calificacion_maxima']:
+            raise serializers.ValidationError({
+                'calificacion_maxima': 'La calificación máxima debe ser mayor que la mínima.'
+            })
+        return attrs

@@ -10,10 +10,14 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from datetime import timedelta
 from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
+
 from config.db import POSTGRES
-import os
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -24,13 +28,25 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Los valores por defecto son los de desarrollo local; en un despliegue se
 # definen DJANGO_SECRET_KEY, DJANGO_DEBUG=False y DJANGO_ALLOWED_HOSTS.
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-g%xue)_m@!m==5+j2g-5bsu%=q4*set)^quta607ohwcbjfan9')
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = os.getenv('DJANGO_ALLOWED_HOSTS', '*').split(',')
+# Con DEBUG apagado la clave y los hosts son obligatorios: sin valores por
+# defecto inseguros en producción.
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY') or (
+    'django-insecure-g%xue)_m@!m==5+j2g-5bsu%=q4*set)^quta607ohwcbjfan9' if DEBUG else ''
+)
+if not SECRET_KEY:
+    raise ImproperlyConfigured('Con DJANGO_DEBUG=False hay que definir DJANGO_SECRET_KEY.')
+
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv('DJANGO_ALLOWED_HOSTS', '*' if DEBUG else '').split(',')
+    if host.strip()
+]
+if not DEBUG and (not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS):
+    raise ImproperlyConfigured('Con DJANGO_DEBUG=False DJANGO_ALLOWED_HOSTS debe listar los dominios, sin "*".')
 
 
 # Application definition
@@ -45,9 +61,14 @@ BASE_APPS = [
 ]
 
 THIRD_PARTY_APPS = [
+    # rest_framework y rest_framework_simplejwt van aquí para que Django
+    # cargue sus traducciones: sin ellos los mensajes salen en inglés.
+    'rest_framework',
+    'rest_framework_simplejwt',
     'import_export',
     'corsheaders',
     'drf_spectacular',
+    'django_filters',
     'rest_framework_simplejwt.token_blacklist',
 ]
 
@@ -58,6 +79,7 @@ LOCAL_APPS = [
     'apps.notificaciones',
     'apps.reportes',
     'apps.tutorias',
+    'apps.tutores',
 ]
 
 INSTALLED_APPS = BASE_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -129,12 +151,15 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # CONFIGURACION DE VARIABLES PARA ENVIOS DE CORREO
-# En desarrollo conviene django.core.mail.backends.console.EmailBackend:
-# los correos (PIN de recuperación, avisos) se ven en los logs del contenedor.
-EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
+# Con DEBUG los correos (PIN de recuperación, avisos) salen por defecto en la
+# consola del contenedor; sin DEBUG, por SMTP. Todo se puede cambiar por variable.
+EMAIL_BACKEND = os.getenv(
+    'EMAIL_BACKEND',
+    'django.core.mail.backends.console.EmailBackend' if DEBUG else 'django.core.mail.backends.smtp.EmailBackend'
+)
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER or 'no-responder@ecci.edu.co'
@@ -143,7 +168,7 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER or 'no-responder@ecci.edu.co'
 # contraseña. Es la misma lista que usa el frontend (VITE_EMAIL_DOMAINS).
 EMAIL_DOMAINS = [
     dominio.strip().lower()
-    for dominio in os.getenv('EMAIL_DOMAINS', 'ecci.edu.co').split(',')
+    for dominio in os.getenv('EMAIL_DOMAINS', 'ecci.edu.co,aulalibre.test').split(',')
     if dominio.strip()
 ]
 
@@ -193,6 +218,24 @@ REST_FRAMEWORK = {
         'recovery': os.getenv('THROTTLE_RECOVERY', '5/hour'),
         'change_password': os.getenv('THROTTLE_CHANGE_PASSWORD', '10/hour'),
     },
+    # Solo pagina cuando llega ?page=; sin él la respuesta sigue siendo la lista.
+    'DEFAULT_PAGINATION_CLASS': 'config.api.PaginacionOpcional',
+    'DEFAULT_FILTER_BACKENDS': ('django_filters.rest_framework.DjangoFilterBackend',),
+    # Un solo formato de error: {"detail", "code", "errors"} (BE-28).
+    'EXCEPTION_HANDLER': 'config.api.manejar_excepcion',
+}
+
+# Los errores 500 se ven en la consola del contenedor aunque DEBUG esté apagado.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler'},
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+    },
 }
 
 SIMPLE_JWT = {
@@ -209,4 +252,9 @@ SPECTACULAR_SETTINGS = {
     'TITLE': 'Gestión de Tutorías API',
     'DESCRIPTION': 'Documentacion de APIS para la gestion de tutorias',
     'VERSION': '1.0',
+    # Nombres estables para los enums que comparten el campo "estado".
+    'ENUM_NAME_OVERRIDES': {
+        'EstadoBloqueEnum': 'apps.disponibilidad.choices.ESTADO_BLOQUE_CHOICES',
+        'EstadoTutoriaEnum': 'apps.tutorias.choices.ESTADO_TUTORIA_CHOICES',
+    },
 }

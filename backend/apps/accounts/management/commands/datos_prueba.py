@@ -13,6 +13,7 @@ Uso:
 import random
 import unicodedata
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -23,6 +24,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.catalogo.models import (
+    Configuracion,
     DocenteMateria,
     Inscripcion,
     Materia,
@@ -30,11 +32,13 @@ from apps.catalogo.models import (
     ProgramaAcademico,
 )
 from apps.disponibilidad.models import BloqueDisponibilidad
+from apps.tutores.models import SolicitudTutor
+from apps.tutores.services import calcular_nota_final
 from apps.tutorias.models import Cancelacion, EvaluacionTutoria, Tutoria
 
 DOMINIO = 'aulalibre.test'
 PASSWORD = 'Aula2026*'
-GRUPOS = ['Estudiante', 'Docente', 'Coordinador']
+GRUPOS = ['Estudiante', 'Docente', 'Coordinador', 'Administrador']
 
 # (codigo, nombre, facultad, [(codigo, nombre, semestre, creditos, [temas])])
 PROGRAMAS = [
@@ -123,7 +127,8 @@ class Command(BaseCommand):
                 return
 
             grupos = {nombre: Group.objects.get_or_create(name=nombre)[0] for nombre in GRUPOS}
-            periodo = self._periodos()
+            Configuracion.actual()
+            periodo, anterior = self._periodos()
             materias = self._catalogo()
             self.hash = make_password(PASSWORD)
             coordinadores, docentes, estudiantes = self._usuarios(grupos, materias)
@@ -131,14 +136,16 @@ class Command(BaseCommand):
             inscritos = self._inscribir(estudiantes, materias, periodo)
             bloques = self._bloques(asignaciones, periodo)
             tutorias = self._tutorias(bloques, inscritos)
+            solicitudes = self._solicitudes(estudiantes, materias, periodo, anterior, docentes)
 
         self.stdout.write(self.style.SUCCESS(
             f'Listo: {len(materias)} materias, {len(coordinadores)} coordinadores, {len(docentes)} docentes, '
-            f'{len(estudiantes)} estudiantes, {len(bloques)} bloques y {tutorias} tutorías.'
+            f'{len(estudiantes)} estudiantes, {len(bloques)} bloques, {tutorias} tutorías '
+            f'y {solicitudes} solicitudes de tutor.'
         ))
         self.stdout.write(f'Contraseña de todos los usuarios: {PASSWORD}')
         self.stdout.write(f'Accesos rápidos: coordinador@{DOMINIO}, docente@{DOMINIO}, estudiante@{DOMINIO}')
-        self.stdout.write(f'Admin de Django (/admin): usuario admin@{DOMINIO}')
+        self.stdout.write(f'Administrador (coordinadores y /admin): admin@{DOMINIO}')
 
     def _borrar(self):
         usuarios = self.User.objects.filter(email__endswith=f'@{DOMINIO}')
@@ -157,12 +164,12 @@ class Command(BaseCommand):
         else:
             actual = (f'{anio}-2', date(anio, 8, 3), date(anio, 12, 5))
             anterior = (f'{anio}-1', date(anio, 2, 2), date(anio, 6, 13))
-        PeriodoAcademico.objects.update_or_create(
+        previo, _ = PeriodoAcademico.objects.update_or_create(
             codigo=anterior[0], defaults={'fecha_inicio': anterior[1], 'fecha_fin': anterior[2], 'activo': False})
         periodo, _ = PeriodoAcademico.objects.update_or_create(
             codigo=actual[0], defaults={'fecha_inicio': actual[1], 'fecha_fin': actual[2], 'activo': True})
         PeriodoAcademico.objects.exclude(pk=periodo.pk).filter(activo=True).update(activo=False)
-        return periodo
+        return periodo, previo
 
     def _catalogo(self):
         materias = []
@@ -211,10 +218,11 @@ class Command(BaseCommand):
         usados = {f'{r}@{DOMINIO}' for r in ('admin', 'coordinador', 'docente', 'estudiante')}
         doc = iter(range(9900000001, 9900001000))
 
-        admin = self._crear_usuario('Admin', 'Demo', f'admin@{DOMINIO}', 'Coordinador', grupos['Coordinador'],
-                                    str(next(doc)), is_staff=True, is_superuser=True)
+        # RF-05: el administrador gestiona a los coordinadores (y entra a /admin).
+        self._crear_usuario('Admin', 'Demo', f'admin@{DOMINIO}', 'Administrador', grupos['Administrador'],
+                            str(next(doc)), is_staff=True, is_superuser=True)
 
-        coordinadores = [admin, self._crear_usuario(
+        coordinadores = [self._crear_usuario(
             'Carolina', 'Mejía Restrepo', f'coordinador@{DOMINIO}', 'Coordinador', grupos['Coordinador'], str(next(doc)))]
         for nombre, apellido, email in self._personas(1, usados):
             coordinadores.append(self._crear_usuario(
@@ -232,7 +240,8 @@ class Command(BaseCommand):
             programa = programas[0] if i == 1 else self.rng.choice(programas)
             usuario = self._crear_usuario(
                 nombre, apellido, email, 'Estudiante', grupos['Estudiante'], str(next(doc)),
-                codigo=f'{self.hoy.year}{programas.index(programa) + 1}{i:04d}')
+                codigo=f'{self.hoy.year}{programas.index(programa) + 1}{i:04d}',
+                semestre=5 if i == 1 else self.rng.randint(1, 9))
             usuario.programa = programa
             estudiantes.append(usuario)
         return coordinadores, docentes, estudiantes
@@ -345,9 +354,11 @@ class Command(BaseCommand):
         tutoria = Tutoria.objects.create(**datos)
 
         if estado == 'COMPLETADA' and self.rng.random() < 0.7:
-            calificacion = self.rng.choice([5, 5, 5, 4, 4, 3])
-            comentarios = {5: 'Muy clara la explicación.', 4: 'Me sirvió, aunque faltó tiempo.', 3: 'Regular, quedé con dudas.'}
-            EvaluacionTutoria.objects.create(tutoria=tutoria, calificacion=calificacion, comentario=comentarios[calificacion])
+            # RF-09: escala de 1 a 10.
+            calificacion = self.rng.choice([10, 10, 9, 9, 8, 7, 6])
+            comentario = ('Muy clara la explicación.' if calificacion >= 9
+                          else 'Me sirvió, aunque faltó tiempo.' if calificacion >= 7 else 'Regular, quedé con dudas.')
+            EvaluacionTutoria.objects.create(tutoria=tutoria, calificacion=calificacion, comentario=comentario)
         elif estado.startswith('CANCELADA'):
             por_docente = estado == 'CANCELADA_DOCENTE'
             horas = self.rng.choice([2, 6, 12, 24, 48])
@@ -360,3 +371,49 @@ class Command(BaseCommand):
                 penalizada=not por_docente and horas < 12,
             )
         return tutoria
+
+    def _solicitudes(self, estudiantes, materias, periodo, anterior, docentes):
+        """RF-02: los estudiantes desde tercer semestre cursaron materias el
+        periodo anterior. La cuenta de acceso rápido queda habilitada como
+        tutora de una y algunos más tienen solicitudes pendientes."""
+        config = Configuracion.actual()
+        total = 0
+        for estudiante in estudiantes:
+            if (estudiante.semestre or 0) < config.semestre_minimo_tutor:
+                continue
+            propias = [m for m in materias if m.programa_id == estudiante.programa.id]
+            cursadas = self.rng.sample(propias, k=min(2, len(propias)))
+            for materia in cursadas:
+                Inscripcion.objects.get_or_create(estudiante=estudiante, materia=materia, periodo=anterior)
+
+            principal = estudiante.email == f'estudiante@{DOMINIO}'
+            if not principal and self.rng.random() > 0.25:
+                continue
+            notas = [Decimal(self.rng.choice(['4.0', '4.3', '4.5', '4.8', '5.0'])) for _ in range(3)]
+            SolicitudTutor.objects.create(
+                estudiante=estudiante,
+                materia=cursadas[0],
+                periodo=periodo,
+                nota_corte1=notas[0],
+                nota_corte2=notas[1],
+                nota_corte3=notas[2],
+                nota_final=calcular_nota_final(*notas, config),
+                estado='APROBADA' if principal else 'PENDIENTE',
+                revisada_por=cursadas[0].docentes.get(periodo=periodo).docente if principal else None,
+                fecha_revision=timezone.now() if principal else None,
+            )
+            if principal:
+                self._bloques_tutor(estudiante, cursadas[0], periodo)
+            total += 1
+        return total
+
+    def _bloques_tutor(self, tutor, materia, periodo):
+        # RF-01: la tutora estudiante publica dos horarios la semana siguiente.
+        lunes = self.hoy + timedelta(days=7 - self.hoy.weekday())
+        for dia, salon in ((lunes, SALONES[3]), (lunes + timedelta(days=2), SALONES[2])):
+            if dia <= periodo.fecha_fin:
+                BloqueDisponibilidad.objects.create(
+                    docente=tutor, materia=materia, periodo=periodo, fecha=dia,
+                    hora_inicio=time(12, 0), hora_fin=time(13, 0), modalidad='PRESENCIAL',
+                    lugar=salon, cupo_total=2, estado='DISPONIBLE',
+                )

@@ -1,16 +1,24 @@
-from django.conf import settings
-from rest_framework import serializers
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import get_user_model
-import secrets
-from django.contrib.auth.models import Group
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 import re
+import secrets
+
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.cache import cache
+from rest_framework import serializers
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.token_blacklist.models import (
+    BlacklistedToken,
+    OutstandingToken,
+)
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from apps.tutores.services import puede_publicar
+
 from .tokens import RecoveryToken
 
-# Intentos fallidos de PIN antes de invalidar la recuperación (BE-02).
+# Intentos fallidos de PIN antes de invalidar la recuperación (BE-02), y
+# cuánto dura el bloqueo de la cuenta después del último fallo.
 MAX_INTENTOS_PIN = 5
 
 
@@ -42,6 +50,8 @@ def clave_pin(jti):
 
 
 def clave_intentos(jti):
+    # Por token y no por usuario: si no, cualquiera que conozca un correo le
+    # bloquea la recuperación a esa persona fallando el PIN a propósito.
     return f'password_recovery_intentos_{jti}'
 
 
@@ -64,6 +74,10 @@ class LoginSerializers(serializers.Serializer):
         ).first()
         # BE-23: authenticate() descarta a los inactivos y el mensaje nunca
         # llegaba. Se revisa la clave primero para no revelar cuentas.
+        if not user:
+            # Se calcula un hash igual, para que el tiempo de respuesta no
+            # delate qué correos tienen cuenta.
+            get_user_model()().set_password(password)
         if not user or not user.check_password(password):
             raise serializers.ValidationError(
                 'Credenciales invalidas.'
@@ -126,9 +140,12 @@ class ChangePasswordSerializer(serializers.Serializer):
 
     def _registrar_intento_fallido(self, jti):
         clave = clave_intentos(jti)
-        cache.add(clave, 0, timeout=RecoveryToken.lifetime.total_seconds())
-        if cache.incr(clave) >= MAX_INTENTOS_PIN:
+        intentos = cache.get(clave, 0) + 1
+        if intentos >= MAX_INTENTOS_PIN:
             cache.delete_many([clave_pin(jti), clave])
+        else:
+            # cache.set y no cache.incr: incr vuelve al TTL por defecto (300 s).
+            cache.set(clave, intentos, timeout=RecoveryToken.lifetime.total_seconds())
 
     def save(self, **kwargs):
         user = self.validated_data['user']
@@ -173,6 +190,37 @@ class RecoveryTokenSerializer(serializers.Serializer):
         attrs['token'] = str(token)
 
         return attrs
+
+
+""" SERIALIZER DEL USUARIO EN SESION
+El frontend lo usa para conocer su id, su nombre y sus grupos. """
+class MeSerializer(serializers.ModelSerializer):
+    nombre = serializers.CharField(source='get_full_name', read_only=True)
+    grupos = serializers.SerializerMethodField()
+    puede_publicar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'id',
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'nombre',
+            'rol',
+            'semestre',
+            'grupos',
+            'puede_publicar',
+        ]
+        read_only_fields = fields
+
+    def get_grupos(self, user) -> list[str]:
+        return list(user.groups.values_list('name', flat=True))
+
+    def get_puede_publicar(self, user) -> bool:
+        """RF-01: el frontend muestra Mi disponibilidad con este dato."""
+        return puede_publicar(user)
 
 
 """ SERIALIZER DE USUARIOS
@@ -222,6 +270,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
         validar_clave(value)
         return value
 
+    def validate_is_active(self, value):
+        request = self.context.get('request')
+        if not value and request and self.instance is not None and self.instance.pk == request.user.pk:
+            raise serializers.ValidationError('No puedes desactivar tu propia cuenta.')
+        return value
+
     def validate(self, attrs):
         # BE-17: la contraseña es obligatoria al crear.
         if self.instance is None and not attrs.get('password'):
@@ -252,7 +306,7 @@ class StudentRegisterSerializer(UsuarioSerializer):
     grupo = 'Estudiante'
 
     class Meta(UsuarioSerializer.Meta):
-        fields = UsuarioSerializer.Meta.fields + ['codigo_institucional']
+        fields = UsuarioSerializer.Meta.fields + ['codigo_institucional', 'semestre']
 
     def validate_codigo_institucional(self, value):
         # Vacío se guarda como nulo: la columna es única y admite varios nulos.

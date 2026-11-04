@@ -101,7 +101,7 @@ La regla planeada para el backend es que la lógica de negocio viva en un `servi
 │   │   └── types/
 │   ├── Dockerfile             # destinos dev y prod
 │   └── package.json
-├── database/                  # init.sql: diseño inicial del esquema (referencia)
+├── database/                  # init.sql: diseño inicial, NO lo usa la app (el esquema real sale de las migraciones)
 ├── docs/                      # documentación consolidada
 ├── docker-compose.yml
 └── .env.example

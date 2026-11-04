@@ -1,6 +1,8 @@
-from django.db import models
 from django.conf import settings
+from django.db import models
+
 from apps.models import BaseModel
+
 
 class Auditoria(BaseModel):
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='auditorias')

@@ -1,0 +1,7 @@
+[lint]
+ignore = [
+    # Los archivos no tienen bit de ejecución en Windows; no es un problema real.
+    "EXE002",
+    # Meta.fields, permission_classes, etc. son listas de clase: idioma de Django y DRF.
+    "RUF012",
+]
