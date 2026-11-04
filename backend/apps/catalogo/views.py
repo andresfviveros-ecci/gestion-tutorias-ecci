@@ -4,10 +4,11 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status
 from rest_framework.response import Response
 
-from apps.accounts.permisos import LecturaOCoordinador
+from apps.accounts.permisos import LecturaOCoordinador, es_coordinacion
 from config.api import UsuarioFilter
 
 from .models import (
+    Configuracion,
     DocenteMateria,
     Inscripcion,
     Materia,
@@ -15,6 +16,7 @@ from .models import (
     ProgramaAcademico,
 )
 from .serializer import (
+    ConfiguracionSerializer,
     DocenteMateriaSerializer,
     InscripcionSerializer,
     MateriaSerializer,
@@ -120,7 +122,7 @@ class InscripcionFilter(filters.FilterSet):
 
 
 def inscripciones_visibles(user, inscripciones):
-    if user.is_superuser or user.groups.filter(name='Coordinador').exists():
+    if es_coordinacion(user):
         return inscripciones
     if user.groups.filter(name='Docente').exists():
         return inscripciones.filter(
@@ -170,3 +172,15 @@ class InscripcionDetailView(generics.RetrieveDestroyAPIView):
         if getattr(self, 'swagger_fake_view', False):  # generación del esquema
             return inscripciones.none()
         return inscripciones_visibles(self.request.user, inscripciones)
+
+
+""" API DE CONFIGURACIÓN
+Parámetros de las reglas de tutorías: cualquiera los consulta y solo la
+coordinación y el administrador los cambian. """
+@extend_schema(tags=['Configuración'])
+class ConfiguracionView(generics.RetrieveUpdateAPIView):
+    permission_classes = [LecturaOCoordinador]
+    serializer_class = ConfiguracionSerializer
+
+    def get_object(self):
+        return Configuracion.actual()

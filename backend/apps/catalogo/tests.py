@@ -14,7 +14,7 @@ from apps.accounts.pruebas import (
     crear_usuario,
 )
 
-from .models import Inscripcion, Materia, PeriodoAcademico
+from .models import Configuracion, Inscripcion, Materia, PeriodoAcademico
 
 
 class PermisosCatalogoTests(APITestCase):
@@ -169,3 +169,34 @@ class RevisionCatalogoTests(APITestCase):
         for url in ('/api/catalogo/docentes-materias/', '/api/catalogo/inscripciones/'):
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url, {'materia': 'abc'}).status_code, 400)
+
+
+class ConfiguracionTests(APITestCase):
+    """Sección 7.1: parámetros de las reglas en una sola fila editable."""
+    URL = '/api/catalogo/configuracion/'
+
+    def test_valores_por_defecto(self):
+        self.client.force_authenticate(crear_usuario('Estudiante'))
+        response = self.client.get(self.URL)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['nota_minima'], '4.00')
+        self.assertEqual(response.data['cupos_semanales_tutor'], 10)
+        self.assertEqual(response.data['calificacion_maxima'], 10)
+
+    def test_solo_coordinacion_y_administrador_editan(self):
+        self.client.force_authenticate(crear_usuario('Estudiante'))
+        self.assertEqual(self.client.patch(self.URL, {'cupos_semanales_tutor': 8}, format='json').status_code, 403)
+
+        for grupo in ('Coordinador', 'Administrador'):
+            with self.subTest(grupo=grupo):
+                self.client.force_authenticate(crear_usuario(grupo))
+                response = self.client.patch(self.URL, {'cupos_semanales_tutor': 8}, format='json')
+                self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(Configuracion.actual().cupos_semanales_tutor, 8)
+        self.assertEqual(Configuracion.objects.count(), 1)
+
+    def test_pesos_suman_100(self):
+        self.client.force_authenticate(crear_usuario('Coordinador'))
+        response = self.client.patch(self.URL, {'peso_corte3': 50}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('peso_corte3', response.data['errors'])
