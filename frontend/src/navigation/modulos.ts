@@ -42,6 +42,7 @@ export const MODULOS: Modulo[] = [
 
   // Tutor / docente
   { id: 'tutor-panel', etiqueta: 'Dashboard', ruta: '/tutor/dashboard', seccion: 'Panel', roles: ['tutor'] },
+  { id: 'tutor-solicitudes', etiqueta: 'Solicitudes de tutor', ruta: '/tutor/solicitudes', seccion: 'Mi trabajo', roles: ['tutor'] },
   { id: 'tutor-disponibilidad', etiqueta: 'Mi disponibilidad', ruta: '/tutor/mi-disponibilidad', seccion: 'Mi trabajo', roles: ['tutor'] },
   { id: 'tutor-calendario', etiqueta: 'Calendario', ruta: '/tutor/calendario', seccion: 'Mi trabajo', roles: ['tutor'] },
 
