@@ -46,6 +46,7 @@ export const MODULOS: Modulo[] = [
     grupos: ['Administrador'],
   },
   { id: 'gestionar-usuarios', etiqueta: 'Gestionar usuarios', ruta: '/gestionar-usuarios', seccion: 'Cuenta', roles: ['admin'] },
+  { id: 'configuracion', etiqueta: 'Configuración', ruta: '/configuracion', seccion: 'Panel', roles: ['admin'] },
 
   // Tutor / docente
   { id: 'tutor-panel', etiqueta: 'Dashboard', ruta: '/tutor/dashboard', seccion: 'Panel', roles: ['tutor'] },
