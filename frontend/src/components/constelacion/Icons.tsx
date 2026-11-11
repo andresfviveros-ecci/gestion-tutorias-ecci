@@ -46,6 +46,13 @@ export const ClockIcon = ({ className }: IconProps) => (
   </svg>
 );
 
+export const InfoIcon = ({ className }: IconProps) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none" aria-hidden="true">
+    <circle cx="8" cy="8" r="6.2" stroke="currentColor" strokeWidth="1.3" />
+    <path d="M8 7.2v4M8 4.8v.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
 export const LayersIcon = ({ className }: IconProps) => (
   <svg viewBox="0 0 16 16" className={className} fill="none" aria-hidden="true">
     <path d="m8 2.2 5.4 2.9L8 8 2.6 5.1 8 2.2Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />

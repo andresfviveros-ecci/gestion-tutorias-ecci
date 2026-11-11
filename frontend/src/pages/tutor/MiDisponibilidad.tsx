@@ -6,6 +6,7 @@ import { TutorRail } from '../../components/tutor/TutorRail';
 import { CalendarIcon, CheckIcon, ClockIcon, LayersIcon } from '../../components/constelacion/Icons';
 import { api } from '../../api/axios';
 import { extraerLista, mensajeError } from '../../utils/api';
+import { CONFIGURACION_POR_DEFECTO, consultarConfiguracion } from '../../utils/configuracion';
 import { fechaLocalISO, hoyLocalISO } from '../../utils/date';
 import {
   diasDeLaSemanaDe,
@@ -125,18 +126,37 @@ export const MiDisponibilidad = () => {
   const [exito, setExito] = useState<string | null>(null);
   const [error, setError] = useState<{ titulo: string; detalle: string } | null>(null);
 
+  // GT-255: el tope semanal solo aplica a tutores estudiantes (RF-06).
+  const [config, setConfig] = useState(CONFIGURACION_POR_DEFECTO);
+  const [esDocente, setEsDocente] = useState<boolean | null>(null);
+  const [cuposInfo, setCuposInfo] = useState<{ semana: string; total: number } | null>(null);
+  const [errorCupos, setErrorCupos] = useState<{ semana: string; mensaje: string } | null>(null);
+  const [versionCupos, setVersionCupos] = useState(0);
+
   useEffect(() => {
     let ignore = false;
 
     const cargarCatalogos = async () => {
-      const [resMaterias, resPeriodos, resAsignaciones] = await Promise.allSettled([
-        api.get('/catalogo/materias/'),
-        api.get('/catalogo/periodos/'),
-        // El backend solo deja publicar en las materias asignadas al docente.
-        api.get('/catalogo/docentes-materias/?docente=me'),
-      ]);
+      const [resMaterias, resPeriodos, resAsignaciones, resSolicitudes, resMe, resConfig] =
+        await Promise.allSettled([
+          api.get('/catalogo/materias/'),
+          api.get('/catalogo/periodos/'),
+          // RF-04: se publica en las materias asignadas al docente...
+          api.get('/catalogo/docentes-materias/?docente=me'),
+          // ...o aprobadas al estudiante como tutor (RF-02).
+          api.get('/tutores/solicitudes/?estudiante=me&estado=APROBADA'),
+          api.get('/accounts/me/'),
+          consultarConfiguracion(),
+        ]);
 
       if (ignore) return;
+
+      if (resConfig.status === 'fulfilled') setConfig(resConfig.value);
+
+      if (resMe.status === 'fulfilled') {
+        const grupos = (resMe.value.data?.grupos ?? []) as string[];
+        setEsDocente(grupos.includes('Docente'));
+      }
 
       const listaPeriodos =
         resPeriodos.status === 'fulfilled' ? extraerLista<PeriodoBackend>(resPeriodos.value.data) : [];
@@ -146,14 +166,32 @@ export const MiDisponibilidad = () => {
         let activas = extraerLista<MateriaBackend>(resMaterias.value.data).filter(
           (materia) => materia.activa !== false,
         );
+        const habilitadas = new Set<string>();
+
         if (resAsignaciones.status === 'fulfilled') {
-          const asignadas = new Set(
-            extraerLista<{ materia: number | string; periodo: number | string }>(resAsignaciones.value.data)
-              .filter((asignacion) => !periodoActivo || String(asignacion.periodo) === String(periodoActivo.id))
-              .map((asignacion) => String(asignacion.materia)),
-          );
-          activas = activas.filter((materia) => asignadas.has(String(materia.id)));
+          extraerLista<{ materia: number | string; periodo: number | string }>(resAsignaciones.value.data)
+            .filter((asignacion) => !periodoActivo || String(asignacion.periodo) === String(periodoActivo.id))
+            .forEach((asignacion) => habilitadas.add(String(asignacion.materia)));
         }
+
+        if (resSolicitudes.status === 'fulfilled') {
+          extraerLista<{ materia: number | string; periodo: number | string; estado?: string }>(
+            resSolicitudes.value.data,
+          )
+            .filter(
+              (solicitud) =>
+                (solicitud.estado || '').toUpperCase() === 'APROBADA' &&
+                (!periodoActivo || String(solicitud.periodo) === String(periodoActivo.id)),
+            )
+            .forEach((solicitud) => habilitadas.add(String(solicitud.materia)));
+        }
+
+        // Si ninguna consulta respondió, se muestran todas para no bloquear el
+        // formulario por un fallo de red.
+        if (resAsignaciones.status === 'fulfilled' || resSolicitudes.status === 'fulfilled') {
+          activas = activas.filter((materia) => habilitadas.has(String(materia.id)));
+        }
+
         setMaterias(activas);
         if (activas.length > 0) {
           setMateriaId((previo) => previo || activas[0].id);
@@ -185,6 +223,66 @@ export const MiDisponibilidad = () => {
   }, []);
 
   const diasSemana = useMemo(() => diasDeLaSemanaDe(fecha || hoyLocalISO()), [fecha]);
+  const lunesISO = fechaLocalISO(diasSemana[0]);
+  const domingoISO = fechaLocalISO(diasSemana[6]);
+
+  const proximoLunes = useMemo(() => {
+    const lunes = new Date(diasSemana[0]);
+    lunes.setDate(lunes.getDate() + 7);
+    return fechaLocalISO(lunes);
+  }, [diasSemana]);
+
+  const lunesTexto = fechaConAnio(lunesISO);
+  const proximoLunesTexto = fechaConAnio(proximoLunes);
+
+  // GT-255: cupos ya publicados en la semana del día seleccionado. Solo se
+  // consultan para tutores estudiantes; los docentes no tienen tope (RF-06).
+  useEffect(() => {
+    if (esDocente !== false) return;
+
+    let activo = true;
+
+    api
+      .get('/disponibilidad/disponibilidad/', {
+        params: { docente: 'me', desde: lunesISO, hasta: domingoISO },
+      })
+      .then(({ data }) => {
+        if (!activo) return;
+        const total = extraerLista<{ cupo_total?: number }>(data).reduce(
+          (suma, bloque) => suma + (Number(bloque.cupo_total) || 0),
+          0,
+        );
+        setCuposInfo({ semana: lunesISO, total });
+        setErrorCupos(null);
+      })
+      .catch(() => {
+        if (!activo) return;
+        setCuposInfo(null);
+        setErrorCupos({
+          semana: lunesISO,
+          mensaje: 'No pudimos consultar los cupos de esta semana.',
+        });
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, [esDocente, lunesISO, domingoISO, versionCupos]);
+
+  const aplicaLimite = esDocente === false;
+  const limiteSemanal = config.cupos_semanales_tutor;
+  const cuposSemana = cuposInfo?.semana === lunesISO ? cuposInfo.total : null;
+  const errorSemana = errorCupos?.semana === lunesISO ? errorCupos.mensaje : null;
+  const cargandoCupos = aplicaLimite && cuposSemana === null && !errorSemana;
+  const cuposRestantes =
+    cuposSemana === null ? null : Math.max(limiteSemanal - cuposSemana, 0);
+  const topeAlcanzado = aplicaLimite && cuposRestantes === 0;
+  const excedeLimite =
+    aplicaLimite && cuposRestantes !== null && cupo > cuposRestantes;
+  const porcentajeSemana =
+    limiteSemanal > 0 && cuposSemana !== null
+      ? Math.min(100, Math.round((cuposSemana / limiteSemanal) * 100))
+      : 0;
 
   const preview = useMemo(() => {
     const materia = materias.find((item) => String(item.id) === String(materiaId));
@@ -288,6 +386,21 @@ export const MiDisponibilidad = () => {
       return;
     }
 
+    if (aplicaLimite && cuposSemana !== null && cuposSemana + cupo > limiteSemanal) {
+      setError({
+        titulo: 'Superas el tope semanal',
+        detalle:
+          cuposRestantes === 0
+            ? `Ya publicaste ${
+                limiteSemanal === 1 ? 'el único cupo' : `los ${limiteSemanal} cupos`
+              } de la semana del ${lunesTexto}. Podrás volver a publicar desde el ${proximoLunesTexto}.`
+            : `Solo te quedan ${cuposRestantes} ${
+                cuposRestantes === 1 ? 'cupo' : 'cupos'
+              } esta semana y el bloque pide ${cupo}. Reduce el cupo o elige otra semana.`,
+      });
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -307,6 +420,7 @@ export const MiDisponibilidad = () => {
       await api.post('/disponibilidad/disponibilidad/', payload);
       // Se limpia el formulario: un segundo clic publicaría el mismo bloque.
       limpiar();
+      setVersionCupos((version) => version + 1);
       setExito('El horario se guardó correctamente y ya está visible para los estudiantes.');
     } catch (err) {
       const detalle = mensajeError(err);
@@ -457,6 +571,15 @@ export const MiDisponibilidad = () => {
                       }}
                       className={inputClass}
                     />
+                    {aplicaLimite && (
+                      <p className="mt-1.5 text-[10.5px] text-muted">
+                        {cargandoCupos
+                          ? 'Consultando cupos de la semana...'
+                          : cuposRestantes === null
+                            ? (errorSemana ?? 'No pudimos consultar el tope semanal.')
+                            : `Te quedan ${cuposRestantes} de ${limiteSemanal} cupos esta semana.`}
+                      </p>
+                    )}
                   </Field>
 
                   <Field label="Hora de inicio" htmlFor="hora-inicio">
@@ -574,6 +697,23 @@ export const MiDisponibilidad = () => {
                 {exito && (
                   <Alerta tono="exito" titulo="Disponibilidad publicada" detalle={exito} />
                 )}
+                {excedeLimite && !error && (
+                  <div
+                    role="alert"
+                    className="mt-5 rounded-2xl border border-advertencia/45 bg-[#FBF4E6] px-4 py-3 text-advertencia"
+                  >
+                    <p className="text-[12.7px] font-bold">Superas el tope semanal</p>
+                    <p className="mt-1 text-[11.6px] leading-relaxed opacity-90">
+                      {cuposRestantes === 0
+                        ? `Ya publicaste ${
+                            limiteSemanal === 1 ? 'el único cupo' : `los ${limiteSemanal} cupos`
+                          } de esta semana. Podrás volver a publicar desde el ${proximoLunesTexto}.`
+                        : `Solo te quedan ${cuposRestantes} ${
+                            cuposRestantes === 1 ? 'cupo' : 'cupos'
+                          } esta semana y este bloque pide ${cupo}. Reduce el cupo o elige otra semana.`}
+                    </p>
+                  </div>
+                )}
 
                 <div className="mt-5 flex flex-col gap-3 border-t border-faint pt-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-[10.7px] text-muted">
@@ -590,7 +730,13 @@ export const MiDisponibilidad = () => {
                     </button>
                     <button
                       type="submit"
-                      disabled={submitting || materias.length === 0 || !periodoId}
+                      disabled={
+                        submitting ||
+                        materias.length === 0 ||
+                        !periodoId ||
+                        topeAlcanzado ||
+                        excedeLimite
+                      }
                       className="h-11 rounded-full bg-violeta-accion px-6 text-[12.8px] font-semibold text-white shadow-constelacion-violet transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {submitting ? 'Publicando...' : 'Publicar disponibilidad'}
@@ -602,6 +748,68 @@ export const MiDisponibilidad = () => {
 
             {/* --------------------------- Aside --------------------------- */}
             <aside className="space-y-5">
+              {aplicaLimite && (
+                <section className="rounded-[32px] bg-white p-5 sm:p-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-[18px] font-medium text-tinta">Tope semanal</h2>
+                      <p className="mt-1 text-[11.7px] text-muted">
+                        Cupos que puedes publicar en la semana del día elegido.
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-3 py-1.5 text-[10.5px] font-semibold ${
+                        topeAlcanzado
+                          ? 'bg-advertencia/10 text-advertencia'
+                          : 'bg-mist text-slate-ink'
+                      }`}
+                    >
+                      {cuposSemana === null ? '—' : `${cuposSemana} / ${limiteSemanal}`}
+                    </span>
+                  </div>
+
+                  <div
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={limiteSemanal}
+                    aria-valuenow={cuposSemana ?? 0}
+                    aria-label="Cupos publicados esta semana"
+                    className="mt-4 h-2 overflow-hidden rounded-full bg-mist"
+                  >
+                    <div
+                      className={`h-full rounded-full transition-[width] ${
+                        topeAlcanzado ? 'bg-advertencia' : 'bg-violeta-accion'
+                      }`}
+                      style={{ width: `${porcentajeSemana}%` }}
+                    />
+                  </div>
+
+                  <p className="mt-2 text-[10.7px] leading-relaxed text-muted">
+                    {cargandoCupos
+                      ? 'Consultando cupos...'
+                      : cuposRestantes === null
+                        ? (errorSemana ?? 'No pudimos consultar los cupos de esta semana.')
+                        : cuposRestantes === 0
+                          ? 'Sin cupos disponibles esta semana.'
+                          : `Te quedan ${cuposRestantes} ${
+                              cuposRestantes === 1 ? 'cupo' : 'cupos'
+                            } de ${limiteSemanal}.`}
+                  </p>
+
+                  {topeAlcanzado && (
+                    <div className="mt-3 rounded-2xl border border-advertencia/30 bg-advertencia/5 px-4 py-3">
+                      <p className="text-[11px] font-semibold text-advertencia">
+                        Alcanzaste el tope semanal
+                      </p>
+                      <p className="mt-1 text-[10.5px] leading-relaxed text-advertencia/90">
+                        Podrás publicar de nuevo desde el {proximoLunesTexto}. El tope se calcula
+                        por semana (lunes a domingo) y lo define coordinación.
+                      </p>
+                    </div>
+                  )}
+                </section>
+              )}
+
               <section className="rounded-[32px] bg-white p-5 sm:p-6">
                 <h2 className="text-[18px] font-medium text-tinta">Antes de publicar</h2>
                 <p className="mt-1 text-[11.7px] text-muted">Qué revisa el sistema</p>
