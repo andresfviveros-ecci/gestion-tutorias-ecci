@@ -30,6 +30,13 @@ export const MODULOS: Modulo[] = [
   { id: 'estudiantes', etiqueta: 'Estudiantes', ruta: '/estudiantes', seccion: 'Usuarios', roles: ['admin'] },
   { id: 'tutores', etiqueta: 'Tutores', ruta: '/tutores', seccion: 'Usuarios', roles: ['admin'] },
   {
+    id: 'asignacion-materias',
+    etiqueta: 'Asignación de materias',
+    ruta: '/asignacion-materias',
+    seccion: 'Usuarios',
+    roles: ['admin'],
+  },
+  {
     id: 'coordinadores',
     etiqueta: 'Coordinadores',
     ruta: '/coordinadores',
@@ -42,6 +49,7 @@ export const MODULOS: Modulo[] = [
 
   // Tutor / docente
   { id: 'tutor-panel', etiqueta: 'Dashboard', ruta: '/tutor/dashboard', seccion: 'Panel', roles: ['tutor'] },
+  { id: 'tutor-solicitudes', etiqueta: 'Solicitudes de tutor', ruta: '/tutor/solicitudes', seccion: 'Mi trabajo', roles: ['tutor'] },
   { id: 'tutor-disponibilidad', etiqueta: 'Mi disponibilidad', ruta: '/tutor/mi-disponibilidad', seccion: 'Mi trabajo', roles: ['tutor'] },
   { id: 'tutor-calendario', etiqueta: 'Calendario', ruta: '/tutor/calendario', seccion: 'Mi trabajo', roles: ['tutor'] },
 

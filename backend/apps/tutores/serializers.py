@@ -89,4 +89,4 @@ class SolicitudTutorSerializer(serializers.ModelSerializer):
 
 
 class RevisionSerializer(serializers.Serializer):
-    motivo = serializers.CharField(required=False, allow_blank=True)
+    motivo = serializers.CharField(required=False, allow_blank=True, help_text='Obligatorio en las tres decisiones.')

@@ -88,10 +88,12 @@ class SolicitudesTutorTests(APITestCase):
 
     def test_aprobar_y_revocar(self):
         solicitud_id = self.solicitar().data['id']
-        response = self.revisar(solicitud_id, 'aprobar')
+        response = self.revisar(solicitud_id, 'aprobar', motivo='Buen dominio del tema en la entrevista.')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual((response.data['estado'], response.data['revisada_por']), ('APROBADA', self.docente.id))
-        self.assertTrue(Notificacion.objects.filter(usuario=self.estudiante, tipo='HABILITACION').exists())
+        self.assertEqual(response.data['motivo'], 'Buen dominio del tema en la entrevista.')
+        aviso = Notificacion.objects.get(usuario=self.estudiante, tipo='HABILITACION')
+        self.assertIn('Buen dominio del tema', aviso.mensaje)
 
         self.assertEqual(self.revisar(solicitud_id, 'revocar').status_code, 400)  # sin motivo
         response = self.revisar(solicitud_id, 'revocar', motivo='No se presentó a las tutorías.')
@@ -99,6 +101,15 @@ class SolicitudesTutorTests(APITestCase):
         self.assertEqual(response.data['estado'], 'REVOCADA')
         # Una revocada ya no se aprueba otra vez: se pide de nuevo.
         self.assertEqual(self.revisar(solicitud_id, 'aprobar').data['code'], 'transicion_invalida')
+
+    def test_aprobar_pide_motivo(self):
+        # HU-044: la decisión del docente siempre lleva motivo, también al aprobar.
+        solicitud_id = self.solicitar().data['id']
+        for datos in ({}, {'motivo': ''}, {'motivo': '   '}):
+            response = self.revisar(solicitud_id, 'aprobar', **datos)
+            self.assertEqual(response.status_code, 400)
+            self.assertIn('motivo', response.data['errors'])
+        self.assertEqual(SolicitudTutor.objects.get(pk=solicitud_id).estado, 'PENDIENTE')
 
     def test_rechazar_pide_motivo(self):
         solicitud_id = self.solicitar().data['id']
@@ -123,7 +134,7 @@ class SolicitudesTutorTests(APITestCase):
         self.assertEqual(self.revisar(solicitud_id, 'aprobar', usuario=coordinador).status_code, 403)
 
         self.docente.materias_asignadas.all().delete()
-        self.assertEqual(self.revisar(solicitud_id, 'aprobar', usuario=coordinador).status_code, 200)
+        self.assertEqual(self.revisar(solicitud_id, 'aprobar', usuario=coordinador, motivo='Sin docente asignado.').status_code, 200)
 
     def test_quien_ve_que(self):
         self.solicitar()
