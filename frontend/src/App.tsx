@@ -9,6 +9,7 @@ import { Tutores } from './pages/Tutores';
 import { AsignacionMaterias } from './pages/AsignacionMaterias';
 import { Coordinadores } from './pages/Coordinadores';
 import { GestionarUsuarios } from './pages/GestionarUsuarios';
+import { ConfiguracionGeneral } from './pages/ConfiguracionGeneral';
 import { TutorPanel } from './pages/tutor/TutorPanel';
 import { SolicitudesTutor } from './pages/tutor/SolicitudesTutor';
 import { MiDisponibilidad } from './pages/tutor/MiDisponibilidad';
@@ -345,6 +346,14 @@ export const App: React.FC = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/configuracion"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <ConfiguracionGeneral />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Rutas de Tutor / Docente */}
         <Route
@@ -366,7 +375,7 @@ export const App: React.FC = () => {
         <Route
           path="/tutor/mi-disponibilidad"
           element={
-            <ProtectedRoute allowedRoles={['tutor', 'admin']}>
+            <ProtectedRoute allowedRoles={['tutor', 'estudiante', 'admin']}>
               <MiDisponibilidad />
             </ProtectedRoute>
           }
