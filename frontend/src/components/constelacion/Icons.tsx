@@ -46,6 +46,19 @@ export const ClockIcon = ({ className }: IconProps) => (
   </svg>
 );
 
+export const SearchIcon = ({ className }: IconProps) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none" aria-hidden="true">
+    <circle cx="7" cy="7" r="4.6" stroke="currentColor" strokeWidth="1.3" />
+    <path d="m10.5 10.5 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+  </svg>
+);
+
+export const ChevronRightIcon = ({ className }: IconProps) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none" aria-hidden="true">
+    <path d="m6 3.5 4.5 4.5L6 12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 export const LayersIcon = ({ className }: IconProps) => (
   <svg viewBox="0 0 16 16" className={className} fill="none" aria-hidden="true">
     <path d="m8 2.2 5.4 2.9L8 8 2.6 5.1 8 2.2Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />

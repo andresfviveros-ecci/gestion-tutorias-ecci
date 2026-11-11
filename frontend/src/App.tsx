@@ -6,6 +6,7 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Estudiantes } from './pages/Estudiantes';
 import { Tutores } from './pages/Tutores';
+import { AsignacionMaterias } from './pages/AsignacionMaterias';
 import { Coordinadores } from './pages/Coordinadores';
 import { GestionarUsuarios } from './pages/GestionarUsuarios';
 import { TutorPanel } from './pages/tutor/TutorPanel';
@@ -309,6 +310,16 @@ export const App: React.FC = () => {
             <ProtectedRoute allowedRoles={['admin']}>
               <Layout>
                 <Tutores />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/asignacion-materias"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <Layout>
+                <AsignacionMaterias />
               </Layout>
             </ProtectedRoute>
           }
