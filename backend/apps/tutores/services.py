@@ -58,7 +58,7 @@ def notificar_solicitud(solicitud):
 @transaction.atomic
 def revisar(solicitud, usuario, estado, motivo=''):
     """Aprobar o rechazar una solicitud pendiente, o revocar una aprobada.
-    Rechazar y revocar exigen motivo; el estudiante recibe un aviso."""
+    Las tres decisiones exigen motivo (HU-044); el estudiante lo recibe en el aviso."""
     solicitud = SolicitudTutor.objects.select_for_update(of=('self',)).select_related(
         'estudiante', 'materia'
     ).get(pk=solicitud.pk)
@@ -72,8 +72,8 @@ def revisar(solicitud, usuario, estado, motivo=''):
             code='transicion_invalida',
         )
     motivo = (motivo or '').strip()
-    if estado in ('RECHAZADA', 'REVOCADA') and not motivo:
-        raise ValidationError({'motivo': 'El motivo es obligatorio.'})
+    if not motivo:
+        raise ValidationError({'motivo': 'El motivo de la decisión es obligatorio.'})
 
     solicitud.estado = estado
     solicitud.motivo = motivo or None

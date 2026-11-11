@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    AsignarMateriasView,
     ConfiguracionView,
     DocenteMateriaDetailView,
     DocenteMateriaView,
@@ -22,6 +23,7 @@ urlpatterns = [
     path('periodos/',PeriodoAcademicoView.as_view(),name='periodos'),
     path('periodos/<int:pk>/',PeriodoAcademicoDetailView.as_view(),name='periodo-detalle'),
     path('docentes-materias/', DocenteMateriaView.as_view(), name='docentes-materias'),
+    path('docentes-materias/asignar/', AsignarMateriasView.as_view(), name='docentes-materias-asignar'),
     path('docentes-materias/<int:pk>/', DocenteMateriaDetailView.as_view(), name='docente-materia-detalle'),
     path('inscripciones/', InscripcionView.as_view(), name='inscripciones'),
     path('inscripciones/<int:pk>/', InscripcionDetailView.as_view(), name='inscripcion-detalle'),

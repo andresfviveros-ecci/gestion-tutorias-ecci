@@ -14,7 +14,13 @@ from apps.accounts.pruebas import (
     crear_usuario,
 )
 
-from .models import Configuracion, Inscripcion, Materia, PeriodoAcademico
+from .models import (
+    Configuracion,
+    DocenteMateria,
+    Inscripcion,
+    Materia,
+    PeriodoAcademico,
+)
 
 
 class PermisosCatalogoTests(APITestCase):
@@ -206,3 +212,61 @@ class ConfiguracionTests(APITestCase):
         response = self.client.patch(self.URL, {'peso_corte3': 50}, format='json')
         self.assertEqual(response.status_code, 400)
         self.assertIn('peso_corte3', response.data['errors'])
+
+
+class AsignarVariasMateriasTests(APITestCase):
+    """GT-251 y GT-252: varias materias a un docente en una sola petición."""
+    URL = '/api/catalogo/docentes-materias/asignar/'
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.coordinador = crear_usuario('Coordinador')
+        cls.docente = crear_usuario('Docente')
+        cls.programa, cls.periodo, cls.materia = crear_catalogo()
+        cls.otras = [
+            Materia.objects.create(codigo=f'AV-{n}', nombre=f'Materia {n}', programa=cls.programa) for n in range(2)
+        ]
+
+    def setUp(self):
+        self.client.force_authenticate(self.coordinador)
+
+    def asignar(self, materias, **extra):
+        return self.client.post(self.URL, {'docente': self.docente.id, 'materias': materias, **extra}, format='json')
+
+    def test_asigna_varias_en_el_periodo_activo(self):
+        ids = [self.materia.id] + [m.id for m in self.otras]
+        response = self.asignar(ids)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(sorted(a['materia'] for a in response.data), sorted(ids))
+        self.assertEqual({a['periodo'] for a in response.data}, {self.periodo.id})
+        self.assertEqual(DocenteMateria.objects.filter(docente=self.docente).count(), 3)
+
+    def test_si_una_ya_existe_no_crea_ninguna(self):
+        DocenteMateria.objects.create(docente=self.docente, materia=self.materia, periodo=self.periodo)
+        response = self.asignar([self.materia.id, self.otras[0].id])
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(self.materia.nombre, response.data['errors']['materias'][0])
+        self.assertEqual(DocenteMateria.objects.filter(docente=self.docente).count(), 1)
+
+    def test_rechaza_repetidas_vacia_o_inexistentes(self):
+        self.assertEqual(self.asignar([self.materia.id, self.materia.id]).status_code, 400)
+        self.assertEqual(self.asignar([]).status_code, 400)
+        self.assertEqual(self.asignar([999999]).status_code, 400)
+        self.assertFalse(DocenteMateria.objects.filter(docente=self.docente).exists())
+
+    def test_solo_docentes_y_solo_coordinacion(self):
+        estudiante = crear_usuario('Estudiante')
+        response = self.client.post(self.URL, {'docente': estudiante.id, 'materias': [self.materia.id]}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('docente', response.data['errors'])
+
+        self.client.force_authenticate(self.docente)
+        self.assertEqual(self.asignar([self.materia.id]).status_code, 403)
+
+    def test_periodo_explicito(self):
+        anterior = PeriodoAcademico.objects.create(
+            codigo='ANT', fecha_inicio=date(2020, 1, 1), fecha_fin=date(2020, 6, 1)
+        )
+        response = self.asignar([self.materia.id], periodo=anterior.id)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data[0]['periodo'], anterior.id)
