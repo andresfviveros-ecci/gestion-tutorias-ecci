@@ -71,7 +71,7 @@ class SolicitudTutorDetailView(generics.RetrieveAPIView):
 
 
 class RevisionView(views.APIView):
-    """RF-03: aprobar, rechazar o revocar. Rechazar y revocar piden motivo."""
+    """RF-03 y HU-044: aprobar, rechazar o revocar, siempre con motivo."""
     permission_classes = [IsAuthenticated]
     estado = None
 
