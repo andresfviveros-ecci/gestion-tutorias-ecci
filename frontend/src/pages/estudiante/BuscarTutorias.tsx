@@ -8,9 +8,18 @@ import {
   CalendarIcon,
   CheckIcon,
   ClockIcon,
+  InfoIcon,
 } from '../../components/constelacion/Icons';
 import { EmptyState } from '../../components/constelacion/EmptyState';
 import { extraerLista, mensajeError } from '../../utils/api';
+import {
+  CONFIGURACION_POR_DEFECTO,
+  ahoraMs,
+  consultarConfiguracion,
+  dentroDelPlazo,
+  textoAnticipacion,
+  type ConfiguracionTutorias,
+} from '../../utils/configuracion';
 import { hoyLocalISO } from '../../utils/date';
 import {
   capitalizar,
@@ -153,15 +162,17 @@ interface DatosPanel {
   materias: MateriaAPI[];
   tutores: TutorAPI[];
   tutorias: TutoriaAPI[];
+  config: ConfiguracionTutorias;
   fallo: boolean;
 }
 
 const consultarPanel = async (): Promise<DatosPanel> => {
-  const [resBloques, resMaterias, resTutores, resTutorias] = await Promise.allSettled([
+  const [resBloques, resMaterias, resTutores, resTutorias, config] = await Promise.allSettled([
     api.get('/disponibilidad/disponibilidad/?estado=DISPONIBLE'),
     api.get('/catalogo/materias/'),
     api.get('/accounts/tutores/'),
     api.get('/tutorias/tutorias/'),
+    consultarConfiguracion(),
   ]);
 
   return {
@@ -169,6 +180,7 @@ const consultarPanel = async (): Promise<DatosPanel> => {
     materias: resMaterias.status === 'fulfilled' ? extraerLista<MateriaAPI>(resMaterias.value.data) : [],
     tutores: resTutores.status === 'fulfilled' ? extraerLista<TutorAPI>(resTutores.value.data) : [],
     tutorias: resTutorias.status === 'fulfilled' ? extraerLista<TutoriaAPI>(resTutorias.value.data) : [],
+    config: config.status === 'fulfilled' ? config.value : CONFIGURACION_POR_DEFECTO,
     fallo: resBloques.status === 'rejected',
   };
 };
@@ -188,6 +200,7 @@ export const BuscarTutorias = () => {
   const [materias, setMaterias] = useState<MateriaAPI[]>([]);
   const [tutores, setTutores] = useState<TutorAPI[]>([]);
   const [misTutorias, setMisTutorias] = useState<TutoriaAPI[]>([]);
+  const [config, setConfig] = useState<ConfiguracionTutorias>(CONFIGURACION_POR_DEFECTO);
 
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -203,12 +216,14 @@ export const BuscarTutorias = () => {
   const [confirmada, setConfirmada] = useState<BloqueAPI | null>(null);
 
   const hoy = hoyLocalISO();
+  const plazoReserva = config.horas_anticipacion_reservar;
 
   const aplicarDatos = useCallback((datos: DatosPanel) => {
     setBloques(datos.bloques);
     setMaterias(datos.materias);
     setTutores(datos.tutores);
     setMisTutorias(datos.tutorias);
+    setConfig(datos.config);
     setErrorCarga(
       datos.fallo ? 'No pudimos cargar los horarios disponibles. Intenta de nuevo en un momento.' : null,
     );
@@ -277,21 +292,44 @@ export const BuscarTutorias = () => {
     [tutoresPorId],
   );
 
+  /** Bloque que sigue abierto: futuro, con cupo y sin reserva propia. */
+  const bloqueVigente = useCallback(
+    (bloque: BloqueAPI): boolean => {
+      if ((bloque.estado || '').toUpperCase() !== 'DISPONIBLE') return false;
+      if (!bloque.fecha || bloque.fecha < hoy) return false;
+      if ((bloque.cupo_ocupado || 0) >= (bloque.cupo_total || 1)) return false;
+      if (idsReservados.has(bloque.id)) return false;
+      // Un bloque que ya empezó no se puede reservar (el backend lo rechaza).
+      if (bloque.fecha === hoy && horaCorta(bloque.hora_inicio) <= horaActual()) return false;
+      return true;
+    },
+    [hoy, idsReservados],
+  );
+
   const disponibles = useMemo(() => {
-    const ahora = horaActual();
+    const ahora = ahoraMs();
 
     return bloques
-      .filter((bloque) => {
-        if ((bloque.estado || '').toUpperCase() !== 'DISPONIBLE') return false;
-        if (!bloque.fecha || bloque.fecha < hoy) return false;
-        if ((bloque.cupo_ocupado || 0) >= (bloque.cupo_total || 1)) return false;
-        if (idsReservados.has(bloque.id)) return false;
-        // Un bloque que ya empezó no se puede reservar (el backend lo rechaza).
-        if (bloque.fecha === hoy && horaCorta(bloque.hora_inicio) <= ahora) return false;
-        return true;
-      })
+      .filter(
+        (bloque) =>
+          bloqueVigente(bloque) &&
+          dentroDelPlazo(bloque.fecha, bloque.hora_inicio, plazoReserva, ahora),
+      )
       .sort((a, b) => `${a.fecha}T${a.hora_inicio}`.localeCompare(`${b.fecha}T${b.hora_inicio}`));
-  }, [bloques, hoy, idsReservados]);
+  }, [bloques, bloqueVigente, plazoReserva]);
+
+  /** Horarios abiertos que ya quedaron fuera del plazo mínimo de reserva. */
+  const bloqueadosPorPlazo = useMemo(() => {
+    const ahora = ahoraMs();
+
+    return bloques
+      .filter(
+        (bloque) =>
+          bloqueVigente(bloque) &&
+          !dentroDelPlazo(bloque.fecha, bloque.hora_inicio, plazoReserva, ahora),
+      )
+      .sort((a, b) => `${a.fecha}T${a.hora_inicio}`.localeCompare(`${b.fecha}T${b.hora_inicio}`));
+  }, [bloques, bloqueVigente, plazoReserva]);
 
   // Primer horario del tutor pedido desde inicio: fija materia, modalidad,
   // fecha y horario mientras el estudiante no elija otra cosa.
@@ -385,6 +423,17 @@ export const BuscarTutorias = () => {
 
     if (!bloqueSeleccionado) {
       setErrorReserva('Selecciona un horario disponible para continuar.');
+      return;
+    }
+
+    if (
+      !dentroDelPlazo(bloqueSeleccionado.fecha, bloqueSeleccionado.hora_inicio, plazoReserva)
+    ) {
+      setErrorReserva(
+        `Este horario ya quedó fuera del plazo de reserva: las reservas se aceptan ${textoAnticipacion(
+          plazoReserva,
+        )}. Elige otro horario.`,
+      );
       return;
     }
 
@@ -599,6 +648,47 @@ export const BuscarTutorias = () => {
                     </span>
                   </div>
 
+                  <div className="mt-4 flex items-start gap-2.5 rounded-2xl bg-mist px-4 py-3 text-slate-ink">
+                    <InfoIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p className="text-[10.5px] leading-relaxed">
+                      {plazoReserva === 0
+                        ? 'Puedes reservar hasta el inicio de la tutoría.'
+                        : `Las reservas se cierran ${plazoReserva} h antes del inicio. Los horarios dentro de ese plazo aparecen bloqueados.`}
+                    </p>
+                  </div>
+
+                  {bloqueadosPorPlazo.length > 0 && (
+                    <div className="mt-3 rounded-2xl border border-advertencia/25 bg-advertencia/5 px-4 py-3">
+                      <p className="flex items-center gap-2 text-[11px] font-semibold text-advertencia">
+                        <ClockIcon className="h-3.5 w-3.5 shrink-0" />
+                        {bloqueadosPorPlazo.length === 1
+                          ? '1 horario fuera del plazo de reserva'
+                          : `${bloqueadosPorPlazo.length} horarios fuera del plazo de reserva`}
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {bloqueadosPorPlazo.slice(0, 4).map((bloque) => (
+                          <li
+                            key={bloque.id}
+                            className="flex flex-wrap items-baseline gap-x-2 text-[10.5px] text-slate-ink"
+                          >
+                            <span className="font-semibold">
+                              {fechaResumen(bloque.fecha)} · {hora12(horaCorta(bloque.hora_inicio))}
+                            </span>
+                            <span className="text-muted">{tutorDeBloque(bloque)}</span>
+                          </li>
+                        ))}
+                        {bloqueadosPorPlazo.length > 4 && (
+                          <li className="text-[10.5px] text-muted">
+                            y {bloqueadosPorPlazo.length - 4} más
+                          </li>
+                        )}
+                      </ul>
+                      <p className="mt-2 text-[10px] leading-relaxed text-muted">
+                        Las reservas se aceptan {textoAnticipacion(plazoReserva)}.
+                      </p>
+                    </div>
+                  )}
+
                   {cargando ? (
                     <div className="mt-5 space-y-3">
                       <div className="h-[68px] animate-pulse rounded-2xl bg-mist" />
@@ -608,7 +698,13 @@ export const BuscarTutorias = () => {
                     <div className="mt-5">
                       <EmptyState
                         titulo="No hay horarios disponibles"
-                        detalle="Cuando los tutores publiquen nuevos horarios aparecerán aquí."
+                        detalle={
+                          bloqueadosPorPlazo.length > 0
+                            ? `Los horarios abiertos ya están fuera del plazo: las reservas se aceptan ${textoAnticipacion(
+                                plazoReserva,
+                              )}.`
+                            : 'Cuando los tutores publiquen nuevos horarios aparecerán aquí.'
+                        }
                       />
                     </div>
                   ) : (
