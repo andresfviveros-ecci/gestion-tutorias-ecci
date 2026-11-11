@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
@@ -121,9 +122,62 @@ class DocenteMateriaSerializer(serializers.ModelSerializer):
         ]
 
     def validate_docente(self, value):
-        if not value.groups.filter(name='Docente').exists():
-            raise serializers.ValidationError('El usuario no es docente.')
-        return value
+        return validar_docente(value)
+
+
+def validar_docente(usuario):
+    """Una sola regla para asignar una materia o varias a la vez."""
+    if not usuario.groups.filter(name='Docente').exists():
+        raise serializers.ValidationError('El usuario no es docente.')
+    return usuario
+
+
+class AsignacionMateriasSerializer(serializers.Serializer):
+    """GT-251: varias materias a un docente en una sola petición. Si alguna
+    ya está asignada en el periodo o viene repetida, no se crea ninguna."""
+    docente = serializers.PrimaryKeyRelatedField(queryset=get_user_model().objects.all())
+    materias = serializers.ListField(
+        child=serializers.PrimaryKeyRelatedField(queryset=Materia.objects.all()),
+        allow_empty=False,
+        max_length=50,
+    )
+    periodo = serializers.PrimaryKeyRelatedField(
+        queryset=PeriodoAcademico.objects.all(),
+        required=False,
+        help_text='Por defecto, el periodo activo.',
+    )
+
+    def validate_docente(self, value):
+        return validar_docente(value)
+
+    def validate(self, attrs):
+        materias = attrs['materias']
+        periodo = attrs.get('periodo') or PeriodoAcademico.objects.filter(activo=True).first()
+        if periodo is None:
+            raise serializers.ValidationError({'periodo': 'No hay un periodo activo; indica el periodo.'})
+
+        if len({materia.pk for materia in materias}) != len(materias):
+            raise serializers.ValidationError({'materias': 'Hay materias repetidas en la lista.'})
+
+        # GT-252: si la relación ya existe se rechaza la petición completa.
+        ya_asignadas = DocenteMateria.objects.filter(
+            docente=attrs['docente'], periodo=periodo, materia__in=materias
+        ).select_related('materia')
+        if ya_asignadas:
+            raise serializers.ValidationError({'materias': [
+                f'El docente ya tiene asignada {asignacion.materia.nombre} en {periodo.codigo}.'
+                for asignacion in ya_asignadas
+            ]})
+
+        attrs['periodo'] = periodo
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        return DocenteMateria.objects.bulk_create([
+            DocenteMateria(docente=validated_data['docente'], materia=materia, periodo=validated_data['periodo'])
+            for materia in validated_data['materias']
+        ])
 
 
 class InscripcionSerializer(serializers.ModelSerializer):
