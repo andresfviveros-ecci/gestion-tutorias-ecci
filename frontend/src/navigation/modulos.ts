@@ -30,6 +30,13 @@ export const MODULOS: Modulo[] = [
   { id: 'estudiantes', etiqueta: 'Estudiantes', ruta: '/estudiantes', seccion: 'Usuarios', roles: ['admin'] },
   { id: 'tutores', etiqueta: 'Tutores', ruta: '/tutores', seccion: 'Usuarios', roles: ['admin'] },
   {
+    id: 'asignacion-materias',
+    etiqueta: 'Asignación de materias',
+    ruta: '/asignacion-materias',
+    seccion: 'Usuarios',
+    roles: ['admin'],
+  },
+  {
     id: 'coordinadores',
     etiqueta: 'Coordinadores',
     ruta: '/coordinadores',
