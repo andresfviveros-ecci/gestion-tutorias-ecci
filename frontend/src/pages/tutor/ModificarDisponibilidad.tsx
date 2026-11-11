@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { Loader } from '../../components/Loader';
 import { TutorRail } from '../../components/tutor/TutorRail';
+import { Modal } from '../../components/constelacion/Modal';
 import {
   CalendarIcon,
   CheckIcon,
@@ -46,6 +48,13 @@ interface MateriaBackend {
   id: number;
   nombre: string;
   activa?: boolean;
+}
+
+interface AsignacionDocenteMateria {
+  id: number;
+  materia: number | string;
+  materia_nombre?: string;
+  periodo: number | string;
 }
 
 const DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] as const;
@@ -151,7 +160,9 @@ export const ModificarDisponibilidad = () => {
   const [horaInicio, setHoraInicio] = useState('');
   const [horaFin, setHoraFin] = useState('');
   const [modalidad, setModalidad] = useState<'VIRTUAL' | 'PRESENCIAL'>('VIRTUAL');
+  const [ubicacionOEnlace, setUbicacionOEnlace] = useState('');
   const [observaciones, setObservaciones] = useState('');
+  const [confirmarReservas, setConfirmarReservas] = useState(false);
 
   const [error, setError] = useState<{ titulo: string; detalle: string } | null>(null);
   const [exito, setExito] = useState<string | null>(null);
@@ -169,21 +180,39 @@ export const ModificarDisponibilidad = () => {
         setFecha(data.fecha);
         setHoraInicio(horaCorta(data.hora_inicio));
         setHoraFin(horaCorta(data.hora_fin));
-        setModalidad((data.modalidad || '').toUpperCase() === 'PRESENCIAL' ? 'PRESENCIAL' : 'VIRTUAL');
+        const esPresencial = (data.modalidad || '').toUpperCase() === 'PRESENCIAL';
+        setModalidad(esPresencial ? 'PRESENCIAL' : 'VIRTUAL');
+        setUbicacionOEnlace(esPresencial ? (data.lugar ?? '') : (data.enlace_virtual ?? ''));
         setObservaciones(data.observaciones || '');
 
-        const [resMaterias, resBloques] = await Promise.allSettled([
-          api.get('/catalogo/materias/'),
+        const [resAsignaciones, resBloques] = await Promise.allSettled([
+          // Solo las materias que el docente tiene asignadas: el backend
+          // rechaza el PATCH si se cambia a una materia no habilitada.
+          api.get('/catalogo/docentes-materias/?docente=me'),
           api.get('/disponibilidad/disponibilidad/?docente=me&incluir_pasados=1'),
         ]);
 
         if (!activo) return;
 
-        if (resMaterias.status === 'fulfilled') {
-          const lista = extraerLista<MateriaBackend>(resMaterias.value.data).filter(
-            (materia) => materia.activa !== false,
-          );
-          setMaterias(lista);
+        if (resAsignaciones.status === 'fulfilled') {
+          const asignadas = extraerLista<AsignacionDocenteMateria>(resAsignaciones.value.data)
+            .filter((asignacion) => String(asignacion.periodo) === String(data.periodo))
+            .map((asignacion) => ({
+              id: Number(asignacion.materia),
+              nombre: asignacion.materia_nombre || `Materia ${asignacion.materia}`,
+            }));
+
+          // La materia actual se conserva aunque ya no esté asignada: el
+          // backend permite mantenerla al editar y el selector no queda vacío.
+          const actual = idDeMateria(data.materia);
+          if (actual !== '' && !asignadas.some((materia) => materia.id === actual)) {
+            asignadas.unshift({
+              id: actual,
+              nombre: data.materia_nombre || 'Materia actual',
+            });
+          }
+
+          setMaterias(asignadas);
         }
 
         if (resBloques.status === 'fulfilled') {
@@ -214,13 +243,12 @@ export const ModificarDisponibilidad = () => {
   const diasSemana = useMemo(() => diasDeLaSemanaDe(fecha || hoyLocalISO()), [fecha]);
 
   const materiaNombre = useMemo(() => {
-    if (bloque?.materia_nombre) return bloque.materia_nombre;
     const encontrada = materias.find((materia) => String(materia.id) === String(materiaId));
     if (encontrada) return encontrada.nombre;
     if (bloque && typeof bloque.materia === 'object' && bloque.materia?.nombre) {
       return bloque.materia.nombre;
     }
-    return 'Área por definir';
+    return bloque?.materia_nombre ?? 'Área por definir';
   }, [bloque, materias, materiaId]);
 
   const minutos = minutosEntre(horaInicio, horaFin);
@@ -243,6 +271,7 @@ export const ModificarDisponibilidad = () => {
   }, [fecha, horaInicio, horaFin, minutos, materiaNombre, modalidad]);
 
   const estadoBloque = (bloque?.estado || '').toUpperCase();
+  const reservados = bloque?.cupo_ocupado ?? 0;
   const estadoTexto =
     estadoBloque === 'DISPONIBLE'
       ? 'Disponibilidad publicada'
@@ -260,6 +289,12 @@ export const ModificarDisponibilidad = () => {
   const limpiarAvisos = () => {
     setExito(null);
     setError(null);
+  };
+
+  const cambiarModalidad = (valor: 'VIRTUAL' | 'PRESENCIAL') => {
+    setModalidad(valor);
+    setUbicacionOEnlace('');
+    limpiarAvisos();
   };
 
   const describirError = (err: unknown): { titulo: string; detalle: string } => {
@@ -292,7 +327,34 @@ export const ModificarDisponibilidad = () => {
     };
   };
 
-  const guardar = async (event: FormEvent) => {
+  const ejecutarGuardado = async () => {
+    setExito(null);
+    setError(null);
+    setGuardando(true);
+    setConfirmarReservas(false);
+
+    try {
+      const { data } = await api.patch<BloqueBackend>(`/disponibilidad/${id}/actualizar/`, {
+        materia: Number(materiaId),
+        fecha,
+        hora_inicio: horaInicio,
+        hora_fin: horaFin,
+        modalidad,
+        lugar: modalidad === 'PRESENCIAL' ? ubicacionOEnlace.trim() : null,
+        enlace_virtual: modalidad === 'VIRTUAL' ? ubicacionOEnlace.trim() : null,
+        observaciones: observaciones.trim() || null,
+      });
+
+      setBloque(data);
+      setExito('Los cambios se guardaron correctamente y el horario publicado quedó actualizado.');
+    } catch (err) {
+      setError(describirError(err));
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const guardar = (event: FormEvent) => {
     event.preventDefault();
     setExito(null);
     setError(null);
@@ -337,24 +399,24 @@ export const ModificarDisponibilidad = () => {
       return;
     }
 
-    setGuardando(true);
-    try {
-      const { data } = await api.patch<BloqueBackend>(`/disponibilidad/${id}/actualizar/`, {
-        materia: Number(materiaId),
-        fecha,
-        hora_inicio: horaInicio,
-        hora_fin: horaFin,
-        modalidad,
-        observaciones: observaciones.trim() || null,
+    if (!ubicacionOEnlace.trim()) {
+      setError({
+        titulo: 'Revisa los datos del horario',
+        detalle:
+          modalidad === 'VIRTUAL'
+            ? 'Agrega el enlace de la reunión para la modalidad virtual.'
+            : 'Agrega el lugar o aula para la modalidad presencial.',
       });
-
-      setBloque(data);
-      setExito('Los cambios se guardaron correctamente y el horario publicado quedó actualizado.');
-    } catch (err) {
-      setError(describirError(err));
-    } finally {
-      setGuardando(false);
+      return;
     }
+
+    // Con estudiantes reservados se pide confirmación antes de mover el bloque.
+    if (reservados > 0) {
+      setConfirmarReservas(true);
+      return;
+    }
+
+    void ejecutarGuardado();
   };
 
   if (noEncontrado) {
@@ -442,6 +504,22 @@ export const ModificarDisponibilidad = () => {
                     : 'No publicado'}
                 </span>
               </div>
+
+              {!cargando && reservados > 0 && (
+                <div
+                  role="status"
+                  className="mt-5 rounded-2xl border border-advertencia/30 bg-advertencia/5 px-4 py-3"
+                >
+                  <p className="text-[12.3px] font-semibold text-advertencia">
+                    Este horario ya tiene {reservados}{' '}
+                    {reservados === 1 ? 'estudiante con reserva' : 'estudiantes con reserva'}
+                  </p>
+                  <p className="mt-1 text-[11.4px] leading-relaxed text-advertencia/90">
+                    Si cambias la fecha u hora, las reservas existentes se mueven con el bloque.
+                    Avisa a los estudiantes antes de guardar.
+                  </p>
+                </div>
+              )}
 
               {cargando ? (
                 <div className="mt-5 space-y-3">
@@ -574,16 +652,39 @@ export const ModificarDisponibilidad = () => {
                       <select
                         id="modalidad"
                         value={modalidad}
-                        onChange={(event) => {
-                          setModalidad(event.target.value as 'VIRTUAL' | 'PRESENCIAL');
-                          limpiarAvisos();
-                        }}
+                        onChange={(event) =>
+                          cambiarModalidad(event.target.value as 'VIRTUAL' | 'PRESENCIAL')
+                        }
                         className={`${inputClass} cursor-pointer`}
                       >
                         <option value="VIRTUAL">Virtual</option>
                         <option value="PRESENCIAL">Presencial</option>
                       </select>
                     </Field>
+
+                    <div className="sm:col-span-2">
+                      <Field
+                        label={modalidad === 'VIRTUAL' ? 'Enlace de la reunión' : 'Lugar / Aula'}
+                        htmlFor="ubicacion-enlace"
+                      >
+                        <input
+                          id="ubicacion-enlace"
+                          type={modalidad === 'VIRTUAL' ? 'url' : 'text'}
+                          required
+                          placeholder={
+                            modalidad === 'VIRTUAL'
+                              ? 'https://meet.google.com/...'
+                              : 'Bloque C, aula 302'
+                          }
+                          value={ubicacionOEnlace}
+                          onChange={(event) => {
+                            setUbicacionOEnlace(event.target.value);
+                            limpiarAvisos();
+                          }}
+                          className={inputClass}
+                        />
+                      </Field>
+                    </div>
 
                     <div className="sm:col-span-2">
                       <Field label="Nota para estudiantes (opcional)" htmlFor="observaciones">
@@ -694,6 +795,48 @@ export const ModificarDisponibilidad = () => {
           </div>
         </div>
       </main>
+
+      <AnimatePresence>
+        {confirmarReservas && (
+          <Modal
+            onCerrar={() => setConfirmarReservas(false)}
+            tituloId="modal-confirmar-reservas"
+            eyebrow="Cambio con reservas"
+            titulo="Este horario ya tiene reservas"
+            ancho="md"
+            cerrable={!guardando}
+          >
+            <div className="px-6 pb-6 pt-3 sm:px-7">
+              <p className="text-[12.5px] leading-relaxed text-muted">
+                {reservados === 1
+                  ? 'Un estudiante ya reservó este horario.'
+                  : `${reservados} estudiantes ya reservaron este horario.`}{' '}
+                Si mueves el bloque, las reservas existentes también cambian de fecha y hora.
+                Avisa a los estudiantes antes de confirmar.
+              </p>
+
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setConfirmarReservas(false)}
+                  disabled={guardando}
+                  className="h-11 rounded-full bg-mist px-5 text-[12.7px] font-semibold text-tinta transition-colors hover:bg-faint disabled:opacity-60"
+                >
+                  Volver
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void ejecutarGuardado()}
+                  disabled={guardando}
+                  className="h-11 rounded-full bg-violeta-accion px-6 text-[12.7px] font-semibold text-white transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {guardando ? 'Guardando...' : 'Guardar de todas formas'}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
