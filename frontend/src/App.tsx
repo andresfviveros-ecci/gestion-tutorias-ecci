@@ -8,6 +8,7 @@ import { Estudiantes } from './pages/Estudiantes';
 import { Tutores } from './pages/Tutores';
 import { Coordinadores } from './pages/Coordinadores';
 import { GestionarUsuarios } from './pages/GestionarUsuarios';
+import { ConfiguracionGeneral } from './pages/ConfiguracionGeneral';
 import { TutorPanel } from './pages/tutor/TutorPanel';
 import { MiDisponibilidad } from './pages/tutor/MiDisponibilidad';
 import { Calendario } from './pages/tutor/Calendario';
@@ -329,6 +330,14 @@ export const App: React.FC = () => {
               <Layout>
                 <GestionarUsuarios />
               </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/configuracion"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <ConfiguracionGeneral />
             </ProtectedRoute>
           }
         />
