@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { Loader } from '../../components/Loader';
 import { TutorRail } from '../../components/tutor/TutorRail';
+import { StudentRail } from '../../components/estudiante/StudentRail';
 import { CalendarIcon, CheckIcon, ClockIcon, LayersIcon } from '../../components/constelacion/Icons';
 import { api } from '../../api/axios';
 import { extraerLista, mensajeError } from '../../utils/api';
 import { CONFIGURACION_POR_DEFECTO, consultarConfiguracion } from '../../utils/configuracion';
 import { fechaLocalISO, hoyLocalISO } from '../../utils/date';
+import { useAuthStore } from '../../store/useAuthStore';
 import {
   diasDeLaSemanaDe,
   duracionLegible,
@@ -109,6 +112,8 @@ const InfoRow = ({ icon, titulo, detalle }: InfoRowProps) => (
 export const MiDisponibilidad = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const role = useAuthStore((state) => state.user?.role);
+  const esRolEstudiante = role === 'estudiante';
 
   const [materias, setMaterias] = useState<MateriaBackend[]>([]);
   const [, setPeriodos] = useState<PeriodoBackend[]>([]);
@@ -128,7 +133,7 @@ export const MiDisponibilidad = () => {
 
   // GT-255: el tope semanal solo aplica a tutores estudiantes (RF-06).
   const [config, setConfig] = useState(CONFIGURACION_POR_DEFECTO);
-  const [esDocente, setEsDocente] = useState<boolean | null>(null);
+  const [esTutorEstudiante, setEsTutorEstudiante] = useState<boolean | null>(null);
   const [cuposInfo, setCuposInfo] = useState<{ semana: string; total: number } | null>(null);
   const [errorCupos, setErrorCupos] = useState<{ semana: string; mensaje: string } | null>(null);
   const [versionCupos, setVersionCupos] = useState(0);
@@ -154,8 +159,12 @@ export const MiDisponibilidad = () => {
       if (resConfig.status === 'fulfilled') setConfig(resConfig.value);
 
       if (resMe.status === 'fulfilled') {
-        const grupos = (resMe.value.data?.grupos ?? []) as string[];
-        setEsDocente(grupos.includes('Docente'));
+        const datos = resMe.value.data as { grupos?: string[]; puede_publicar?: boolean };
+        const grupos = datos.grupos ?? [];
+        const docente = grupos.includes('Docente');
+        const estudiante = !docente && grupos.includes('Estudiante');
+
+        setEsTutorEstudiante(estudiante && Boolean(datos.puede_publicar));
       }
 
       const listaPeriodos =
@@ -238,7 +247,7 @@ export const MiDisponibilidad = () => {
   // GT-255: cupos ya publicados en la semana del día seleccionado. Solo se
   // consultan para tutores estudiantes; los docentes no tienen tope (RF-06).
   useEffect(() => {
-    if (esDocente !== false) return;
+    if (esTutorEstudiante !== true) return;
 
     let activo = true;
 
@@ -267,9 +276,9 @@ export const MiDisponibilidad = () => {
     return () => {
       activo = false;
     };
-  }, [esDocente, lunesISO, domingoISO, versionCupos]);
+  }, [esTutorEstudiante, lunesISO, domingoISO, versionCupos]);
 
-  const aplicaLimite = esDocente === false;
+  const aplicaLimite = esTutorEstudiante === true;
   const limiteSemanal = config.cupos_semanales_tutor;
   const cuposSemana = cuposInfo?.semana === lunesISO ? cuposInfo.total : null;
   const errorSemana = errorCupos?.semana === lunesISO ? errorCupos.mensaje : null;
@@ -441,16 +450,41 @@ export const MiDisponibilidad = () => {
     }
   };
 
+  if (!loading && esRolEstudiante && esTutorEstudiante === false) {
+    return (
+      <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
+        <StudentRail />
+        <main className="min-w-0 flex-1 p-5 sm:p-6 lg:p-8">
+          <div className="mx-auto max-w-[640px] rounded-[32px] bg-white p-8 text-center">
+            <h1 className="text-[22px] font-semibold text-tinta">Aún no puedes publicar horarios</h1>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
+              Necesitas una solicitud de tutor aprobada por el docente de la materia. Cuando la
+              tengas, esta sección aparecerá en tu menú.
+            </p>
+            <Link
+              to="/estudiante/dashboard"
+              className="mt-5 inline-flex h-11 items-center justify-center rounded-full bg-violeta-accion px-6 text-[12.5px] font-semibold text-white transition-colors hover:bg-violeta-profundo"
+            >
+              Volver al panel
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
       <Loader hidden={!loading} />
-      <TutorRail />
+      {esRolEstudiante ? <StudentRail /> : <TutorRail />}
 
       <main className="min-w-0 flex-1">
         <div className="mx-auto w-full max-w-[1600px] px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
           <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-[11.5px] text-muted">Mi trabajo · Tutor</p>
+              <p className="text-[11.5px] text-muted">
+                {esRolEstudiante ? 'Mi trabajo · Estudiante' : 'Mi trabajo · Tutor'}
+              </p>
               <h1 className="mt-1 text-[30px] font-medium leading-tight tracking-[-0.02em] text-tinta sm:text-[36px]">
                 Publicar disponibilidad
               </h1>

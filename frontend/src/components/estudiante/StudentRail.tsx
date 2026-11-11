@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../store/useAuthStore";
+import { api } from "../../api/axios";
 
 interface RailIconProps {
   label: string;
@@ -103,6 +104,13 @@ const ClockIcon: React.FC = () => (
   </svg>
 );
 
+const CalendarIcon: React.FC = () => (
+  <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+    <rect x="3" y="4.5" width="14" height="12" rx="2.2" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M3 8h14M6.5 3v3M13.5 3v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
 const HomeIcon: React.FC = () => (
   <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
     <path
@@ -132,6 +140,25 @@ export const StudentRail: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
+  // GT-255: solo el estudiante con una solicitud de tutor aprobada publica horarios.
+  const [puedePublicar, setPuedePublicar] = useState(false);
+
+  useEffect(() => {
+    let activo = true;
+
+    api
+      .get('/accounts/me/')
+      .then(({ data }) => {
+        if (activo) setPuedePublicar(Boolean(data?.puede_publicar));
+      })
+      .catch(() => {
+        // Sin la consulta se oculta la entrada; el resto del rail sigue igual.
+      });
+
+    return () => {
+      activo = false;
+    };
+  }, []);
 
   const nombre =
     user?.nombre ||
@@ -167,6 +194,11 @@ export const StudentRail: React.FC = () => {
         <RailIcon to="/estudiante/mis-reservas" label="Mis reservas">
           <ClockIcon />
         </RailIcon>
+        {puedePublicar && (
+          <RailIcon to="/tutor/mi-disponibilidad" label="Mi disponibilidad">
+            <CalendarIcon />
+          </RailIcon>
+        )}
       </div>
 
       <div className="flex flex-col items-center gap-2">
