@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { CalendarIcon, ClockIcon } from '../constelacion/Icons';
+import { CalendarIcon, ClockIcon, ListIcon } from '../constelacion/Icons';
 import { useAuthStore } from '../../store/useAuthStore';
 
 interface RailIconProps {
@@ -113,6 +113,9 @@ export const TutorRail: React.FC = () => {
           <RailIcon to="/tutor/dashboard" label="Panel">
             <GridIcon />
           </RailIcon>
+          <RailIcon to="/tutor/solicitudes" label="Solicitudes de tutor">
+            <ListIcon className="h-5 w-5" />
+          </RailIcon>
           <RailIcon to="/tutor/mi-disponibilidad" label="Gestión de disponibilidad">
             <CalendarIcon className="h-5 w-5" />
           </RailIcon>
@@ -146,6 +149,9 @@ export const TutorRail: React.FC = () => {
       >
         <RailIcon to="/tutor/dashboard" label="Panel">
           <GridIcon />
+        </RailIcon>
+        <RailIcon to="/tutor/solicitudes" label="Solicitudes de tutor">
+          <ListIcon className="h-5 w-5" />
         </RailIcon>
         <RailIcon to="/tutor/mi-disponibilidad" label="Gestión de disponibilidad">
           <CalendarIcon className="h-5 w-5" />
