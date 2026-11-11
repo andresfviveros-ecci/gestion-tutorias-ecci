@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { api } from '../api/axios';
 import { AdminRail } from '../components/admin/AdminRail';
-import { SegmentedFilter } from '../components/constelacion/Filters';
-import type { OpcionSegmento } from '../components/constelacion/Filters';
 import { Toast } from '../components/constelacion/Toast';
 import { CalendarIcon, ClockIcon } from '../components/constelacion/Icons';
 import { useAuthStore } from '../store/useAuthStore';
@@ -20,31 +18,6 @@ interface Original {
   reservar: number;
   cancelar: number;
 }
-
-type ModoLimite = 'tutorias' | 'cupos';
-
-const MODOS: OpcionSegmento<ModoLimite>[] = [
-  { valor: 'tutorias', texto: 'Tutorías' },
-  { valor: 'cupos', texto: 'Cupos' },
-];
-
-const CLAVE_MODO = 'aula_config_modo_limite';
-
-const leerModo = (): ModoLimite => {
-  try {
-    return localStorage.getItem(CLAVE_MODO) === 'cupos' ? 'cupos' : 'tutorias';
-  } catch {
-    return 'tutorias';
-  }
-};
-
-const guardarModo = (modo: ModoLimite) => {
-  try {
-    localStorage.setItem(CLAVE_MODO, modo);
-  } catch {
-    // Si el navegador no deja almacenar, el modo sigue solo en memoria.
-  }
-};
 
 const acotar = (valor: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, valor));
@@ -250,7 +223,6 @@ const Plazo = ({ titulo, descripcion, valor, onChange, ejemplo }: PlazoProps) =>
 
 interface VistaPreviaProps {
   limite: number;
-  modo: ModoLimite;
   reservar: number;
   cancelar: number;
   simulacion: number;
@@ -259,13 +231,11 @@ interface VistaPreviaProps {
 
 const VistaPrevia = ({
   limite,
-  modo,
   reservar,
   cancelar,
   simulacion,
   onSimulacion,
 }: VistaPreviaProps) => {
-  const unidad = modo === 'tutorias' ? 'tutorías' : 'cupos';
   const reservaAbierta = simulacion >= reservar;
   const cancelacionAbierta = simulacion >= cancelar;
   const usados = Math.max(limite - 1, 0);
@@ -288,15 +258,9 @@ const VistaPrevia = ({
 
   const textoTutor =
     disponibles === 0
-      ? `Alcanzó el tope de ${limite} ${unidad} esta semana.`
+      ? `Alcanzó el tope de ${limite} cupos esta semana.`
       : `Puede publicar ${disponibles} ${
-          unidad === 'tutorías'
-            ? disponibles === 1
-              ? 'tutoría'
-              : 'tutorías'
-            : disponibles === 1
-              ? 'cupo'
-              : 'cupos'
+          disponibles === 1 ? 'cupo' : 'cupos'
         } más esta semana.`;
 
   return (
@@ -407,7 +371,7 @@ const VistaPrevia = ({
               <span className="text-[9.5px] text-muted">esta semana</span>
             </div>
             <p className="mt-0.5 text-[9.5px] text-muted">
-              {usados} de {limite} {unidad}
+              {usados} de {limite} cupos
             </p>
             <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-mist">
               <div
@@ -457,7 +421,6 @@ export const ConfiguracionGeneral = () => {
   const [toast, setToast] = useState<string | null>(null);
 
   const [limite, setLimite] = useState(10);
-  const [modo, setModo] = useState<ModoLimite>(leerModo);
   const [reservar, setReservar] = useState(2);
   const [cancelar, setCancelar] = useState(1);
   const [simulacion, setSimulacion] = useState(3);
@@ -525,11 +488,6 @@ export const ConfiguracionGeneral = () => {
   const sucio =
     original !== null &&
     (limite !== original.limite || reservar !== original.reservar || cancelar !== original.cancelar);
-
-  const cambiarModo = (nuevo: ModoLimite) => {
-    setModo(nuevo);
-    guardarModo(nuevo);
-  };
 
   const guardar = async () => {
     setGuardando(true);
@@ -607,7 +565,7 @@ export const ConfiguracionGeneral = () => {
               <ResumenPill
                 valor={cargando ? '—' : String(limite)}
                 etiqueta="Tope semanal"
-                detalle={modo === 'tutorias' ? 'tutorías por semana' : 'cupos por semana'}
+                detalle="cupos por semana"
                 clase="bg-arena/50 text-tinta"
               />
               <ResumenPill
@@ -666,14 +624,9 @@ export const ConfiguracionGeneral = () => {
                   </div>
 
                   <div className="mt-5">
-                    <p className="text-[11px] font-medium text-slate-ink">Medir el tipo por</p>
-                    <div className="mt-2">
-                      <SegmentedFilter opciones={MODOS} valor={modo} onChange={cambiarModo} />
-                    </div>
-                    <p className="mt-2 text-[10.5px] leading-relaxed text-muted">
-                      {modo === 'tutorias'
-                        ? 'Cuenta cada bloque de tutoría publicado, sin importar cuántos estudiantes pueda recibir.'
-                        : 'Cuenta cada cupo disponible en los bloques publicados durante la semana.'}
+                    <p className="text-[10.5px] leading-relaxed text-muted">
+                      El tope se mide en cupos disponibles por semana: cada cupo que un tutor publica
+                      en sus bloques cuenta para el límite.
                     </p>
                   </div>
 
@@ -686,7 +639,7 @@ export const ConfiguracionGeneral = () => {
                           onChange={(valor) => setLimite(acotar(valor, 1, 99))}
                           min={1}
                           max={99}
-                          unidad={modo === 'tutorias' ? 'tutorías' : 'cupos'}
+                          unidad="cupos"
                           ancho="min-w-[128px]"
                           ariaLabel="Máximo por tutor"
                         />
@@ -711,7 +664,7 @@ export const ConfiguracionGeneral = () => {
                   <p className="mt-4 text-[10.5px] leading-relaxed text-muted">
                     Cada tutor podrá publicar hasta{' '}
                     <strong className="font-semibold text-tinta">
-                      {limite} {modo === 'tutorias' ? 'tutorías' : 'cupos'}
+                      {limite} cupos
                     </strong>{' '}
                     por semana. El tope aplica a las futuras publicaciones; lo ya publicado no se
                     modifica.
@@ -769,7 +722,6 @@ export const ConfiguracionGeneral = () => {
 
               <VistaPrevia
                 limite={limite}
-                modo={modo}
                 reservar={reservar}
                 cancelar={cancelar}
                 simulacion={simulacion}

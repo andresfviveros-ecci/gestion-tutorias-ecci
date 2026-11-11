@@ -1,7 +1,13 @@
 import type { FC, ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { ListIcon, UserIcon, UsersIcon } from '../constelacion/Icons';
+import {
+  LayersIcon,
+  ListIcon,
+  UserIcon,
+  UsersIcon,
+} from '../constelacion/Icons';
 import { useAuthStore } from '../../store/useAuthStore';
+import { modulosVisibles, type Modulo } from '../../navigation/modulos';
 
 interface RailIconProps {
   label: string;
@@ -76,6 +82,48 @@ const HomeIcon: FC = () => (
   </svg>
 );
 
+const ShieldIcon: FC = () => (
+  <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+    <path
+      d="M10 2.8 16 5v4.6c0 3.6-2.4 6.4-6 7.6-3.6-1.2-6-4-6-7.6V5l6-2.2Z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+    <path
+      d="m7.6 9.8 1.7 1.7 3.2-3.4"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/** Icono de cada módulo; si se agrega uno nuevo en modulos.ts, cae en el genérico. */
+const iconoDeModulo = (id: Modulo['id']): ReactNode => {
+  switch (id) {
+    case 'dashboard':
+      return <GridIcon />;
+    case 'estudiantes':
+      return <UsersIcon className="h-5 w-5" />;
+    case 'tutores':
+      return <UserIcon className="h-5 w-5" />;
+    case 'asignacion-materias':
+      return <LayersIcon className="h-5 w-5" />;
+    case 'coordinadores':
+      return <ShieldIcon />;
+    case 'gestionar-usuarios':
+      return <ListIcon className="h-5 w-5" />;
+    case 'configuracion':
+      return <SlidersIcon />;
+    case 'inicio':
+      return <HomeIcon />;
+    default:
+      return <GridIcon />;
+  }
+};
+
 const LogoutIcon: FC = () => (
   <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
     <path d="M8 3.5H5a1.5 1.5 0 0 0-1.5 1.5v10A1.5 1.5 0 0 0 5 16.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -106,6 +154,12 @@ export const AdminRail: FC = () => {
     navigate('/', { replace: true, state: {} });
   };
 
+  // El rail sale de la misma lista que el menú legacy: los módulos nuevos
+  // aparecen aquí sin tener que actualizar este componente.
+  const modulos = modulosVisibles({ role: 'admin', grupos: user?.grupos });
+  const principales = modulos.filter((modulo) => modulo.seccion !== 'Cuenta');
+  const secundarios = modulos.filter((modulo) => modulo.seccion === 'Cuenta');
+
   return (
     <>
       <aside className="sticky top-0 z-30 hidden h-screen w-[76px] shrink-0 flex-col items-center justify-between border-r border-faint bg-white py-6 font-constelacion md:flex">
@@ -119,27 +173,19 @@ export const AdminRail: FC = () => {
             <AulaLibreMark className="h-7 w-7" />
           </NavLink>
 
-          <RailIcon to="/dashboard" label="Panel">
-            <GridIcon />
-          </RailIcon>
-          <RailIcon to="/estudiantes" label="Estudiantes">
-            <UsersIcon className="h-5 w-5" />
-          </RailIcon>
-          <RailIcon to="/tutores" label="Tutores">
-            <UserIcon className="h-5 w-5" />
-          </RailIcon>
-          <RailIcon to="/gestionar-usuarios" label="Gestionar usuarios">
-            <ListIcon className="h-5 w-5" />
-          </RailIcon>
-          <RailIcon to="/configuracion" label="Configuración">
-            <SlidersIcon />
-          </RailIcon>
+          {principales.map((modulo) => (
+            <RailIcon key={modulo.id} to={modulo.ruta} label={modulo.etiqueta}>
+              {iconoDeModulo(modulo.id)}
+            </RailIcon>
+          ))}
         </div>
 
         <div className="flex flex-col items-center gap-2">
-          <RailIcon to="/dashboard" label="Página de inicio">
-            <HomeIcon />
-          </RailIcon>
+          {secundarios.map((modulo) => (
+            <RailIcon key={modulo.id} to={modulo.ruta} label={modulo.etiqueta}>
+              {iconoDeModulo(modulo.id)}
+            </RailIcon>
+          ))}
           <RailIcon onClick={handleLogout} label="Cerrar sesión">
             <span className="text-peligro">
               <LogoutIcon />
@@ -157,17 +203,13 @@ export const AdminRail: FC = () => {
 
       <nav
         aria-label="Navegación del administrador"
-        className="fixed inset-x-0 bottom-0 z-30 flex h-16 items-center justify-around border-t border-faint bg-white px-2 font-constelacion md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 flex h-16 items-center justify-start gap-1 overflow-x-auto border-t border-faint bg-white px-2 font-constelacion md:hidden"
       >
-        <RailIcon to="/dashboard" label="Panel">
-          <GridIcon />
-        </RailIcon>
-        <RailIcon to="/configuracion" label="Configuración">
-          <SlidersIcon />
-        </RailIcon>
-        <RailIcon to="/dashboard" label="Página de inicio">
-          <HomeIcon />
-        </RailIcon>
+        {[...principales, ...secundarios].map((modulo) => (
+          <RailIcon key={modulo.id} to={modulo.ruta} label={modulo.etiqueta}>
+            {iconoDeModulo(modulo.id)}
+          </RailIcon>
+        ))}
         <RailIcon onClick={handleLogout} label="Cerrar sesión">
           <span className="text-peligro">
             <LogoutIcon />
