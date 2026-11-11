@@ -11,7 +11,7 @@ interface ModalProps {
   /** Color del texto superior; por defecto muted. */
   eyebrowClassName?: string;
   titulo: string;
-  ancho?: 'md' | 'lg';
+  ancho?: 'md' | 'lg' | 'xl';
   /** Cuando es false (p. ej. mientras se envía), ni Escape ni el fondo cierran. */
   cerrable?: boolean;
   children: ReactNode;
@@ -62,7 +62,9 @@ export const Modal = ({
         exit={{ opacity: 0, y: 16, scale: 0.98 }}
         transition={{ duration: 0.22 }}
         onClick={(event) => event.stopPropagation()}
-        className={`w-full ${ancho === 'md' ? 'max-w-md' : 'max-w-lg'} overflow-hidden rounded-[28px] bg-white shadow-constelacion-float`}
+        className={`w-full ${
+          ancho === 'md' ? 'max-w-md' : ancho === 'xl' ? 'max-w-4xl' : 'max-w-lg'
+        } overflow-hidden rounded-[28px] bg-white shadow-constelacion-float`}
       >
         <div className="flex items-start justify-between gap-3 px-6 pt-6 sm:px-7">
           <div>
