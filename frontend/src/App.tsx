@@ -15,6 +15,7 @@ import { StudentHome } from './pages/estudiante/StudentHome';
 import { StudentPanel } from './pages/estudiante/StudentPanel';
 import { BuscarTutorias } from './pages/estudiante/BuscarTutorias';
 import { MisReservas } from './pages/estudiante/MisReservas';
+import { PostulateComoTutor } from './pages/estudiante/PostulateComoTutor';
 import { Layout } from './components/Layout';
 import { MODULOS, normalizarRol, RUTA_INICIO } from './navigation/modulos';
 
@@ -257,6 +258,14 @@ export const App: React.FC = () => {
           element={
             <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
               <BuscarTutorias />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/estudiante/postularme-tutor"
+          element={
+            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
+              <PostulateComoTutor />
             </ProtectedRoute>
           }
         />
