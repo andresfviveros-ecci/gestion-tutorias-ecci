@@ -3,7 +3,7 @@ import axios from 'axios';
 import { api } from '../api/axios';
 import { AdminRail } from '../components/admin/AdminRail';
 import { Toast } from '../components/constelacion/Toast';
-import { CalendarIcon, ClockIcon } from '../components/constelacion/Icons';
+import { CalendarIcon, CheckIcon, ClockIcon } from '../components/constelacion/Icons';
 import { useAuthStore } from '../store/useAuthStore';
 import { mensajeError } from '../utils/api';
 
@@ -11,12 +11,15 @@ interface Configuracion {
   cupos_semanales_tutor: number;
   horas_anticipacion_reservar: number;
   horas_anticipacion_cancelar: number;
+  /** RF-02: nota desde la que una materia cursada cuenta como aprobada. */
+  nota_aprobatoria: number;
 }
 
 interface Original {
   limite: number;
   reservar: number;
   cancelar: number;
+  aprobatoria: number;
 }
 
 const acotar = (valor: number, min: number, max: number): number =>
@@ -423,6 +426,7 @@ export const ConfiguracionGeneral = () => {
   const [limite, setLimite] = useState(10);
   const [reservar, setReservar] = useState(2);
   const [cancelar, setCancelar] = useState(1);
+  const [aprobatoria, setAprobatoria] = useState(3);
   const [simulacion, setSimulacion] = useState(3);
   const [original, setOriginal] = useState<Original | null>(null);
 
@@ -451,10 +455,12 @@ export const ConfiguracionGeneral = () => {
           limite: datos.config.cupos_semanales_tutor,
           reservar: datos.config.horas_anticipacion_reservar,
           cancelar: datos.config.horas_anticipacion_cancelar,
+          aprobatoria: Number(datos.config.nota_aprobatoria) || 3,
         };
         setLimite(cargado.limite);
         setReservar(cargado.reservar);
         setCancelar(cargado.cancelar);
+        setAprobatoria(cargado.aprobatoria);
         setOriginal(cargado);
       }
       setErrorCarga(datos.error);
@@ -487,7 +493,10 @@ export const ConfiguracionGeneral = () => {
 
   const sucio =
     original !== null &&
-    (limite !== original.limite || reservar !== original.reservar || cancelar !== original.cancelar);
+    (limite !== original.limite ||
+      reservar !== original.reservar ||
+      cancelar !== original.cancelar ||
+      aprobatoria !== original.aprobatoria);
 
   const guardar = async () => {
     setGuardando(true);
@@ -498,16 +507,19 @@ export const ConfiguracionGeneral = () => {
         cupos_semanales_tutor: limite,
         horas_anticipacion_reservar: reservar,
         horas_anticipacion_cancelar: cancelar,
+        nota_aprobatoria: aprobatoria,
       });
 
       const guardado: Original = {
         limite: data.cupos_semanales_tutor,
         reservar: data.horas_anticipacion_reservar,
         cancelar: data.horas_anticipacion_cancelar,
+        aprobatoria: Number(data.nota_aprobatoria) || 3,
       };
       setLimite(guardado.limite);
       setReservar(guardado.reservar);
       setCancelar(guardado.cancelar);
+      setAprobatoria(guardado.aprobatoria);
       setOriginal(guardado);
       setToast('Configuración guardada. Los cambios ya aplican a toda la plataforma.');
     } catch (error) {
@@ -522,6 +534,7 @@ export const ConfiguracionGeneral = () => {
     setLimite(original.limite);
     setReservar(original.reservar);
     setCancelar(original.cancelar);
+    setAprobatoria(original.aprobatoria);
     setErrorGuardado(null);
   };
 
@@ -676,6 +689,64 @@ export const ConfiguracionGeneral = () => {
                       El tope se valida al publicar o editar un bloque de disponibilidad.
                     </p>
                   </div>
+                </section>
+
+                <section className="rounded-[28px] bg-white p-5 sm:p-6">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violeta/10 text-violeta-accion">
+                      <CheckIcon className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <h2 className="text-[16px] font-semibold text-tinta">
+                        Aprobación de materias
+                      </h2>
+                      <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">
+                        Desde qué nota una materia cursada cuenta como aprobada. Se usa en la
+                        postulación como tutor y en las materias cursadas.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap items-end gap-4">
+                    <label className="block">
+                      <span className="text-[11px] font-medium text-slate-ink">
+                        Nota aprobatoria
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={5}
+                        step={0.1}
+                        value={aprobatoria}
+                        onChange={(event) =>
+                          setAprobatoria(acotar(Number(event.target.value), 0, 5))
+                        }
+                        className="mt-2 h-12 w-32 rounded-full border border-faint bg-mist px-4 text-center text-[16px] font-semibold text-tinta outline-none transition-colors focus:border-violeta-accion"
+                      />
+                    </label>
+
+                    <div>
+                      <p className="text-[10.5px] text-muted">Valores frecuentes</p>
+                      <div className="mt-2">
+                        <ValoresRapidos
+                          opciones={[3, 3.5, 4].map((valor) => ({
+                            valor,
+                            texto: valor.toFixed(1).replace('.', ','),
+                          }))}
+                          valor={aprobatoria}
+                          onChange={setAprobatoria}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="mt-4 text-[10.5px] leading-relaxed text-muted">
+                    Una materia con nota final igual o superior a{' '}
+                    <strong className="font-semibold text-tinta">
+                      {aprobatoria.toFixed(1).replace('.', ',')}
+                    </strong>{' '}
+                    cuenta como aprobada para la postulación como tutor.
+                  </p>
                 </section>
 
                 <section className="rounded-[28px] bg-white p-5 sm:p-6">
