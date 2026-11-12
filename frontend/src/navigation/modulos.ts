@@ -74,6 +74,13 @@ export const MODULOS: Modulo[] = [
   { id: 'estudiante-buscar', etiqueta: 'Consultar horarios', ruta: '/estudiante/buscar-tutorias', seccion: 'Tutorías', roles: ['estudiante'] },
   { id: 'estudiante-reservas', etiqueta: 'Mis reservas', ruta: '/estudiante/mis-reservas', seccion: 'Tutorías', roles: ['estudiante'] },
   {
+    id: 'estudiante-postular',
+    etiqueta: 'Postúlate como tutor',
+    ruta: '/estudiante/postularme-tutor',
+    seccion: 'Tutorías',
+    roles: ['estudiante'],
+  },
+  {
     id: 'estudiante-tutor-tutorias',
     etiqueta: 'Mis tutorías como tutor',
     ruta: '/estudiante/mis-tutorias-tutor',
