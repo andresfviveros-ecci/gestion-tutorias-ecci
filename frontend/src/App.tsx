@@ -23,7 +23,6 @@ import { BuscarTutorias } from './pages/estudiante/BuscarTutorias';
 import { MisReservas } from './pages/estudiante/MisReservas';
 import { MisTutoriasTutor } from './pages/estudiante/MisTutoriasTutor';
 import { MisHorariosTutor } from './pages/estudiante/MisHorariosTutor';
-import { Layout } from './components/Layout';
 import { MODULOS, normalizarRol, RUTA_INICIO } from './navigation/modulos';
 
 interface ProtectedRouteProps {
@@ -356,9 +355,7 @@ export const App: React.FC = () => {
           path="/gestionar-usuarios"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
-              <Layout>
-                <GestionarUsuarios />
-              </Layout>
+              <GestionarUsuarios />
             </ProtectedRoute>
           }
         />
