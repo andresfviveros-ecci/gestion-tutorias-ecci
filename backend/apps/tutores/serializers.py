@@ -90,3 +90,59 @@ class SolicitudTutorSerializer(serializers.ModelSerializer):
 
 class RevisionSerializer(serializers.Serializer):
     motivo = serializers.CharField(required=False, allow_blank=True, help_text='Obligatorio en las tres decisiones.')
+
+
+""" RESPUESTA DE GET /tutores/historial-materias/ (GT-269)
+Solo describen la forma para Swagger; los datos los arma historial_materias. """
+class RequisitoSerializer(serializers.Serializer):
+    cumple = serializers.BooleanField()
+    valor = serializers.JSONField(allow_null=True, help_text='Número (semestre, avance) o texto (nota).')
+    minimo = serializers.JSONField()
+
+
+class RequisitosSerializer(serializers.Serializer):
+    semestre = RequisitoSerializer()
+    nota = RequisitoSerializer()
+    avance = RequisitoSerializer()
+
+
+class SolicitudVigenteSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    estado = serializers.CharField()
+    fecha = serializers.DateTimeField()
+
+
+class MateriaHistorialSerializer(serializers.Serializer):
+    materia = serializers.IntegerField()
+    codigo = serializers.CharField()
+    nombre = serializers.CharField()
+    semestre_cursado = serializers.IntegerField(allow_null=True, help_text='Semestre de la materia en el plan.')
+    periodo_cursado = serializers.CharField()
+    nota = serializers.CharField(allow_null=True, help_text='Nota final; null si falta algún corte.')
+    aprobada = serializers.BooleanField()
+    elegible = serializers.BooleanField()
+    motivo = serializers.CharField(allow_null=True, help_text='Por qué no es elegible; null si lo es.')
+    requisitos = RequisitosSerializer()
+    solicitud = SolicitudVigenteSerializer(allow_null=True, help_text='Solicitud PENDIENTE o APROBADA, si existe.')
+
+
+class ConfigPostulacionSerializer(serializers.Serializer):
+    semestre_minimo_tutor = serializers.IntegerField()
+    nota_minima = serializers.CharField()
+    diferencia_semestres = serializers.IntegerField()
+    nota_aprobatoria = serializers.CharField()
+
+
+class ResumenHistorialSerializer(serializers.Serializer):
+    materias_aprobadas = serializers.IntegerField()
+    elegibles = serializers.IntegerField()
+
+
+class HistorialMateriasSerializer(serializers.Serializer):
+    estudiante = serializers.IntegerField()
+    semestre = serializers.IntegerField(allow_null=True)
+    periodo = serializers.IntegerField()
+    periodo_codigo = serializers.CharField()
+    config = ConfigPostulacionSerializer()
+    resumen = ResumenHistorialSerializer()
+    materias = MateriaHistorialSerializer(many=True)

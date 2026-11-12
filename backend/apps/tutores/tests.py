@@ -275,3 +275,108 @@ class NotaFinalTests(SimpleTestCase):
         # 4,005 con el redondeo por defecto (al par) daba 4,00.
         config = Configuracion(peso_corte1=50, peso_corte2=50, peso_corte3=0)
         self.assertEqual(calcular_nota_final(Decimal('4.01'), Decimal('4.00'), Decimal(0), config), Decimal('4.01'))
+
+
+class HistorialMateriasTests(APITestCase):
+    """GT-269: materias cursadas, su nota y si cumplen para ser tutor."""
+    URL = '/api/tutores/historial-materias/'
+
+    @classmethod
+    def setUpTestData(cls):
+        programa, cls.periodo, _ = crear_catalogo()
+        cls.anterior = PeriodoAcademico.objects.create(
+            codigo='ANT', fecha_inicio=date.today() - timedelta(days=200), fecha_fin=date.today() - timedelta(days=60)
+        )
+        cls.estudiante = crear_usuario('Estudiante')
+        cls.estudiante.semestre = 6
+        cls.estudiante.save(update_fields=['semestre'])
+        cls.docente = crear_usuario('Docente')
+
+        def materia(codigo, semestre, cortes, docente=True):
+            m = Materia.objects.create(codigo=codigo, nombre=f'Materia {codigo}', semestre=semestre, programa=programa)
+            if docente:
+                asignar_materia(cls.docente, m, cls.periodo)
+            Inscripcion.objects.create(
+                estudiante=cls.estudiante, materia=m, periodo=cls.anterior,
+                nota_corte1=cortes[0], nota_corte2=cortes[1], nota_corte3=cortes[2],
+            )
+            return m
+
+        cls.elegible = materia('ELE', 3, ('4.5', '4.5', '4.5'))
+        cls.nota_baja = materia('BAJ', 3, ('3.5', '3.5', '3.5'))
+        cls.reprobada = materia('REP', 2, ('2.0', '2.0', '2.0'))
+        cls.sin_nota = materia('SIN', 2, ('4.5', None, None))
+        cls.poco_avance = materia('AVA', 5, ('5.0', '5.0', '5.0'))
+        cls.sin_docente = materia('DOC', 1, ('5.0', '5.0', '5.0'), docente=False)
+        # Una materia del periodo activo todavía no cuenta como cursada.
+        Inscripcion.objects.create(estudiante=cls.estudiante, materia=cls.elegible, periodo=cls.periodo)
+
+    def setUp(self):
+        self.client.force_authenticate(self.estudiante)
+
+    def materias(self, response=None):
+        response = response or self.client.get(self.URL)
+        return {m['codigo']: m for m in response.data['materias']}
+
+    def test_forma_de_la_respuesta(self):
+        response = self.client.get(self.URL)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual((response.data['semestre'], response.data['periodo_codigo']), (6, self.periodo.codigo))
+        self.assertEqual(response.data['config'], {
+            'semestre_minimo_tutor': 3, 'nota_minima': '4.00', 'diferencia_semestres': 2, 'nota_aprobatoria': '3.00',
+        })
+        self.assertEqual(response.data['resumen'], {'materias_aprobadas': 4, 'elegibles': 1})
+        self.assertEqual(len(response.data['materias']), 6)
+
+        ele = self.materias(response)['ELE']
+        self.assertEqual((ele['nota'], ele['semestre_cursado'], ele['aprobada'], ele['elegible']), ('4.50', 3, True, True))
+        self.assertIsNone(ele['motivo'])
+        self.assertIsNone(ele['solicitud'])
+        self.assertEqual(ele['requisitos'], {
+            'semestre': {'cumple': True, 'valor': 6, 'minimo': 3},
+            'nota': {'cumple': True, 'valor': '4.50', 'minimo': '4.00'},
+            'avance': {'cumple': True, 'valor': 3, 'minimo': 2},
+        })
+
+    def test_motivos_de_no_elegible(self):
+        materias = self.materias()
+        self.assertIn('menor que la mínima', materias['BAJ']['motivo'])
+        self.assertTrue(materias['BAJ']['aprobada'])
+        self.assertFalse(materias['REP']['aprobada'])
+        self.assertIsNone(materias['SIN']['nota'])
+        self.assertIn('nota final registrada', materias['SIN']['motivo'])
+        self.assertFalse(materias['AVA']['requisitos']['avance']['cumple'])
+        self.assertIn('semestres por delante', materias['AVA']['motivo'])
+        self.assertIn('no tiene docente', materias['DOC']['motivo'])
+
+    def test_semestre_insuficiente(self):
+        self.estudiante.semestre = 2
+        self.estudiante.save(update_fields=['semestre'])
+        materias = self.materias()
+        self.assertFalse(any(m['elegible'] for m in materias.values()))
+        self.assertFalse(materias['ELE']['requisitos']['semestre']['cumple'])
+
+    def test_muestra_la_solicitud_vigente(self):
+        solicitud = SolicitudTutor.objects.create(
+            estudiante=self.estudiante, materia=self.elegible, periodo=self.periodo,
+            nota_corte1=Decimal('4.5'), nota_corte2=Decimal('4.5'), nota_corte3=Decimal('4.5'), nota_final=Decimal('4.5'),
+        )
+        self.assertEqual(self.materias()['ELE']['solicitud']['id'], solicitud.id)
+        SolicitudTutor.objects.filter(pk=solicitud.pk).update(estado='RECHAZADA')
+        self.assertIsNone(self.materias()['ELE']['solicitud'])
+
+    def test_si_la_repitio_cuenta_la_ultima_vez(self):
+        mas_antiguo = PeriodoAcademico.objects.create(
+            codigo='VIE', fecha_inicio=date.today() - timedelta(days=500), fecha_fin=date.today() - timedelta(days=400)
+        )
+        Inscripcion.objects.create(
+            estudiante=self.estudiante, materia=self.nota_baja, periodo=mas_antiguo,
+            nota_corte1=Decimal(5), nota_corte2=Decimal(5), nota_corte3=Decimal(5),
+        )
+        self.assertEqual(self.materias()['BAJ']['nota'], '3.50')
+
+    def test_solo_estudiantes_y_periodo_valido(self):
+        self.assertEqual(self.client.get(self.URL, {'periodo': 'abc'}).status_code, 400)
+        self.assertEqual(self.client.get(self.URL, {'periodo': 999999}).status_code, 404)
+        self.client.force_authenticate(self.docente)
+        self.assertEqual(self.client.get(self.URL).status_code, 403)

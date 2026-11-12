@@ -12,6 +12,8 @@ from apps.tutorias.services import bloque_iniciado
 
 from .models import SolicitudTutor
 
+ESTADOS_VIGENTES = ('PENDIENTE', 'APROBADA')
+
 
 def materia_cursada(estudiante, materia, periodo):
     """Inscrito en la materia en un periodo que terminó antes del actual."""
@@ -20,6 +22,138 @@ def materia_cursada(estudiante, materia, periodo):
         materia=materia,
         periodo__fecha_fin__lt=periodo.fecha_inicio,
     ).exists()
+
+
+def materias_cursadas(estudiante, periodo):
+    """Materias cursadas en periodos que terminaron antes de este, con la
+    inscripción más reciente de cada una (si la repitió, cuenta la última)."""
+    inscripciones = Inscripcion.objects.filter(
+        estudiante=estudiante, periodo__fecha_fin__lt=periodo.fecha_inicio
+    ).select_related('materia', 'periodo').order_by('materia_id', '-periodo__fecha_fin')
+    ultima = {}
+    for inscripcion in inscripciones:
+        ultima.setdefault(inscripcion.materia_id, inscripcion)
+    return list(ultima.values())
+
+
+def evaluar_postulacion(estudiante, inscripcion, periodo, config, con_docente):
+    """GT-269 y GT-270: una sola regla para lo que muestra el historial y lo
+    que valida la solicitud. Devuelve la nota, los tres requisitos, si es
+    elegible y, si no, el motivo y el campo al que va el error.
+
+    - semestre: el semestre del estudiante ≥ semestre_minimo_tutor.
+    - nota: la nota final de la materia ≥ nota_minima.
+    - avance: semestre del estudiante − semestre de la materia en el plan ≥
+      diferencia_semestres.
+    Además la materia debe estar aprobada y activa, y tener docente en el
+    periodo, que es quien revisa la solicitud."""
+    materia = inscripcion.materia
+    semestre = estudiante.semestre
+    nota = inscripcion.nota_final(config)
+    avance = semestre - materia.semestre if semestre is not None and materia.semestre is not None else None
+
+    requisitos = {
+        'semestre': {
+            'cumple': semestre is not None and semestre >= config.semestre_minimo_tutor,
+            'valor': semestre,
+            'minimo': config.semestre_minimo_tutor,
+        },
+        'nota': {
+            'cumple': nota is not None and nota >= config.nota_minima,
+            'valor': None if nota is None else str(nota),
+            'minimo': str(config.nota_minima),
+        },
+        'avance': {
+            'cumple': avance is not None and avance >= config.diferencia_semestres,
+            'valor': avance,
+            'minimo': config.diferencia_semestres,
+        },
+    }
+
+    # El primer motivo que aplica, en el orden en que el estudiante lo resolvería.
+    if nota is None:
+        motivo = ('materia', 'Aún no tiene la nota final registrada; pídele a la coordinación que la cargue.')
+    elif semestre is None:
+        motivo = ('non_field_errors', 'Tu semestre no está registrado; pídele a la coordinación que lo actualice.')
+    elif not requisitos['semestre']['cumple']:
+        motivo = ('non_field_errors', f'Para ser tutor debes cursar al menos el semestre {config.semestre_minimo_tutor}.')
+    elif not requisitos['nota']['cumple']:
+        motivo = ('materia', f'La nota final ({nota}) es menor que la mínima ({config.nota_minima}).')
+    elif materia.semestre is None:
+        motivo = ('materia', 'La materia no tiene semestre en el plan de estudios; no se puede calcular el avance.')
+    elif not requisitos['avance']['cumple']:
+        motivo = ('materia', (
+            f'Debes ir al menos {config.diferencia_semestres} semestres por delante de la materia '
+            f'(es de semestre {materia.semestre} y vas en {semestre}).'
+        ))
+    elif not materia.activa:
+        motivo = ('materia', 'La materia no está activa.')
+    elif not con_docente:
+        motivo = ('materia', f'La materia no tiene docente asignado en el periodo {periodo.codigo}.')
+    else:
+        motivo = None
+
+    return {
+        'materia': materia,
+        'nota': nota,
+        'aprobada': nota is not None and nota >= config.nota_aprobatoria,
+        'requisitos': requisitos,
+        'elegible': motivo is None,
+        'motivo': motivo,
+    }
+
+
+def historial_materias(estudiante, periodo, config):
+    """GT-269: materias cursadas con su nota y si cumplen para ser tutor."""
+    cursadas = materias_cursadas(estudiante, periodo)
+    ids = [inscripcion.materia_id for inscripcion in cursadas]
+    con_docente = set(
+        DocenteMateria.objects.filter(periodo=periodo, materia_id__in=ids).values_list('materia_id', flat=True)
+    )
+    vigentes = {
+        solicitud.materia_id: solicitud
+        for solicitud in SolicitudTutor.objects.filter(
+            estudiante=estudiante, periodo=periodo, materia_id__in=ids, estado__in=ESTADOS_VIGENTES
+        )
+    }
+
+    materias = []
+    for inscripcion in sorted(cursadas, key=lambda i: (i.materia.semestre or 0, i.materia.nombre)):
+        evaluacion = evaluar_postulacion(estudiante, inscripcion, periodo, config, inscripcion.materia_id in con_docente)
+        materia, solicitud = inscripcion.materia, vigentes.get(inscripcion.materia_id)
+        materias.append({
+            'materia': materia.id,
+            'codigo': materia.codigo,
+            'nombre': materia.nombre,
+            'semestre_cursado': materia.semestre,
+            'periodo_cursado': inscripcion.periodo.codigo,
+            'nota': None if evaluacion['nota'] is None else str(evaluacion['nota']),
+            'aprobada': evaluacion['aprobada'],
+            'elegible': evaluacion['elegible'],
+            'motivo': evaluacion['motivo'][1] if evaluacion['motivo'] else None,
+            'requisitos': evaluacion['requisitos'],
+            'solicitud': solicitud and {
+                'id': solicitud.id, 'estado': solicitud.estado, 'fecha': solicitud.date_creation,
+            },
+        })
+
+    return {
+        'estudiante': estudiante.id,
+        'semestre': estudiante.semestre,
+        'periodo': periodo.id,
+        'periodo_codigo': periodo.codigo,
+        'config': {
+            'semestre_minimo_tutor': config.semestre_minimo_tutor,
+            'nota_minima': str(config.nota_minima),
+            'diferencia_semestres': config.diferencia_semestres,
+            'nota_aprobatoria': str(config.nota_aprobatoria),
+        },
+        'resumen': {
+            'materias_aprobadas': sum(m['aprobada'] for m in materias),
+            'elegibles': sum(m['elegible'] for m in materias),
+        },
+        'materias': materias,
+    }
 
 
 def docentes_revisores(materia, periodo):
