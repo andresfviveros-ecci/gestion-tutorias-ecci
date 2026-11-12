@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { Loader } from '../../components/Loader';
 import { TutorRail } from '../../components/tutor/TutorRail';
 import { StudentRail } from '../../components/estudiante/StudentRail';
 import { CalendarIcon, CheckIcon, ClockIcon, LayersIcon } from '../../components/constelacion/Icons';
@@ -475,7 +474,6 @@ export const MiDisponibilidad = () => {
 
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
-      <Loader hidden={!loading} />
       {esRolEstudiante ? <StudentRail /> : <TutorRail />}
 
       <main className="min-w-0 flex-1">
@@ -658,7 +656,9 @@ export const MiDisponibilidad = () => {
                       }}
                       className={`${inputClass} cursor-pointer`}
                     >
-                      {materias.length === 0 ? (
+                      {loading ? (
+                        <option value="">Cargando materias...</option>
+                      ) : materias.length === 0 ? (
                         <option value="">No tienes materias asignadas en este periodo</option>
                       ) : (
                         materias.map((materia) => (

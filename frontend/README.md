@@ -32,7 +32,7 @@ Las rutas de la app y los endpoints que usa están en [README_TESTS.md](README_T
 frontend/
 ├── src/
 │   ├── api/axios.ts        # cliente HTTP; adjunta el JWT salvo en login y recovery
-│   ├── components/         # Layout, Loader, ProtectedRoute, Sidebar
+│   ├── components/         # Layout, ProtectedRoute, Sidebar y componentes Constelación
 │   ├── pages/
 │   │   ├── Login.tsx       # login y recuperación de contraseña en 3 pasos
 │   │   ├── Dashboard.tsx, Estudiantes.tsx, Tutores.tsx,

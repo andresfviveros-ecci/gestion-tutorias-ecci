@@ -1,11 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader } from '../../components/Loader';
 import { api } from '../../api/axios';
 import { analizarError, type TipoFallo } from '../../utils/api';
 import { fechaLocalISO } from '../../utils/date';
-import { AlertaFormulario } from '../../components/AlertaFormulario';
+import { Toast } from '../../components/constelacion/Toast';
+import { CloseIcon } from '../../components/constelacion/Icons';
 import { TutorRail } from '../../components/tutor/TutorRail';
+
+/** Título del aviso según el tipo de error (los mismos de antes). */
+const TITULO_FALLO: Record<TipoFallo, string> = {
+  conflicto: 'Este horario se cruza con otro bloque',
+  validacion: 'Revisa los datos del horario',
+  permiso: 'No tienes permiso para esta acción',
+  sin_conexion: 'Sin conexión con el servidor',
+  servidor: 'El servidor tuvo un problema',
+};
 
 export interface MateriaBackend {
   id: number;
@@ -46,7 +55,6 @@ const normalizarModalidad = (mod?: string): 'PRESENCIAL' | 'VIRTUAL' => {
 
 export const Calendario: React.FC = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [materias, setMaterias] = useState<MateriaBackend[]>([]);
   const [weekOffset, setWeekOffset] = useState(0);
@@ -90,10 +98,6 @@ export const Calendario: React.FC = () => {
         }
       } catch (err) {
         console.error('Error al cargar la disponibilidad en Calendario:', err);
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
       }
     };
 
@@ -106,7 +110,6 @@ export const Calendario: React.FC = () => {
 
   // 2. FUNCIÓN DE RECARGA
   const refetchData = async () => {
-    setLoading(true);
     try {
       const [resBloques, resMaterias] = await Promise.all([
         api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/?incluir_pasados=1&docente=me'),
@@ -131,8 +134,6 @@ export const Calendario: React.FC = () => {
       setMaterias(Array.isArray(resMaterias.data) ? resMaterias.data : []);
     } catch (err) {
       console.error('Error al recargar la disponibilidad:', err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -234,9 +235,16 @@ export const Calendario: React.FC = () => {
     );
   }).length;
 
+
+  // El Toast desaparece solo, como en las demás pantallas.
+  useEffect(() => {
+    if (!successMessage) return;
+    const temporizador = setTimeout(() => setSuccessMessage(null), 4000);
+    return () => clearTimeout(temporizador);
+  }, [successMessage]);
+
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
-      <Loader hidden={!loading} />
       <TutorRail />
 
       <main className="mx-auto w-full min-w-0 max-w-[1500px] flex-1 px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
@@ -257,10 +265,6 @@ export const Calendario: React.FC = () => {
             <p className="mt-0.5 text-[13.5px] font-medium text-tinta">{bloquesSemana}</p>
           </div>
         </header>
-
-        {successMessage && (
-          <AlertaFormulario tipo="exito" titulo="Horario actualizado" mensaje={successMessage} onCerrar={() => setSuccessMessage(null)} />
-        )}
 
         <section className="rounded-[28px] bg-white p-5 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-faint pb-4">
@@ -380,7 +384,27 @@ export const Calendario: React.FC = () => {
 
             <div className="flex-1 space-y-4 overflow-y-auto p-5 text-xs">
               {errorMessage && (
-                <AlertaFormulario tipo={errorTipo} mensaje={errorMessage} onCerrar={() => setErrorMessage(null)} />
+                <div
+                  role="alert"
+                  className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${
+                    errorTipo === 'conflicto'
+                      ? 'border-advertencia/45 bg-advertencia/5 text-advertencia'
+                      : 'border-peligro/40 bg-peligro/5 text-peligro'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[12.5px] font-semibold">{TITULO_FALLO[errorTipo]}</p>
+                    <p className="mt-1 text-[11.5px] leading-relaxed opacity-90">{errorMessage}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setErrorMessage(null)}
+                    aria-label="Cerrar aviso"
+                    className="-mr-1 -mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full opacity-70 transition-opacity hover:opacity-100"
+                  >
+                    <CloseIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               )}
 
               <div>
@@ -502,6 +526,8 @@ export const Calendario: React.FC = () => {
           </div>
         </div>
       )}
+
+      <Toast mensaje={successMessage} />
     </div>
   );
 };

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminRail } from '../components/admin/AdminRail';
-import { Loader } from '../components/Loader';
 import { EmptyState } from '../components/constelacion/EmptyState';
 import { Modal } from '../components/constelacion/Modal';
+import { SkeletonFilas } from '../components/constelacion/Skeleton';
 import { Toast } from '../components/constelacion/Toast';
 import { SearchIcon } from '../components/constelacion/Icons';
 import { api } from '../api/axios';
@@ -417,7 +417,6 @@ export const GestionNotas = () => {
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
       <AdminRail />
-      <Loader hidden={!cargando} />
 
       <main className="mx-auto w-full min-w-0 max-w-[1500px] flex-1 px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
         <header className="mb-6">
@@ -461,7 +460,9 @@ export const GestionNotas = () => {
             </label>
 
             <div className="mt-4 max-h-[560px] overflow-y-auto pr-1">
-              {estudiantesFiltrados.length === 0 ? (
+              {cargando ? (
+                <SkeletonFilas filas={6} />
+              ) : estudiantesFiltrados.length === 0 ? (
                 <EmptyState
                   titulo="No encontramos estudiantes"
                   detalle="Prueba con otro nombre o documento."
