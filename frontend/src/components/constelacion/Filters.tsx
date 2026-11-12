@@ -81,3 +81,36 @@ export const FilterChips = ({
     })}
   </div>
 );
+
+export interface OpcionSelect {
+  valor: string;
+  texto: string;
+}
+
+interface SelectFilterProps {
+  etiqueta: string;
+  valor: string;
+  onChange: (valor: string) => void;
+  opciones: OpcionSelect[];
+  /** Texto de la opción vacía ('' = sin filtro). */
+  textoTodos: string;
+}
+
+/** Select con etiqueta y el estilo de los inputs de Constelación. */
+export const SelectFilter = ({ etiqueta, valor, onChange, opciones, textoTodos }: SelectFilterProps) => (
+  <label className="block">
+    <span className="mb-1.5 block text-[11px] font-medium text-slate-ink">{etiqueta}</span>
+    <select
+      value={valor}
+      onChange={(event) => onChange(event.target.value)}
+      className="h-10 w-full rounded-xl border border-faint bg-white px-3.5 text-[12px] text-tinta outline-none transition-colors focus:border-violeta-accion"
+    >
+      <option value="">{textoTodos}</option>
+      {opciones.map((opcion) => (
+        <option key={opcion.valor} value={opcion.valor}>
+          {opcion.texto}
+        </option>
+      ))}
+    </select>
+  </label>
+);

@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import { api } from '../../api/axios';
 import { StudentRail } from '../../components/estudiante/StudentRail';
 import { EmptyState } from '../../components/constelacion/EmptyState';
-import { Loader } from '../../components/Loader';
 import { Modal } from '../../components/constelacion/Modal';
+import { SkeletonFilas } from '../../components/constelacion/Skeleton';
 import { Toast } from '../../components/constelacion/Toast';
 import { CalendarIcon, ClockIcon } from '../../components/constelacion/Icons';
 import type { BloqueDisponibilidad } from '../../types/tutor';
@@ -125,7 +125,6 @@ export const MisHorariosTutor = () => {
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
       <StudentRail />
-      <Loader hidden={!cargando} />
 
       <main className="min-w-0 flex-1">
         <div className="mx-auto w-full max-w-[1100px] px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
@@ -159,7 +158,9 @@ export const MisHorariosTutor = () => {
             </div>
           )}
 
-          {!cargando && proximos.length === 0 ? (
+          {cargando ? (
+            <SkeletonFilas alto="h-[104px]" filas={3} />
+          ) : proximos.length === 0 ? (
             <section className="rounded-[28px] bg-white p-6 sm:p-7">
               <EmptyState
                 titulo="No tienes horarios publicados"
