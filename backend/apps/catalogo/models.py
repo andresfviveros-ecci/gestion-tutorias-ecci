@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -11,6 +11,14 @@ from apps.models import BaseModel
 CALIFICACION_MIN = 1
 CALIFICACION_MAX = 10
 RANGO_CALIFICACION = [MinValueValidator(CALIFICACION_MIN), MaxValueValidator(CALIFICACION_MAX)]
+# Notas de 0 a 5 con dos decimales (cortes, nota mínima y nota aprobatoria).
+RANGO_NOTA = [MinValueValidator(0), MaxValueValidator(5)]
+
+
+def calcular_nota_final(corte1, corte2, corte3, config):
+    """Promedio ponderado de los tres cortes con los pesos de Configuracion."""
+    total = corte1 * config.peso_corte1 + corte2 * config.peso_corte2 + corte3 * config.peso_corte3
+    return (total / Decimal(100)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 class ProgramaAcademico(BaseModel):
@@ -89,6 +97,17 @@ class Inscripcion(BaseModel):
     estudiante = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='inscripciones')
     materia = models.ForeignKey(Materia, on_delete=models.CASCADE, related_name='inscripciones')
     periodo = models.ForeignKey(PeriodoAcademico, on_delete=models.CASCADE, related_name='inscripciones')
+    # GT-269: notas de los tres cortes. Las carga la coordinación (admin o API).
+    nota_corte1 = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True, validators=RANGO_NOTA, verbose_name='nota_corte1')
+    nota_corte2 = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True, validators=RANGO_NOTA, verbose_name='nota_corte2')
+    nota_corte3 = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True, validators=RANGO_NOTA, verbose_name='nota_corte3')
+
+    def nota_final(self, config=None):
+        """Nota ponderada con los pesos de Configuracion; None si falta un corte."""
+        cortes = (self.nota_corte1, self.nota_corte2, self.nota_corte3)
+        if any(corte is None for corte in cortes):
+            return None
+        return calcular_nota_final(*cortes, config or Configuracion.actual())
 
     def __str__(self):
         return f'{self.estudiante} - {self.materia} - {self.periodo}'
@@ -105,8 +124,11 @@ class Configuracion(BaseModel):
     """Parámetros de las reglas de tutorías (sección 7.1). Una sola fila,
     que editan la coordinación y el administrador: nada fijo en el código."""
     nota_minima = models.DecimalField(
-        max_digits=3, decimal_places=2, default=Decimal('4.00'),
-        validators=[MinValueValidator(0), MaxValueValidator(5)], verbose_name='nota_minima'
+        max_digits=3, decimal_places=2, default=Decimal('4.00'), validators=RANGO_NOTA, verbose_name='nota_minima'
+    )
+    # Con esta nota una materia cursada cuenta como aprobada (GT-269).
+    nota_aprobatoria = models.DecimalField(
+        max_digits=3, decimal_places=2, default=Decimal('3.00'), validators=RANGO_NOTA, verbose_name='nota_aprobatoria'
     )
     peso_corte1 = models.PositiveSmallIntegerField(default=30, validators=[MaxValueValidator(100)], verbose_name='peso_corte1')
     peso_corte2 = models.PositiveSmallIntegerField(default=30, validators=[MaxValueValidator(100)], verbose_name='peso_corte2')

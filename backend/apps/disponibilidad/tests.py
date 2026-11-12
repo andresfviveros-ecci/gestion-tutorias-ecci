@@ -303,3 +303,80 @@ class RevisionDisponibilidadTests(APITestCase):
     def test_cupo_fuera_de_rango_responde_400(self):
         response = self.client.post(URL, self.datos(cupo_total=99999), format='json')
         self.assertEqual(response.status_code, 400)
+
+
+class HorarioConReservasTests(APITestCase):
+    """Opción B: un horario con reservas activas no se mueve; se suspende y se publica otro."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.docente = crear_usuario('Docente')
+        cls.estudiante = crear_usuario('Estudiante')
+        _, cls.periodo, cls.materia = crear_catalogo()
+        cls.otra_materia = Materia.objects.create(codigo='HR-2', nombre='Física', programa=cls.materia.programa)
+        asignar_materia(cls.docente, cls.otra_materia, cls.periodo)
+
+    def setUp(self):
+        self.client.force_authenticate(self.docente)
+        self.bloque = crear_bloque(self.docente, self.periodo, self.materia, lugar='Sala 1')
+
+    def url(self):
+        return f'/api/disponibilidad/{self.bloque.id}/actualizar/'
+
+    def formulario(self, **cambios):
+        b = self.bloque
+        datos = {
+            'materia': b.materia_id, 'periodo': b.periodo_id, 'fecha': str(b.fecha),
+            'hora_inicio': b.hora_inicio.strftime('%H:%M'), 'hora_fin': b.hora_fin.strftime('%H:%M'),
+            'modalidad': b.modalidad, 'lugar': b.lugar, 'enlace_virtual': b.enlace_virtual,
+            'cupo_total': b.cupo_total, 'observaciones': b.observaciones,
+        }
+        datos.update(cambios)
+        return datos
+
+    def test_con_reserva_no_se_mueve(self):
+        crear_tutoria(self.bloque, self.estudiante, estado='RESERVADA')
+        cambios = {
+            'fecha': str(self.bloque.fecha + timedelta(days=1)),
+            'hora_inicio': '10:00',
+            'hora_fin': '12:00',
+            'materia': self.otra_materia.id,
+            'modalidad': 'VIRTUAL',
+        }
+        for campo, valor in cambios.items():
+            with self.subTest(campo=campo):
+                response = self.client.patch(self.url(), {campo: valor}, format='json')
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data['code'], 'bloque_con_reservas')
+                self.assertIn(campo, response.data['errors'])
+        self.bloque.refresh_from_db()
+        self.assertEqual(self.bloque.materia, self.materia)
+
+    def test_con_reserva_confirmada_tampoco(self):
+        crear_tutoria(self.bloque, self.estudiante, estado='CONFIRMADA')
+        response = self.client.patch(self.url(), {'hora_inicio': '07:00'}, format='json')
+        self.assertEqual(response.data['code'], 'bloque_con_reservas')
+
+    def test_con_reserva_cambia_lugar_enlace_observaciones_y_sube_cupo(self):
+        crear_tutoria(self.bloque, self.estudiante, estado='RESERVADA')
+        cambios = {'lugar': 'Sala 2', 'enlace_virtual': 'https://meet.example.com/x', 'observaciones': 'Traer taller',
+                   'cupo_total': self.bloque.cupo_total + 2}
+        response = self.client.patch(self.url(), cambios, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['lugar'], 'Sala 2')
+
+    def test_formulario_completo_con_la_misma_fecha_y_hora(self):
+        # El frontend manda todo el formulario: repetir los valores guardados no es un cambio.
+        crear_tutoria(self.bloque, self.estudiante, estado='RESERVADA')
+        response = self.client.put(self.url(), self.formulario(lugar='Sala 3'), format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_sin_reservas_se_puede_mover(self):
+        response = self.client.patch(self.url(), {'hora_inicio': '10:00', 'hora_fin': '11:00'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_reservas_canceladas_no_cuentan(self):
+        for estado in ('CANCELADA_ESTUDIANTE', 'CANCELADA_DOCENTE', 'ANULADA'):
+            crear_tutoria(self.bloque, crear_usuario('Estudiante'), estado=estado)
+        response = self.client.patch(self.url(), {'fecha': str(self.bloque.fecha + timedelta(days=1))}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
