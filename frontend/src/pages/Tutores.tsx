@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom';
 import { AdminRail } from '../components/admin/AdminRail';
 import { FormularioUsuario, type DatosUsuario } from '../components/admin/FormularioUsuario';
 import { claseEstado, claseInput, coincide, normalizar } from '../components/admin/usuarios';
-import { Loader } from '../components/Loader';
 import { EmptyState } from '../components/constelacion/EmptyState';
 import { ArrowIcon, SearchIcon } from '../components/constelacion/Icons';
 import { Modal } from '../components/constelacion/Modal';
+import { SkeletonFilas } from '../components/constelacion/Skeleton';
 import { Toast } from '../components/constelacion/Toast';
 import { useTutorStore } from '../store/useTutorStore';
 import { api } from '../api/axios';
@@ -135,7 +135,6 @@ export const Tutores = () => {
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
       <AdminRail />
-      <Loader hidden={!cargando} />
 
       <main className="mx-auto w-full min-w-0 max-w-[1500px] flex-1 px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -196,17 +195,17 @@ export const Tutores = () => {
             </span>
           </div>
 
-          {filtrados.length === 0 ? (
-            !cargando && (
-              <EmptyState
-                titulo={tutores.length === 0 ? 'Aún no hay tutores' : 'No encontramos tutores'}
-                detalle={
-                  tutores.length === 0
-                    ? 'Registra el primer tutor con el botón de arriba.'
-                    : 'Prueba con otro nombre, correo o documento.'
-                }
-              />
-            )
+          {cargando ? (
+            <SkeletonFilas className="mt-2" filas={5} />
+          ) : filtrados.length === 0 ? (
+            <EmptyState
+              titulo={tutores.length === 0 ? 'Aún no hay tutores' : 'No encontramos tutores'}
+              detalle={
+                tutores.length === 0
+                  ? 'Registra el primer tutor con el botón de arriba.'
+                  : 'Prueba con otro nombre, correo o documento.'
+              }
+            />
           ) : (
             <div className="mt-2 overflow-x-auto">
               <table className="w-full min-w-[860px] text-left text-[12px]">

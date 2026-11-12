@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AdminRail } from '../components/admin/AdminRail';
 import { FormularioUsuario, type DatosUsuario } from '../components/admin/FormularioUsuario';
 import { claseEstado, claseInput, coincide, normalizar } from '../components/admin/usuarios';
-import { Loader } from '../components/Loader';
 import { EmptyState } from '../components/constelacion/EmptyState';
 import { SearchIcon } from '../components/constelacion/Icons';
 import { Modal } from '../components/constelacion/Modal';
+import { SkeletonFilas } from '../components/constelacion/Skeleton';
 import { Toast } from '../components/constelacion/Toast';
 import { api } from '../api/axios';
 import { extraerLista, mensajeError } from '../utils/api';
@@ -149,7 +149,6 @@ export const Estudiantes = () => {
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
       <AdminRail />
-      <Loader hidden={!cargando} />
 
       <main className="mx-auto w-full min-w-0 max-w-[1500px] flex-1 px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -233,17 +232,17 @@ export const Estudiantes = () => {
             <span>{estudiantes.length} en total</span>
           </div>
 
-          {filtrados.length === 0 ? (
-            !cargando && (
-              <EmptyState
-                titulo={estudiantes.length === 0 ? 'Aún no hay estudiantes' : 'No encontramos estudiantes'}
-                detalle={
-                  estudiantes.length === 0
-                    ? 'Registra el primer estudiante con el botón de arriba.'
-                    : 'Prueba con otro texto o cambia el semestre.'
-                }
-              />
-            )
+          {cargando ? (
+            <SkeletonFilas className="mt-2" filas={5} />
+          ) : filtrados.length === 0 ? (
+            <EmptyState
+              titulo={estudiantes.length === 0 ? 'Aún no hay estudiantes' : 'No encontramos estudiantes'}
+              detalle={
+                estudiantes.length === 0
+                  ? 'Registra el primer estudiante con el botón de arriba.'
+                  : 'Prueba con otro texto o cambia el semestre.'
+              }
+            />
           ) : (
             <div className="mt-2 overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-[12px]">

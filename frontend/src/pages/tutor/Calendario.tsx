@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader } from '../../components/Loader';
 import { api } from '../../api/axios';
 import { analizarError, type TipoFallo } from '../../utils/api';
 import { fechaLocalISO } from '../../utils/date';
@@ -56,7 +55,6 @@ const normalizarModalidad = (mod?: string): 'PRESENCIAL' | 'VIRTUAL' => {
 
 export const Calendario: React.FC = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [materias, setMaterias] = useState<MateriaBackend[]>([]);
   const [weekOffset, setWeekOffset] = useState(0);
@@ -100,10 +98,6 @@ export const Calendario: React.FC = () => {
         }
       } catch (err) {
         console.error('Error al cargar la disponibilidad en Calendario:', err);
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
       }
     };
 
@@ -116,7 +110,6 @@ export const Calendario: React.FC = () => {
 
   // 2. FUNCIÓN DE RECARGA
   const refetchData = async () => {
-    setLoading(true);
     try {
       const [resBloques, resMaterias] = await Promise.all([
         api.get<ScheduleSlot[]>('/disponibilidad/disponibilidad/?incluir_pasados=1&docente=me'),
@@ -141,8 +134,6 @@ export const Calendario: React.FC = () => {
       setMaterias(Array.isArray(resMaterias.data) ? resMaterias.data : []);
     } catch (err) {
       console.error('Error al recargar la disponibilidad:', err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -254,7 +245,6 @@ export const Calendario: React.FC = () => {
 
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
-      <Loader hidden={!loading} />
       <TutorRail />
 
       <main className="mx-auto w-full min-w-0 max-w-[1500px] flex-1 px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
