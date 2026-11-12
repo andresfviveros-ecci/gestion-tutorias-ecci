@@ -27,12 +27,27 @@ export interface Modulo {
 export const MODULOS: Modulo[] = [
   // Coordinación
   { id: 'dashboard', etiqueta: 'Dashboard', ruta: '/dashboard', seccion: 'Panel', roles: ['admin'] },
+  { id: 'reportes', etiqueta: 'Reportes', ruta: '/reportes', seccion: 'Panel', roles: ['admin'] },
   { id: 'estudiantes', etiqueta: 'Estudiantes', ruta: '/estudiantes', seccion: 'Usuarios', roles: ['admin'] },
   { id: 'tutores', etiqueta: 'Tutores', ruta: '/tutores', seccion: 'Usuarios', roles: ['admin'] },
   {
     id: 'asignacion-materias',
     etiqueta: 'Asignación de materias',
     ruta: '/asignacion-materias',
+    seccion: 'Usuarios',
+    roles: ['admin'],
+  },
+  {
+    id: 'materias',
+    etiqueta: 'Materias',
+    ruta: '/materias',
+    seccion: 'Usuarios',
+    roles: ['admin'],
+  },
+  {
+    id: 'notas',
+    etiqueta: 'Materias cursadas',
+    ruta: '/materias-cursadas',
     seccion: 'Usuarios',
     roles: ['admin'],
   },
@@ -65,9 +80,20 @@ export const MODULOS: Modulo[] = [
     seccion: 'Tutorías',
     roles: ['estudiante'],
   },
-
-  // Solo para los roles que tienen la ruta /inicio (antes un tutor llegaba a un 403 desde el menú).
-  { id: 'inicio', etiqueta: 'Página de inicio', ruta: '/inicio', seccion: 'Cuenta', roles: ['estudiante', 'admin'] },
+  {
+    id: 'estudiante-tutor-tutorias',
+    etiqueta: 'Mis tutorías como tutor',
+    ruta: '/estudiante/mis-tutorias-tutor',
+    seccion: 'Tutorías',
+    roles: ['estudiante'],
+  },
+  {
+    id: 'estudiante-tutor-horarios',
+    etiqueta: 'Mis horarios',
+    ruta: '/estudiante/mis-horarios',
+    seccion: 'Tutorías',
+    roles: ['estudiante'],
+  },
 ];
 
 /** Panel al que llega cada rol al iniciar sesión. */

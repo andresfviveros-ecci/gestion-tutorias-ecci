@@ -129,14 +129,30 @@ const CalendarIcon: React.FC = () => (
   </svg>
 );
 
-const HomeIcon: React.FC = () => (
+const UsersIcon: React.FC = () => (
   <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+    <circle cx="8" cy="7" r="2.6" stroke="currentColor" strokeWidth="1.5" />
     <path
-      d="M3.5 8.5 10 3.5l6.5 5V16a1 1 0 0 1-1 1h-3.5v-4.5h-4V17H4.5a1 1 0 0 1-1-1V8.5Z"
+      d="M3.5 16c.4-2.6 2.2-4.1 4.5-4.1s4.1 1.5 4.5 4.1"
       stroke="currentColor"
       strokeWidth="1.5"
-      strokeLinejoin="round"
+      strokeLinecap="round"
     />
+    <path
+      d="M13 5.2a2.6 2.6 0 0 1 0 5M14.6 11.9c1.3.4 2.2 1.6 2.5 3.3"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const ListIcon: React.FC = () => (
+  <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+    <path d="M6 5.5h10M6 10h10M6 14.5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="3.5" cy="5.5" r="1" fill="currentColor" />
+    <circle cx="3.5" cy="10" r="1" fill="currentColor" />
+    <circle cx="3.5" cy="14.5" r="1" fill="currentColor" />
   </svg>
 );
 
@@ -216,16 +232,21 @@ export const StudentRail: React.FC = () => {
           <GraduationIcon />
         </RailIcon>
         {puedePublicar && (
-          <RailIcon to="/tutor/mi-disponibilidad" label="Mi disponibilidad">
-            <CalendarIcon />
-          </RailIcon>
+          <>
+            <RailIcon to="/estudiante/mis-tutorias-tutor" label="Mis tutorías como tutor">
+              <UsersIcon />
+            </RailIcon>
+            <RailIcon to="/estudiante/mis-horarios" label="Mis horarios">
+              <ListIcon />
+            </RailIcon>
+            <RailIcon to="/tutor/mi-disponibilidad" label="Mi disponibilidad">
+              <CalendarIcon />
+            </RailIcon>
+          </>
         )}
       </div>
 
       <div className="flex flex-col items-center gap-2">
-        <RailIcon to="/inicio" label="Página de inicio">
-          <HomeIcon />
-        </RailIcon>
         <RailIcon onClick={handleLogout} label="Cerrar sesión">
           <span className="text-peligro">
             <LogoutIcon />

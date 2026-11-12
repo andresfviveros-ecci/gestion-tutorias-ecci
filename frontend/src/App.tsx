@@ -7,18 +7,22 @@ import { Dashboard } from './pages/Dashboard';
 import { Estudiantes } from './pages/Estudiantes';
 import { Tutores } from './pages/Tutores';
 import { AsignacionMaterias } from './pages/AsignacionMaterias';
+import { GestionMaterias } from './pages/GestionMaterias';
+import { GestionNotas } from './pages/GestionNotas';
 import { Coordinadores } from './pages/Coordinadores';
 import { GestionarUsuarios } from './pages/GestionarUsuarios';
 import { ConfiguracionGeneral } from './pages/ConfiguracionGeneral';
+import { ReporteTutores } from './pages/ReporteTutores';
 import { TutorPanel } from './pages/tutor/TutorPanel';
 import { SolicitudesTutor } from './pages/tutor/SolicitudesTutor';
 import { MiDisponibilidad } from './pages/tutor/MiDisponibilidad';
 import { ModificarDisponibilidad } from './pages/tutor/ModificarDisponibilidad';
 import { Calendario } from './pages/tutor/Calendario';
-import { StudentHome } from './pages/estudiante/StudentHome';
 import { StudentPanel } from './pages/estudiante/StudentPanel';
 import { BuscarTutorias } from './pages/estudiante/BuscarTutorias';
 import { MisReservas } from './pages/estudiante/MisReservas';
+import { MisTutoriasTutor } from './pages/estudiante/MisTutoriasTutor';
+import { MisHorariosTutor } from './pages/estudiante/MisHorariosTutor';
 import { PostulateComoTutor } from './pages/estudiante/PostulateComoTutor';
 import { Layout } from './components/Layout';
 import { MODULOS, normalizarRol, RUTA_INICIO } from './navigation/modulos';
@@ -239,14 +243,7 @@ export const App: React.FC = () => {
         <Route path="/" element={<Login />} />
 
         {/* Rutas de Estudiante */}
-        <Route
-          path="/inicio"
-          element={
-            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
-              <StudentHome />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/inicio" element={<Navigate to="/estudiante/dashboard" replace />} />
         <Route path="/estudiante" element={<Navigate to="/estudiante/dashboard" replace />} />
         
         <Route
@@ -277,19 +274,32 @@ export const App: React.FC = () => {
           path="/estudiante/mis-reservas"
           element={
             <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
-              <Layout>
-                <MisReservas />
-              </Layout>
+              <MisReservas />
             </ProtectedRoute>
           }
         />
         <Route
+          path="/estudiante/mis-tutorias-tutor"
+          element={
+            <ProtectedRoute allowedRoles={['estudiante']}>
+              <MisTutoriasTutor />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/estudiante/mis-horarios"
+          element={
+            <ProtectedRoute allowedRoles={['estudiante']}>
+              <MisHorariosTutor />
+            </ProtectedRoute>
+          }
+        />
+        {/* Alias legado: antes mostraba el mismo componente con el layout viejo. */}
+        <Route
           path="/estudiante/historial"
           element={
             <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
-              <Layout>
-                <MisReservas />
-              </Layout>
+              <MisReservas />
             </ProtectedRoute>
           }
         />
@@ -329,9 +339,23 @@ export const App: React.FC = () => {
           path="/asignacion-materias"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
-              <Layout>
-                <AsignacionMaterias />
-              </Layout>
+              <AsignacionMaterias />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/materias"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <GestionMaterias />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/materias-cursadas"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <GestionNotas />
             </ProtectedRoute>
           }
         />
@@ -360,6 +384,14 @@ export const App: React.FC = () => {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <ConfiguracionGeneral />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reportes"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <ReporteTutores />
             </ProtectedRoute>
           }
         />
@@ -401,9 +433,7 @@ export const App: React.FC = () => {
           path="/tutor/calendario"
           element={
             <ProtectedRoute allowedRoles={['tutor', 'admin']}>
-              <Layout>
-                <Calendario />
-              </Layout>
+              <Calendario />
             </ProtectedRoute>
           }
         />

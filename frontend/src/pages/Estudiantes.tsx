@@ -10,6 +10,8 @@ interface StudentData {
   email: string;
   telefono: string;
   codigo_institucional: string;
+  /** RF-02: semestre que cursa. Sin este dato la postulación falla. */
+  semestre: number | null;
 }
 
 interface StudentBackend {
@@ -21,6 +23,7 @@ interface StudentBackend {
   documento?: string | number;
   telefono?: string;
   codigo_institucional?: string;
+  semestre?: number | null;
 }
 
 interface ToastState {
@@ -66,6 +69,7 @@ export const Estudiantes: React.FC = () => {
   const [documento, setDocumento] = useState('');
   const [telefono, setTelefono] = useState('');
   const [codigoInstitucional, setCodigoInstitucional] = useState('');
+  const [semestre, setSemestre] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -76,6 +80,7 @@ export const Estudiantes: React.FC = () => {
     email: false,
     documento: false,
     telefono: false,
+    semestre: false,
     password: false,
   });
 
@@ -86,6 +91,7 @@ export const Estudiantes: React.FC = () => {
     !email.trim() ||
     !documento.trim() ||
     !telefono.trim() ||
+    !semestre.trim() ||
     !password.trim();
 
   const triggerToast = (type: 'success' | 'error', title: string, message: string) => {
@@ -102,6 +108,7 @@ export const Estudiantes: React.FC = () => {
       email: item.email || '',
       telefono: item.telefono || '',
       codigo_institucional: item.codigo_institucional || '',
+      semestre: item.semestre ?? null,
     }));
   };
 
@@ -144,6 +151,7 @@ export const Estudiantes: React.FC = () => {
     setDocumento('');
     setTelefono('');
     setCodigoInstitucional('');
+    setSemestre('');
     setPassword('');
     setShowPassword(false);
     setErrors({
@@ -153,6 +161,7 @@ export const Estudiantes: React.FC = () => {
       email: false,
       documento: false,
       telefono: false,
+      semestre: false,
       password: false,
     });
   };
@@ -162,6 +171,12 @@ export const Estudiantes: React.FC = () => {
 
     if (isFormInvalid) {
       triggerToast('error', 'Campos incompletos', 'Por favor completa todos los campos requeridos (*).');
+      return;
+    }
+
+    const semestreNumero = Number(semestre);
+    if (!Number.isInteger(semestreNumero) || semestreNumero < 1 || semestreNumero > 10) {
+      triggerToast('error', 'Semestre inválido', 'El semestre debe estar entre 1 y 10.');
       return;
     }
 
@@ -177,6 +192,7 @@ export const Estudiantes: React.FC = () => {
         documento: documento.trim(),
         telefono: telefono.trim(),
         codigo_institucional: codigoInstitucional.trim() || null,
+        semestre: semestreNumero,
       };
 
       await api.post('/accounts/estudiantes/', payload);
@@ -355,6 +371,34 @@ export const Estudiantes: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Semestre <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
+                    errors.semestre
+                      ? 'border-rose-500 ring-2 ring-rose-500/15'
+                      : 'border-slate-200 focus:border-[#0d1b2a]'
+                  }`}
+                  value={semestre}
+                  onChange={(e) => {
+                    setSemestre(e.target.value);
+                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, semestre: false }));
+                  }}
+                >
+                  <option value="">Selecciona el semestre</option>
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((valor) => (
+                    <option key={valor} value={valor}>
+                      {valor}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[0.72rem] text-slate-400">
+                  RF-02: se usa para validar la postulación como tutor.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Contraseña <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
@@ -420,13 +464,14 @@ export const Estudiantes: React.FC = () => {
                     <th className="pb-3 px-2">Documento</th>
                     <th className="pb-3 px-2">Correo</th>
                     <th className="pb-3 px-2">Teléfono</th>
+                    <th className="pb-3 px-2">Semestre</th>
                     <th className="pb-3 px-2">Cód. Inst.</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {students.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-400 font-medium text-xs">
+                      <td colSpan={7} className="py-12 text-center text-slate-400 font-medium text-xs">
                         No hay estudiantes registrados aún.
                       </td>
                     </tr>
@@ -440,6 +485,15 @@ export const Estudiantes: React.FC = () => {
                         <td className="py-3 px-2 font-mono">{st.documento || '—'}</td>
                         <td className="py-3 px-2">{st.email}</td>
                         <td className="py-3 px-2">{st.telefono || '—'}</td>
+                        <td className="py-3 px-2">
+                          {st.semestre ? (
+                            <span className="font-semibold text-slate-700">{st.semestre}</span>
+                          ) : (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                              Sin registrar
+                            </span>
+                          )}
+                        </td>
                         <td className="py-3 px-2">{st.codigo_institucional || '—'}</td>
                       </tr>
                     ))

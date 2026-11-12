@@ -12,6 +12,8 @@ export interface SolicitudVista {
   fechaTexto: string;
   /** La solicitud más próxima se resalta como nueva. */
   nueva: boolean;
+  /** El backend ofrece acciones para esta tutoría (estados_siguientes). */
+  puedeRegistrar?: boolean;
 }
 
 interface SolicitudesTutorListProps {
@@ -21,6 +23,7 @@ interface SolicitudesTutorListProps {
   /** El endpoint de tutorías recibidas todavía no está disponible (404). */
   sinServicio: boolean;
   rutaVerTodas?: string;
+  onRegistrar?: (id: number) => void;
 }
 
 const TONOS_AVATAR = [
@@ -39,6 +42,7 @@ export const SolicitudesTutorList = ({
   cargando,
   sinServicio,
   rutaVerTodas = '/tutor/calendario',
+  onRegistrar,
 }: SolicitudesTutorListProps) => (
   <motion.section
     initial={{ opacity: 0, y: 12 }}
@@ -110,6 +114,16 @@ export const SolicitudesTutorList = ({
               >
                 {item.nueva ? 'Nueva' : 'Pendiente'}
               </span>
+
+              {item.puedeRegistrar && onRegistrar && (
+                <button
+                  type="button"
+                  onClick={() => onRegistrar(item.id)}
+                  className="shrink-0 rounded-full border border-faint px-3 py-1 text-[10px] font-semibold text-tinta transition-colors hover:bg-mist"
+                >
+                  Registrar
+                </button>
+              )}
             </li>
           ))}
         </ul>

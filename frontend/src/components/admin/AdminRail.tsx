@@ -71,10 +71,25 @@ const SlidersIcon: FC = () => (
   </svg>
 );
 
-const HomeIcon: FC = () => (
+const ChartIcon: FC = () => (
+  <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+    <path d="M3 16.5h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <rect x="4.5" y="9" width="3" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
+    <rect x="9" y="5.5" width="3" height="9.5" rx="1" stroke="currentColor" strokeWidth="1.5" />
+    <rect x="13.5" y="11" width="3" height="4" rx="1" stroke="currentColor" strokeWidth="1.5" />
+  </svg>
+);
+
+const BookIcon: FC = () => (
   <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
     <path
-      d="M3.5 8.5 10 3.5l6.5 5V16a1 1 0 0 1-1 1h-3.5v-4.5h-4V17H4.5a1 1 0 0 1-1-1V8.5Z"
+      d="M3.5 4.2A1.7 1.7 0 0 1 5.2 2.5H9v15H5.2a1.7 1.7 0 0 1-1.7-1.7V4.2Z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M16.5 4.2a1.7 1.7 0 0 0-1.7-1.7H11v15h3.8a1.7 1.7 0 0 0 1.7-1.7V4.2Z"
       stroke="currentColor"
       strokeWidth="1.5"
       strokeLinejoin="round"
@@ -105,10 +120,16 @@ const iconoDeModulo = (id: Modulo['id']): ReactNode => {
   switch (id) {
     case 'dashboard':
       return <GridIcon />;
+    case 'reportes':
+      return <ChartIcon />;
     case 'estudiantes':
       return <UsersIcon className="h-5 w-5" />;
     case 'tutores':
       return <UserIcon className="h-5 w-5" />;
+    case 'materias':
+      return <BookIcon />;
+    case 'notas':
+      return <BookIcon />;
     case 'asignacion-materias':
       return <LayersIcon className="h-5 w-5" />;
     case 'coordinadores':
@@ -117,8 +138,6 @@ const iconoDeModulo = (id: Modulo['id']): ReactNode => {
       return <ListIcon className="h-5 w-5" />;
     case 'configuracion':
       return <SlidersIcon />;
-    case 'inicio':
-      return <HomeIcon />;
     default:
       return <GridIcon />;
   }

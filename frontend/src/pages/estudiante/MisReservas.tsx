@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../../api/axios';
+import { StudentRail } from '../../components/estudiante/StudentRail';
+import { CalificarTutorModal } from '../../components/estudiante/CalificarTutorModal';
+import { EmptyState } from '../../components/constelacion/EmptyState';
+import { ClockIcon, VideoIcon } from '../../components/constelacion/Icons';
+import { fechaLarga, hora12, horaCorta } from '../../utils/fechas';
 import { hoyLocalISO } from '../../utils/date';
 
 export interface TutoriaBackend {
@@ -19,6 +25,9 @@ export interface TutoriaBackend {
   enlace_virtual?: string;
   enlaceMeeting?: string;
   estado?: string;
+  /** GT-226: el backend dice si ya se puede calificar y si ya hay evaluación. */
+  puede_evaluar?: boolean;
+  evaluacion?: { calificacion?: number; comentario?: string } | null;
 }
 
 const MESES = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
@@ -42,11 +51,6 @@ const parseFechaBadge = (fechaStr: string) => {
   return { mes: 'OCT', diaNum: '11', diaSem: 'Dom' };
 };
 
-const formatHora = (horaStr?: string) => {
-  if (!horaStr) return '00:00';
-  return horaStr.substring(0, 5);
-};
-
 const toArray = <T,>(data: unknown): T[] => {
   if (Array.isArray(data)) return data as T[];
   if (data && typeof data === 'object' && 'results' in data) {
@@ -55,6 +59,41 @@ const toArray = <T,>(data: unknown): T[] => {
   }
   return [];
 };
+
+const nombreMateria = (item: TutoriaBackend): string => {
+  if (typeof item.materia === 'string') return item.materia;
+  if (typeof item.materia === 'object' && item.materia !== null && item.materia.nombre) {
+    return item.materia.nombre;
+  }
+  return item.materia_nombre || 'Asesoría académica';
+};
+
+const nombreTutor = (item: TutoriaBackend): string => {
+  if (item.tutor_nombre) return item.tutor_nombre;
+  if (item.docente_nombre) return item.docente_nombre;
+  if (typeof item.docente === 'object' && item.docente !== null) {
+    const full = `${item.docente.first_name || ''} ${item.docente.last_name || ''}`.trim();
+    return full || item.docente.nombre || 'Docente tutor';
+  }
+  return 'Docente tutor';
+};
+
+const ESTADOS: Record<string, string> = {
+  RESERVADA: 'Reservada',
+  CONFIRMADA: 'Confirmada',
+  COMPLETADA: 'Completada',
+  NO_ASISTIO: 'No asistió',
+  CANCELADA_ESTUDIANTE: 'Cancelada por ti',
+  CANCELADA_DOCENTE: 'Cancelada por el tutor',
+};
+
+const textoEstado = (estado?: string): string => {
+  const valor = (estado || 'CONFIRMADA').toUpperCase();
+  return ESTADOS[valor] || valor.toLowerCase().replace(/_/g, ' ');
+};
+
+const esEstadoActivo = (estado?: string): boolean =>
+  ['RESERVADA', 'CONFIRMADA'].includes((estado || 'RESERVADA').toUpperCase());
 
 interface BloqueJoin {
   id: number | string;
@@ -72,9 +111,132 @@ interface MateriaJoin {
   nombre?: string;
 }
 
+interface TarjetaReservaProps {
+  item: TutoriaBackend;
+  hoy: boolean;
+  onCalificar?: () => void;
+}
+
+const TarjetaReserva: React.FC<TarjetaReservaProps> = ({ item, hoy, onCalificar }) => {
+  const badge = parseFechaBadge(item.fecha);
+  const esVirtual = item.modalidad?.toLowerCase() === 'virtual';
+  const enlace = item.enlace_virtual || item.enlaceMeeting;
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+      className="flex flex-col gap-4 rounded-2xl border border-faint p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
+    >
+      <div className="flex min-w-0 items-center gap-4">
+        <div
+          className={`flex h-16 w-14 shrink-0 flex-col items-center justify-center rounded-2xl ${
+            hoy ? 'bg-violeta-accion text-white' : 'bg-mist text-tinta'
+          }`}
+        >
+          <span
+            className={`text-[9px] font-bold uppercase tracking-[0.12em] ${
+              hoy ? 'text-white/70' : 'text-muted'
+            }`}
+          >
+            {badge.mes}
+          </span>
+          <span className="my-0.5 text-xl font-semibold leading-none">{badge.diaNum}</span>
+          <span className={`text-[9px] font-medium ${hoy ? 'text-white/70' : 'text-muted'}`}>
+            {badge.diaSem}
+          </span>
+        </div>
+
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-[14px] font-semibold text-tinta">
+              {nombreMateria(item)}
+            </h3>
+            {hoy && (
+              <span className="rounded-full bg-advertencia/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-advertencia">
+                Hoy
+              </span>
+            )}
+          </div>
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <ClockIcon className="h-3.5 w-3.5" />
+              {hora12(horaCorta(item.hora_inicio))} - {hora12(horaCorta(item.hora_fin))}
+            </span>
+            <span>
+              Tutor: <strong className="font-semibold text-slate-ink">{nombreTutor(item)}</strong>
+            </span>
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-faint pt-3 sm:items-end sm:border-t-0 sm:pt-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-faint px-3 py-1 text-[10px] font-semibold text-slate-ink">
+            {item.modalidad || 'Virtual'}
+          </span>
+          <span
+            className={`rounded-full px-3 py-1 text-[10px] font-semibold ${
+              esEstadoActivo(item.estado)
+                ? 'bg-exito/10 text-exito'
+                : 'bg-mist text-slate-ink'
+            }`}
+          >
+            {textoEstado(item.estado)}
+          </span>
+        </div>
+
+        {item.puede_evaluar && onCalificar && (
+          <button
+            type="button"
+            onClick={onCalificar}
+            className="inline-flex items-center justify-center gap-1.5 rounded-full bg-violeta-accion px-4 py-2 text-[11px] font-semibold text-white transition-colors hover:bg-violeta-profundo"
+          >
+            Calificar al tutor
+          </button>
+        )}
+
+        {!item.puede_evaluar && item.evaluacion?.calificacion != null && (
+          <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-ink">
+            <span aria-hidden="true" className="text-advertencia">
+              ★
+            </span>
+            Tu calificación: {item.evaluacion.calificacion}
+          </p>
+        )}
+
+        {esVirtual ? (
+          enlace ? (
+            <a
+              href={enlace}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-violeta-accion hover:underline"
+            >
+              <VideoIcon className="h-3.5 w-3.5" />
+              Unirse a la reunión
+            </a>
+          ) : (
+            <span className="text-[11px] italic text-muted">Enlace de reunión pendiente</span>
+          )
+        ) : (
+          <span className="text-[11px] text-muted">
+            {item.lugar || 'Ubicación asignada en campus'}
+          </span>
+        )}
+      </div>
+    </motion.article>
+  );
+};
+
 export const MisReservas: React.FC = () => {
   const [tutorias, setTutorias] = useState<TutoriaBackend[]>([]);
   const [loading, setLoading] = useState(true);
+  // GT-226: tutoría que se está calificando.
+  const [tutoriaCalificar, setTutoriaCalificar] = useState<TutoriaBackend | null>(null);
+  const [version, setVersion] = useState(0);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   // Cargar reservas del backend
   useEffect(() => {
@@ -151,27 +313,9 @@ export const MisReservas: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [version]);
 
   const hoyISO = useMemo(() => hoyLocalISO(), []);
-
-  const getMateriaNombre = (item: TutoriaBackend): string => {
-    if (typeof item.materia === 'string') return item.materia;
-    if (typeof item.materia === 'object' && item.materia !== null && item.materia.nombre) {
-      return item.materia.nombre;
-    }
-    return item.materia_nombre || 'Asesoría Académica';
-  };
-
-  const getTutorNombre = (item: TutoriaBackend): string => {
-    if (item.tutor_nombre) return item.tutor_nombre;
-    if (item.docente_nombre) return item.docente_nombre;
-    if (typeof item.docente === 'object' && item.docente !== null) {
-      const full = `${item.docente.first_name || ''} ${item.docente.last_name || ''}`.trim();
-      return full || item.docente.nombre || 'Docente Tutor';
-    }
-    return 'Docente Tutor';
-  };
 
   const { tutoriasHoy, tutoriasProximas } = useMemo(() => {
     const hoy: TutoriaBackend[] = [];
@@ -196,226 +340,215 @@ export const MisReservas: React.FC = () => {
 
   const totalProgramadas = tutoriasHoy.length + tutoriasProximas.length;
 
+  // GT-226: el backend marca puede_evaluar solo si está completada y sin nota.
+  const porCalificar = useMemo(
+    () =>
+      tutorias
+        .filter((tutoria) => Boolean(tutoria.puede_evaluar))
+        .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
+    [tutorias],
+  );
+
+  const historial = useMemo(
+    () =>
+      tutorias
+        .filter((tutoria) => {
+          const estado = (tutoria.estado || '').toUpperCase();
+          return (
+            ['COMPLETADA', 'NO_ASISTIO'].includes(estado) && !tutoria.puede_evaluar
+          );
+        })
+        .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
+    [tutorias],
+  );
+
+  const hayContenido = totalProgramadas > 0 || porCalificar.length > 0 || historial.length > 0;
+
+  const calificar = (item: TutoriaBackend) => {
+    setTutoriaCalificar(item);
+  };
+
+  const alCalificar = (calificacion: number) => {
+    setTutoriaCalificar(null);
+    setAviso(`Gracias, tu calificación de ${calificacion} quedó registrada.`);
+    setVersion((valor) => valor + 1);
+  };
+
   return (
-    <div className="p-6 md:p-10 bg-[#f7f5ed] min-h-screen font-body text-slate-800 space-y-6">
-      {/* BREADCRUMB */}
-      <div className="flex justify-between items-center text-xs font-semibold text-slate-500">
-        <div>
-          <span>Tutorías</span> <span className="mx-1">/</span>{' '}
-          <span className="text-slate-800">Mis reservas</span>
-        </div>
-        <span className="px-3 py-1 bg-white border border-slate-200 rounded-full text-[11px] text-slate-600 shadow-sm font-medium">
-          Estudiante
-        </span>
-      </div>
+    <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
+      <StudentRail />
 
-      {/* TÍTULO PRINCIPAL Y SUBTÍTULO */}
-      <div>
-        <h1 className="font-display italic text-3xl md:text-4xl font-semibold text-[#0d1b2a] mb-1">
-          Mis tutorías programadas
-        </h1>
-        <p className="text-xs md:text-sm text-slate-500">
-          Consulta las fechas, horarios y el estado de las tutorías en las que estás inscrito.
-        </p>
-      </div>
+      <main className="min-w-0 flex-1">
+        <div className="mx-auto w-full max-w-[1200px] p-5 pb-24 sm:p-6 md:pb-6 lg:p-8">
+          <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[11.5px] text-muted">Mi trabajo · Estudiante</p>
+              <h1 className="mt-1 text-[30px] font-semibold leading-tight tracking-[-0.02em] text-tinta sm:text-[34px]">
+                Mis reservas
+              </h1>
+              <p className="mt-1 max-w-[620px] text-[12.5px] leading-relaxed text-muted">
+                Consulta las fechas, horarios y el estado de las tutorías en las que estás inscrito.
+              </p>
+            </div>
 
-      {/* RECUENTO Y ESTADO DE CONTENIDO */}
-      <div className="flex items-center justify-between pt-2">
-        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-          {totalProgramadas} {totalProgramadas === 1 ? 'tutoría programada' : 'tutorías programadas'}
-        </span>
-      </div>
+            <div className="flex flex-col items-end gap-2">
+              <span className="text-[11px] text-muted">{fechaLarga(new Date())}</span>
+              <Link
+                to="/estudiante/buscar-tutorias"
+                className="inline-flex items-center gap-2 rounded-full border border-faint bg-white px-4 py-2.5 text-[11.5px] font-semibold text-tinta transition-colors hover:bg-mist"
+              >
+                Reservar una tutoría
+              </Link>
+            </div>
+          </header>
 
-      {loading ? (
-        <div className="py-12 text-center text-xs text-slate-400 bg-white rounded-2xl border border-slate-200/80">
-          Cargando tus reservas...
-        </div>
-      ) : totalProgramadas === 0 ? (
-        <div className="py-12 text-center text-xs text-slate-400 bg-white rounded-2xl border border-slate-200/80 space-y-2">
-          <p className="font-medium text-slate-600">No tienes tutorías programadas para hoy ni próximas fechas.</p>
-          <p className="text-[11px] text-slate-400">Puedes consultar horarios disponibles y reservar una nueva asesoría.</p>
-        </div>
-      ) : (
-        <div className="space-y-8">
-          {/* SECCIÓN HOY */}
-          {tutoriasHoy.length > 0 && (
+          <div className="mb-4">
+            <span className="inline-flex items-center gap-2 rounded-full border border-faint bg-white px-4 py-2 text-[11.5px] font-semibold text-slate-ink">
+              <ClockIcon className="h-4 w-4 text-violeta-accion" />
+              {totalProgramadas}{' '}
+              {totalProgramadas === 1 ? 'tutoría programada' : 'tutorías programadas'}
+            </span>
+          </div>
+
+          {loading ? (
             <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-300 pb-2">
-                HOY
-              </h3>
-              <div className="space-y-3">
-                {tutoriasHoy.map((item) => {
-                  const badge = parseFechaBadge(item.fecha);
-                  const isVirtual = item.modalidad?.toLowerCase() === 'virtual';
-                  const meetUrl = item.enlace_virtual || item.enlaceMeeting;
-
-                  return (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-white border border-slate-300 rounded-2xl p-4 md:p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-14 h-16 rounded-xl bg-[#111a2e] text-white flex flex-col items-center justify-center shrink-0 shadow-sm">
-                          <span className="text-[9px] font-bold tracking-wider uppercase text-slate-300">
-                            {badge.mes}
-                          </span>
-                          <span className="text-xl font-bold leading-none my-0.5">{badge.diaNum}</span>
-                          <span className="text-[9px] text-slate-400 font-medium">{badge.diaSem}</span>
-                        </div>
-
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-sm md:text-base text-slate-800">
-                              {getMateriaNombre(item)}
-                            </h4>
-                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-bold rounded-full uppercase">
-                              HOY
-                            </span>
-                          </div>
-                          <div className="text-xs text-slate-500 font-medium flex flex-wrap items-center gap-x-3 gap-y-1">
-                            <span>
-                              <i className="fa-regular fa-clock mr-1 text-slate-400"></i>
-                              {formatHora(item.hora_inicio)} - {formatHora(item.hora_fin)}
-                            </span>
-                            <span>
-                              Tutor: <strong className="text-slate-700">{getTutorNombre(item)}</strong>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col sm:items-end gap-2 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                              isVirtual ? 'bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-800'
-                            }`}
-                          >
-                            {item.modalidad || 'Virtual'}
-                          </span>
-                          <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider">
-                            {item.estado || 'CONFIRMADA'}
-                          </span>
-                        </div>
-
-                        {isVirtual ? (
-                          meetUrl ? (
-                            <a
-                              href={meetUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[11px] font-semibold text-blue-600 hover:underline flex items-center gap-1"
-                            >
-                              <i className="fa-solid fa-video text-xs"></i> Enlace de reunión disponible
-                            </a>
-                          ) : (
-                            <span className="text-[11px] text-slate-400 italic">Enlace de reunión pendiente</span>
-                          )
-                        ) : (
-                          <span className="text-[11px] text-slate-500">
-                            {item.lugar || 'Ubicación asignada en campus'}
-                          </span>
-                        )}
-                      </div>
-                    </motion.div>
-                  );
-                })}
+              {Array.from({ length: 3 }).map((_, indice) => (
+                <div
+                  key={indice}
+                  className="h-[104px] animate-pulse rounded-2xl border border-faint bg-white"
+                />
+              ))}
+            </div>
+          ) : !hayContenido ? (
+            <section className="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-7">
+              <EmptyState
+                titulo="No tienes tutorías programadas"
+                detalle="Consulta los horarios disponibles y reserva una nueva asesoría."
+              />
+              <div className="mt-4 flex justify-center">
+                <Link
+                  to="/estudiante/buscar-tutorias"
+                  className="inline-flex items-center gap-2 rounded-full bg-violeta-accion px-5 py-2.5 text-[11.5px] font-semibold text-white transition-colors hover:bg-violeta-profundo"
+                >
+                  Ver horarios disponibles
+                </Link>
               </div>
+            </section>
+          ) : (
+            <div className="space-y-6">
+              {tutoriasHoy.length > 0 && (
+                <section className="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-7">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-tinta">
+                      Hoy
+                    </h2>
+                    <span className="rounded-full bg-advertencia/10 px-3 py-1 text-[10px] font-semibold text-advertencia">
+                      {tutoriasHoy.length}{' '}
+                      {tutoriasHoy.length === 1 ? 'tutoría' : 'tutorías'}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {tutoriasHoy.map((item) => (
+                      <TarjetaReserva key={item.id} item={item} hoy />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {tutoriasProximas.length > 0 && (
+                <section className="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-7">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-tinta">
+                      Próximas
+                    </h2>
+                    <span className="rounded-full bg-mist px-3 py-1 text-[10px] font-semibold text-slate-ink">
+                      {tutoriasProximas.length}{' '}
+                      {tutoriasProximas.length === 1 ? 'tutoría' : 'tutorías'}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {tutoriasProximas.map((item) => (
+                      <TarjetaReserva key={item.id} item={item} hoy={false} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {porCalificar.length > 0 && (
+                <section className="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-7">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-tinta">
+                        Por calificar
+                      </h2>
+                      <p className="mt-0.5 text-[11.5px] text-muted">
+                        Cuéntanos cómo fue la tutoría para mejorar el acompañamiento.
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-violet-wash/40 px-3 py-1 text-[10px] font-semibold text-violeta-accion">
+                      {porCalificar.length}{' '}
+                      {porCalificar.length === 1 ? 'pendiente' : 'pendientes'}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {porCalificar.map((item) => (
+                      <TarjetaReserva
+                        key={item.id}
+                        item={item}
+                        hoy={false}
+                        onCalificar={() => calificar(item)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {historial.length > 0 && (
+                <section className="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-7">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-tinta">
+                      Historial
+                    </h2>
+                    <span className="rounded-full bg-mist px-3 py-1 text-[10px] font-semibold text-slate-ink">
+                      {historial.length}{' '}
+                      {historial.length === 1 ? 'tutoría' : 'tutorías'}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {historial.map((item) => (
+                      <TarjetaReserva key={item.id} item={item} hoy={false} />
+                    ))}
+                  </div>
+                </section>
+              )}
             </div>
           )}
 
-          {/* SECCIÓN PRÓXIMAS */}
-          {tutoriasProximas.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-300 pb-2">
-                PRÓXIMAS
-              </h3>
-              <div className="space-y-3">
-                {tutoriasProximas.map((item) => {
-                  const badge = parseFechaBadge(item.fecha);
-                  const isVirtual = item.modalidad?.toLowerCase() === 'virtual';
-                  const meetUrl = item.enlace_virtual || item.enlaceMeeting;
-
-                  return (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-white border border-slate-300 rounded-2xl p-4 md:p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-14 h-16 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 flex flex-col items-center justify-center shrink-0">
-                          <span className="text-[9px] font-bold tracking-wider uppercase text-slate-400">
-                            {badge.mes}
-                          </span>
-                          <span className="text-xl font-bold leading-none my-0.5">{badge.diaNum}</span>
-                          <span className="text-[9px] text-slate-500 font-medium">{badge.diaSem}</span>
-                        </div>
-
-                        <div className="space-y-1">
-                          <h4 className="font-bold text-sm md:text-base text-slate-800">
-                            {getMateriaNombre(item)}
-                          </h4>
-                          <div className="text-xs text-slate-500 font-medium flex flex-wrap items-center gap-x-3 gap-y-1">
-                            <span>
-                              <i className="fa-regular fa-clock mr-1 text-slate-400"></i>
-                              {formatHora(item.hora_inicio)} - {formatHora(item.hora_fin)}
-                            </span>
-                            <span>
-                              Tutor: <strong className="text-slate-700">{getTutorNombre(item)}</strong>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col sm:items-end gap-2 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                              isVirtual ? 'bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-800'
-                            }`}
-                          >
-                            {item.modalidad || 'Presencial'}
-                          </span>
-                          <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider">
-                            {item.estado || 'CONFIRMADA'}
-                          </span>
-                        </div>
-
-                        {isVirtual ? (
-                          meetUrl ? (
-                            <a
-                              href={meetUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[11px] font-semibold text-blue-600 hover:underline flex items-center gap-1"
-                            >
-                              <i className="fa-solid fa-video text-xs"></i> Enlace de reunión disponible
-                            </a>
-                          ) : (
-                            <span className="text-[11px] text-slate-400 italic">Enlace de reunión disponible pronto</span>
-                          )
-                        ) : (
-                          <span className="text-[11px] text-slate-500">
-                            {item.lugar || 'Bloque / Salón por confirmar'}
-                          </span>
-                        )}
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          <p className="pt-5 text-[11px] text-muted">
+            Solo se muestran las tutorías activas, reservadas o confirmadas.
+          </p>
         </div>
+      </main>
+
+      {tutoriaCalificar && (
+        <CalificarTutorModal
+          tutoriaId={Number(tutoriaCalificar.id)}
+          materia={nombreMateria(tutoriaCalificar)}
+          tutor={nombreTutor(tutoriaCalificar)}
+          fechaTexto={fechaLarga(new Date(`${tutoriaCalificar.fecha}T00:00:00`))}
+          onCerrar={() => setTutoriaCalificar(null)}
+          onGuardado={alCalificar}
+        />
       )}
 
-      {/* NOTA DE PIE DE PÁGINA */}
-      <p className="text-[11px] text-slate-400 pt-4">
-        Las tutorías finalizadas o canceladas se muestran en tu Historial.
-      </p>
+      {aviso && (
+        <div
+          role="status"
+          className="fixed bottom-5 left-1/2 z-50 w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl bg-tinta px-4 py-3 text-center text-[12px] font-medium text-white shadow-lg"
+        >
+          {aviso}
+        </div>
+      )}
     </div>
   );
 };

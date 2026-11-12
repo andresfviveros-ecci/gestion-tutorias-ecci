@@ -20,6 +20,7 @@ import type { ItemProximo } from '../../components/estudiante/panel/MisProximasL
 import { ReservaModal } from '../../components/estudiante/panel/ReservaModal';
 import { CancelarModal } from '../../components/estudiante/panel/CancelarModal';
 import type { DetalleCancelacion } from '../../components/estudiante/panel/CancelarModal';
+import { CalificarTutorModal } from '../../components/estudiante/CalificarTutorModal';
 import { temaDeMateria } from '../../components/constelacion/temas';
 import type {
   Bloque,
@@ -88,6 +89,7 @@ export const StudentPanel = () => {
 
   const [bloqueReserva, setBloqueReserva] = useState<Bloque | null>(null);
   const [tutoriaCancelar, setTutoriaCancelar] = useState<Tutoria | null>(null);
+  const [tutoriaCalificar, setTutoriaCalificar] = useState<Tutoria | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const hoy = useMemo(() => new Date(), []);
@@ -182,6 +184,16 @@ export const StudentPanel = () => {
     return bloque.lugar || 'Lugar por confirmar';
   };
 
+  const materiaDeTutoria = (tutoria: Tutoria): string => {
+    const bloque = obtenerBloque(tutoria);
+    return bloque ? nombreMateria(bloque) : tutoria.tema || 'Tutoría';
+  };
+
+  const docenteDeTutoria = (tutoria: Tutoria): string => {
+    const bloque = obtenerBloque(tutoria);
+    return bloque ? docenteDeBloque(bloque) : tutoria.docente || 'Docente por confirmar';
+  };
+
   /* ---------------------------- datos ----------------------------- */
 
   const tutoriasActivas = useMemo(
@@ -244,6 +256,12 @@ export const StudentPanel = () => {
   }, [tutoriasActivas, obtenerBloque]);
 
   const proxima = proximas[0] ?? null;
+
+  // GT-226: el backend marca puede_evaluar solo si está completada y sin nota.
+  const porCalificar = useMemo(
+    () => tutorias.filter((tutoria) => Boolean(tutoria.puede_evaluar)),
+    [tutorias],
+  );
 
   const stats = useMemo(() => {
     const materiasUnicas = new Set<number>();
@@ -361,6 +379,12 @@ export const StudentPanel = () => {
     await recargar();
   };
 
+  const alCalificar = async (calificacion: number) => {
+    setTutoriaCalificar(null);
+    setToast(`Gracias, tu calificación de ${calificacion} quedó registrada.`);
+    await recargar();
+  };
+
   /* --------------------------- render ----------------------------- */
 
   const bloqueProxima = proxima?.bloque ?? null;
@@ -398,6 +422,7 @@ export const StudentPanel = () => {
   }));
 
   const bloqueCancelar = tutoriaCancelar ? obtenerBloque(tutoriaCancelar) : null;
+  const bloqueCalificar = tutoriaCalificar ? obtenerBloque(tutoriaCalificar) : null;
 
   const detalleCancelacion: DetalleCancelacion | null = bloqueCancelar
     ? {
@@ -602,6 +627,55 @@ export const StudentPanel = () => {
               onCancelar={abrirCancelacion}
             />
           </div>
+
+          {/* ------------- Por calificar (GT-226) ------------- */}
+          {!cargando && porCalificar.length > 0 && (
+            <section className="mt-5 rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-7">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-tinta">
+                    Califica tu tutoría
+                  </h2>
+                  <p className="mt-0.5 text-[11.5px] text-muted">
+                    Cuéntanos cómo fue la sesión para mejorar el acompañamiento.
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-violet-wash/40 px-3 py-1 text-[10px] font-semibold text-violeta-accion">
+                  {porCalificar.length}{' '}
+                  {porCalificar.length === 1 ? 'pendiente' : 'pendientes'}
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {porCalificar.map((item) => {
+                  const bloque = obtenerBloque(item);
+                  return (
+                    <article
+                      key={item.id}
+                      className="flex flex-col gap-3 rounded-2xl border border-faint p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-semibold text-tinta">
+                          {materiaDeTutoria(item)}
+                        </p>
+                        <p className="mt-0.5 text-[11.5px] text-muted">
+                          {docenteDeTutoria(item)}
+                          {bloque?.fecha ? ` · ${diaYNumero(bloque.fecha)}` : ''}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTutoriaCalificar(item)}
+                        className="shrink-0 rounded-full bg-violeta-accion px-4 py-2 text-[11.5px] font-semibold text-white transition-colors hover:bg-violeta-profundo"
+                      >
+                        Calificar al tutor
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          )}
         </div>
       </main>
 
@@ -635,6 +709,18 @@ export const StudentPanel = () => {
           />
         )}
       </AnimatePresence>
+
+      {/* --------------------- Modal calificar --------------------- */}
+      {tutoriaCalificar && (
+        <CalificarTutorModal
+          tutoriaId={Number(tutoriaCalificar.id)}
+          materia={materiaDeTutoria(tutoriaCalificar)}
+          tutor={docenteDeTutoria(tutoriaCalificar)}
+          fechaTexto={bloqueCalificar?.fecha ? diaYNumero(bloqueCalificar.fecha) : undefined}
+          onCerrar={() => setTutoriaCalificar(null)}
+          onGuardado={alCalificar}
+        />
+      )}
 
       {/* ---------------------------- Toast ---------------------------- */}
       <Toast mensaje={toast} />

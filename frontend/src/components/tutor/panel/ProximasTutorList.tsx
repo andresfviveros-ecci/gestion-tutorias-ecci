@@ -16,6 +16,8 @@ export interface ProximaTutorItem {
   /** '1 hora', '45 min'... */
   duracion: string;
   esHoy: boolean;
+  /** El backend ofrece acciones para esta tutoría (estados_siguientes). */
+  puedeRegistrar?: boolean;
 }
 
 interface ProximasTutorListProps {
@@ -24,6 +26,7 @@ interface ProximasTutorListProps {
   cargando: boolean;
   sinServicio: boolean;
   rutaAgenda?: string;
+  onRegistrar?: (id: number) => void;
 }
 
 /** Lo que el docente tiene agendado próximamente. */
@@ -33,6 +36,7 @@ export const ProximasTutorList = ({
   cargando,
   sinServicio,
   rutaAgenda = '/tutor/calendario',
+  onRegistrar,
 }: ProximasTutorListProps) => (
   <motion.section
     initial={{ opacity: 0, y: 12 }}
@@ -91,11 +95,20 @@ export const ProximasTutorList = ({
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[12.5px] font-semibold text-tinta">{item.titulo}</p>
                 <p className="mt-0.5 truncate text-[11px] text-muted">· {item.materia}</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <span className="rounded-full bg-mist px-2.5 py-1 text-[10px] font-medium text-slate-ink">
                     {item.modalidad}
                     {item.duracion ? ` · ${item.duracion}` : ''}
                   </span>
+                  {item.puedeRegistrar && onRegistrar && (
+                    <button
+                      type="button"
+                      onClick={() => onRegistrar(item.id)}
+                      className="rounded-full border border-faint px-2.5 py-1 text-[10px] font-semibold text-tinta transition-colors hover:bg-mist"
+                    >
+                      Registrar tutoría
+                    </button>
+                  )}
                 </div>
               </div>
             </li>
