@@ -1,9 +1,14 @@
 from rest_framework import serializers
 
-from apps.catalogo.models import Configuracion, PeriodoAcademico, calcular_nota_final
+from apps.catalogo.models import Configuracion, PeriodoAcademico
 
 from .models import SolicitudTutor
-from .services import docentes_revisores, materia_cursada
+from .services import (
+    ESTADOS_VIGENTES,
+    docentes_revisores,
+    evaluar_postulacion,
+    materias_cursadas,
+)
 
 
 class SolicitudTutorSerializer(serializers.ModelSerializer):
@@ -35,10 +40,15 @@ class SolicitudTutorSerializer(serializers.ModelSerializer):
             'fecha_revision',
             'date_creation',
         ]
+        # GT-270: las notas salen del historial (la inscripción), no de lo que
+        # escriba el estudiante. Basta con mandar {"materia": id}.
         read_only_fields = [
             'id',
             'estudiante',
             'periodo',
+            'nota_corte1',
+            'nota_corte2',
+            'nota_corte3',
             'nota_final',
             'estado',
             'motivo',
@@ -48,43 +58,43 @@ class SolicitudTutorSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        """RF-02: nota mínima, semestre mínimo, materia ya cursada y un
-        docente que la revise en el periodo activo."""
+        """RF-02 con la misma regla del historial (evaluar_postulacion):
+        materia ya cursada, semestre mínimo, nota mínima, avance, materia
+        activa, docente asignado y sin otra solicitud vigente."""
         estudiante = self.context['request'].user
         materia = attrs['materia']
         config = Configuracion.actual()
         periodo = PeriodoAcademico.objects.filter(activo=True).first()
-
         if periodo is None:
             raise serializers.ValidationError('No hay un periodo académico activo.')
-        if not materia.activa:
-            raise serializers.ValidationError({'materia': 'La materia no está activa.'})
-        if estudiante.semestre is None:
-            raise serializers.ValidationError('Tu semestre no está registrado; pídele a la coordinación que lo actualice.')
-        if estudiante.semestre < config.semestre_minimo_tutor:
-            raise serializers.ValidationError(
-                f'Para ser tutor debes cursar al menos el semestre {config.semestre_minimo_tutor}.'
-            )
 
-        nota_final = calcular_nota_final(attrs['nota_corte1'], attrs['nota_corte2'], attrs['nota_corte3'], config)
-        if nota_final < config.nota_minima:
-            raise serializers.ValidationError({
-                'nota_corte3': f'La nota final ({nota_final}) es menor que la mínima ({config.nota_minima}).'
-            })
-        if not materia_cursada(estudiante, materia, periodo):
+        inscripcion = next(
+            (i for i in materias_cursadas(estudiante, periodo) if i.materia_id == materia.id), None
+        )
+        if inscripcion is None:
             raise serializers.ValidationError({'materia': 'Solo puedes pedir ser tutor de una materia que ya cursaste.'})
-        if not docentes_revisores(materia, periodo):
-            raise serializers.ValidationError({
-                'materia': f'La materia no tiene docente asignado en el periodo {periodo.codigo}.'
-            })
+
+        evaluacion = evaluar_postulacion(
+            estudiante, inscripcion, periodo, config, con_docente=bool(docentes_revisores(materia, periodo))
+        )
+        if evaluacion['motivo']:
+            campo, mensaje = evaluacion['motivo']
+            raise serializers.ValidationError(mensaje if campo == 'non_field_errors' else {campo: mensaje})
         if SolicitudTutor.objects.filter(
-            estudiante=estudiante, materia=materia, periodo=periodo, estado__in=('PENDIENTE', 'APROBADA')
+            estudiante=estudiante, materia=materia, periodo=periodo, estado__in=ESTADOS_VIGENTES
         ).exists():
             raise serializers.ValidationError({
                 'materia': 'Ya tienes una solicitud pendiente o aprobada en esta materia.'
             })
 
-        attrs.update(estudiante=estudiante, periodo=periodo, nota_final=nota_final)
+        attrs.update(
+            estudiante=estudiante,
+            periodo=periodo,
+            nota_corte1=inscripcion.nota_corte1,
+            nota_corte2=inscripcion.nota_corte2,
+            nota_corte3=inscripcion.nota_corte3,
+            nota_final=evaluacion['nota'],
+        )
         return attrs
 
 

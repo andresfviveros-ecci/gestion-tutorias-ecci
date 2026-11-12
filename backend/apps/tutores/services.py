@@ -15,15 +15,6 @@ from .models import SolicitudTutor
 ESTADOS_VIGENTES = ('PENDIENTE', 'APROBADA')
 
 
-def materia_cursada(estudiante, materia, periodo):
-    """Inscrito en la materia en un periodo que terminó antes del actual."""
-    return Inscripcion.objects.filter(
-        estudiante=estudiante,
-        materia=materia,
-        periodo__fecha_fin__lt=periodo.fecha_inicio,
-    ).exists()
-
-
 def materias_cursadas(estudiante, periodo):
     """Materias cursadas en periodos que terminaron antes de este, con la
     inscripción más reciente de cada una (si la repitió, cuenta la última)."""

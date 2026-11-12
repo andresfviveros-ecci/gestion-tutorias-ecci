@@ -39,14 +39,18 @@ class SolicitudesTutorTests(APITestCase):
         cls.estudiante = crear_usuario('Estudiante')
         cls.estudiante.semestre = 5
         cls.estudiante.save(update_fields=['semestre'])
-        Inscripcion.objects.create(estudiante=cls.estudiante, materia=cls.materia, periodo=cls.anterior)
+        # Materia de tercer semestre: con quinto, el avance es 2.
+        Materia.objects.filter(pk=cls.materia.pk).update(semestre=3)
+        cls.inscripcion = Inscripcion.objects.create(
+            estudiante=cls.estudiante, materia=cls.materia, periodo=cls.anterior, **NOTAS
+        )
 
     def setUp(self):
         self.client.force_authenticate(self.estudiante)
 
     def solicitar(self, **cambios):
         with self.captureOnCommitCallbacks(execute=True):
-            return self.client.post(URL, {'materia': self.materia.id, **NOTAS, **cambios}, format='json')
+            return self.client.post(URL, {'materia': self.materia.id, **cambios}, format='json')
 
     def revisar(self, solicitud_id, accion, usuario=None, **datos):
         self.client.force_authenticate(usuario or self.docente)
@@ -64,9 +68,31 @@ class SolicitudesTutorTests(APITestCase):
         self.assertEqual([m.to for m in mail.outbox], [[self.docente.email]])
 
     def test_nota_menor_que_la_minima(self):
-        response = self.solicitar(nota_corte3='3.0')  # final 3.75
+        Inscripcion.objects.filter(pk=self.inscripcion.pk).update(nota_corte3=Decimal('3.0'))  # final 3.75
+        response = self.solicitar()
         self.assertEqual(response.status_code, 400)
-        self.assertIn('nota_corte3', response.data['errors'])
+        self.assertIn('3.75', response.data['errors']['materia'][0])
+
+    # GT-270: las notas salen del historial, no de lo que mande el estudiante.
+    def test_las_notas_salen_del_historial(self):
+        response = self.solicitar(nota_corte1='5.0', nota_corte2='5.0', nota_corte3='5.0')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(
+            [response.data[c] for c in ('nota_corte1', 'nota_corte2', 'nota_corte3', 'nota_final')],
+            ['4.00', '4.50', '4.20', '4.23'],
+        )
+
+    def test_sin_nota_registrada(self):
+        Inscripcion.objects.filter(pk=self.inscripcion.pk).update(nota_corte3=None)
+        response = self.solicitar()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('nota final registrada', response.data['detail'])
+
+    def test_avance_insuficiente(self):
+        Materia.objects.filter(pk=self.materia.pk).update(semestre=4)
+        response = self.solicitar()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('semestres por delante', response.data['detail'])
 
     def test_semestre_minimo(self):
         self.estudiante.semestre = 2
