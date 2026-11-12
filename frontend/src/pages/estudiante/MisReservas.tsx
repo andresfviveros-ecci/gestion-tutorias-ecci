@@ -28,6 +28,28 @@ export interface TutoriaBackend {
   /** GT-226: el backend dice si ya se puede calificar y si ya hay evaluación. */
   puede_evaluar?: boolean;
   evaluacion?: { calificacion?: number; comentario?: string } | null;
+  /** Lo que el estudiante escribió al reservar. */
+  tema?: string;
+  descripcion?: string | null;
+  /** Lo que registró el tutor al completar la tutoría (GT-227). */
+  notas_docente?: string | null;
+  compromisos?: string | null;
+  /** Quién canceló y por qué; null si no se canceló. */
+  cancelacion?: {
+    origen?: string;
+    motivo?: string;
+    cancelado_por?: string | null;
+  } | null;
+  /** El bloque viene anidado desde el backend, aunque ya no aparezca en la agenda. */
+  bloque_detalle?: {
+    fecha?: string;
+    hora_inicio?: string;
+    hora_fin?: string;
+    modalidad?: string;
+    lugar?: string;
+    enlace_virtual?: string;
+    materia?: { nombre?: string } | null;
+  } | null;
 }
 
 const MESES = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
@@ -85,7 +107,10 @@ const ESTADOS: Record<string, string> = {
   NO_ASISTIO: 'No asistió',
   CANCELADA_ESTUDIANTE: 'Cancelada por ti',
   CANCELADA_DOCENTE: 'Cancelada por el tutor',
+  ANULADA: 'Anulada',
 };
+
+const ESTADOS_HISTORIAL = ['COMPLETADA', 'NO_ASISTIO', 'CANCELADA_ESTUDIANTE', 'CANCELADA_DOCENTE', 'ANULADA'];
 
 const textoEstado = (estado?: string): string => {
   const valor = (estado || 'CONFIRMADA').toUpperCase();
@@ -168,6 +193,38 @@ const TarjetaReserva: React.FC<TarjetaReservaProps> = ({ item, hoy, onCalificar 
               Tutor: <strong className="font-semibold text-slate-ink">{nombreTutor(item)}</strong>
             </span>
           </p>
+          {item.tema && (
+            <p className="text-[11.5px] text-muted">
+              Tema: <span className="text-tinta">{item.tema}</span>
+            </p>
+          )}
+          {(item.estado || '').toUpperCase() === 'COMPLETADA' &&
+            (item.notas_docente || item.compromisos) && (
+              <div className="mt-1.5 space-y-1 rounded-xl bg-mist px-3 py-2 text-[11px] leading-relaxed text-slate-ink">
+                {item.notas_docente && (
+                  <p>
+                    <span className="font-semibold">Notas del tutor:</span> {item.notas_docente}
+                  </p>
+                )}
+                {item.compromisos && (
+                  <p>
+                    <span className="font-semibold">Compromisos:</span> {item.compromisos}
+                  </p>
+                )}
+              </div>
+            )}
+          {item.cancelacion?.motivo && (
+            <p className="mt-1.5 rounded-xl bg-peligro/[0.06] px-3 py-2 text-[11px] leading-relaxed text-peligro">
+              <span className="font-semibold">
+                {item.cancelacion.origen === 'ESTUDIANTE'
+                  ? 'Cancelaste:'
+                  : item.cancelacion.cancelado_por
+                    ? `Canceló ${item.cancelacion.cancelado_por}:`
+                    : 'Motivo:'}
+              </span>{' '}
+              {item.cancelacion.motivo}
+            </p>
+          )}
         </div>
       </div>
 
@@ -269,7 +326,12 @@ export const MisReservas: React.FC = () => {
             typeof tutoria.bloque === 'object' && tutoria.bloque !== null
               ? tutoria.bloque.id
               : tutoria.bloque;
-          const bloque = bloqueId !== undefined ? bloquesPorId.get(String(bloqueId)) : undefined;
+          const anidado = tutoria.bloque_detalle;
+          const bloque =
+            (bloqueId !== undefined ? bloquesPorId.get(String(bloqueId)) : undefined) ??
+            (anidado
+              ? ({ id: bloqueId ?? '', ...anidado, materia: anidado.materia ?? null } as BloqueJoin)
+              : undefined);
 
           if (!bloque) return tutoria;
 
@@ -354,9 +416,7 @@ export const MisReservas: React.FC = () => {
       tutorias
         .filter((tutoria) => {
           const estado = (tutoria.estado || '').toUpperCase();
-          return (
-            ['COMPLETADA', 'NO_ASISTIO'].includes(estado) && !tutoria.puede_evaluar
-          );
+          return ESTADOS_HISTORIAL.includes(estado) && !tutoria.puede_evaluar;
         })
         .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
     [tutorias],

@@ -42,6 +42,8 @@ export interface MateriaHistorial {
   elegible: boolean;
   motivo: string | null;
   requisitos?: RequisitosHistorial;
+  /** Docentes de la materia en el periodo: a quienes les llega la postulación. */
+  revisores: string[];
   solicitud: SolicitudVigente | null;
 }
 
@@ -69,6 +71,11 @@ export interface SolicitudTutorAPI {
   nota_final: string | number;
   estado: EstadoSolicitud;
   date_creation?: string;
+  /** Docentes que revisan la solicitud (los de la materia en el periodo). */
+  revisores?: string[];
+  revisada_por_nombre?: string | null;
+  fecha_revision?: string | null;
+  motivo?: string | null;
 }
 
 const numero = (valor: unknown): number | null => {
@@ -140,6 +147,9 @@ export const normalizarHistorial = (data: unknown): HistorialTutor | null => {
       elegible: item.elegible === true,
       motivo: texto(item.motivo) || null,
       requisitos: normalizarRequisitos(item.requisitos),
+      revisores: Array.isArray(item.revisores)
+        ? item.revisores.filter((nombre): nombre is string => typeof nombre === 'string' && nombre !== '')
+        : [],
       solicitud:
         solicitudCruda && solicitudId !== null
           ? {
@@ -172,6 +182,13 @@ export const normalizarHistorial = (data: unknown): HistorialTutor | null => {
     },
     materias,
   };
+};
+
+/** ['Ana'] -> 'Ana'; ['Ana', 'Luis'] -> 'Ana y Luis'; tres o más con comas. */
+export const listarNombres = (nombres: string[] | undefined): string => {
+  const lista = (nombres ?? []).filter(Boolean);
+  if (lista.length <= 1) return lista[0] ?? '';
+  return `${lista.slice(0, -1).join(', ')} y ${lista[lista.length - 1]}`;
 };
 
 /** '4.6' -> '4.6'; '4.00' -> '4.0'. */

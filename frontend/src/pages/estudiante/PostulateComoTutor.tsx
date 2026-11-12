@@ -12,6 +12,7 @@ import {
   estadoPostulacion,
   fechaPostulacion,
   formatoNota,
+  listarNombres,
   normalizarHistorial,
   type ConfigTutor,
   type HistorialTutor,
@@ -211,6 +212,18 @@ export const PostulateComoTutor = () => {
     );
   }, [seleccionada, solicitudes]);
 
+  // La última solicitud de la materia elegida, con quién la revisa o la revisó.
+  const ultimaSolicitud = useMemo(() => {
+    if (!seleccionada) return null;
+    return (
+      solicitudes
+        .filter((solicitud) => solicitud.materia === seleccionada.materia)
+        .sort((a, b) => (b.date_creation || '').localeCompare(a.date_creation || ''))[0] ?? null
+    );
+  }, [seleccionada, solicitudes]);
+
+  const revisoresSeleccionada = listarNombres(seleccionada?.revisores);
+
   const requisitos = useMemo(
     () => requisitosDe(seleccionada, configEfectiva, semestre),
     [seleccionada, configEfectiva, semestre],
@@ -237,7 +250,11 @@ export const PostulateComoTutor = () => {
 
     try {
       await api.post('/tutores/solicitudes/', { materia: seleccionada.materia });
-      setToast('Tu postulación se envió. El docente de la materia la revisará.');
+      setToast(
+        revisoresSeleccionada
+          ? `Tu postulación se envió a ${revisoresSeleccionada}.`
+          : 'Tu postulación se envió. El docente de la materia la revisará.',
+      );
       await cargar(false);
     } catch (error) {
       setErrorAccion(mensajeError(error));
@@ -256,13 +273,23 @@ export const PostulateComoTutor = () => {
       return 'Ya estás habilitado como tutor de esta materia.';
     }
     if (solicitudVigente?.estado === 'PENDIENTE') {
-      return 'Tu postulación está en revisión. El docente te avisará el resultado.';
+      const quien = listarNombres(ultimaSolicitud?.revisores) || revisoresSeleccionada;
+      return quien
+        ? `Tu postulación está en revisión con ${quien}. Te avisaremos el resultado.`
+        : 'Tu postulación está en revisión. El docente te avisará el resultado.';
     }
     const anterior = seleccionada.solicitud?.estado;
     if (seleccionada.elegible && (anterior === 'RECHAZADA' || anterior === 'REVOCADA')) {
+      const motivo = ultimaSolicitud?.motivo
+        ? ` Motivo: «${ultimaSolicitud.motivo.trim().replace(/[.!?]+$/, '')}».`
+        : '';
       return `Tu postulación anterior fue ${
         anterior === 'RECHAZADA' ? 'rechazada' : 'revocada'
-      }. Cumples los requisitos y puedes postularte de nuevo.`;
+      }.${motivo} Cumples los requisitos y puedes postularte de nuevo.`;
+    }
+    // El backend explica casos que los 3 requisitos no muestran (sin docente, sin nota...).
+    if (!seleccionada.elegible && seleccionada.motivo) {
+      return seleccionada.motivo;
     }
     if (todosCumplen) {
       return `Cumples los 3 requisitos. Tu nota ${formatoNota(
@@ -467,6 +494,18 @@ export const PostulateComoTutor = () => {
                       const tema = temaDeMateria(solicitud.materia);
                       const chip = estadoPostulacion(solicitud.estado);
                       const fecha = fechaPostulacion(solicitud.date_creation);
+                      const decidida = solicitud.estado !== 'PENDIENTE';
+                      const quien = decidida
+                        ? solicitud.revisada_por_nombre
+                          ? `${solicitud.estado === 'APROBADA' ? 'Aprobó' : solicitud.estado === 'REVOCADA' ? 'Revocó' : 'Rechazó'} ${solicitud.revisada_por_nombre}${
+                              solicitud.fecha_revision
+                                ? ` · ${fechaPostulacion(solicitud.fecha_revision)}`
+                                : ''
+                            }`
+                          : ''
+                        : listarNombres(solicitud.revisores)
+                          ? `La revisa ${listarNombres(solicitud.revisores)}`
+                          : '';
 
                       return (
                         <li
@@ -481,6 +520,14 @@ export const PostulateComoTutor = () => {
                             <p className="mt-0.5 truncate text-[10.5px] text-muted">
                               {fecha ? `${fecha} · ` : ''}Nota {formatoNota(solicitud.nota_final)}
                             </p>
+                            {quien && (
+                              <p className="mt-0.5 text-[10.5px] text-tinta/80">{quien}</p>
+                            )}
+                            {decidida && solicitud.motivo && (
+                              <p className="mt-1 rounded-xl bg-mist px-2.5 py-1.5 text-[10.5px] leading-relaxed text-muted">
+                                Motivo: {solicitud.motivo}
+                              </p>
+                            )}
                           </div>
                           <span
                             className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${chip.clase}`}
@@ -524,10 +571,24 @@ export const PostulateComoTutor = () => {
                     </p>
                     <p className="mt-0.5 text-[10.5px] leading-relaxed text-exito/80">
                       {solicitudVigente.estado === 'APROBADA'
-                        ? `Ya puedes publicar horarios de ${seleccionada?.nombre ?? 'esta materia'}.`
+                        ? `${
+                            ultimaSolicitud?.revisada_por_nombre
+                              ? `La aprobó ${ultimaSolicitud.revisada_por_nombre}${
+                                  ultimaSolicitud.fecha_revision
+                                    ? ` (${fechaPostulacion(ultimaSolicitud.fecha_revision)})`
+                                    : ''
+                                }. `
+                              : ''
+                          }Ya puedes publicar horarios de ${seleccionada?.nombre ?? 'esta materia'}.`
                         : `Se asoció tu nota ${formatoNota(
                             seleccionada?.nota,
-                          )} en ${seleccionada?.nombre ?? 'esta materia'}. El docente la revisará y te avisaremos el resultado.`}
+                          )} en ${seleccionada?.nombre ?? 'esta materia'}. ${
+                            listarNombres(ultimaSolicitud?.revisores) || revisoresSeleccionada
+                              ? `La revisará ${
+                                  listarNombres(ultimaSolicitud?.revisores) || revisoresSeleccionada
+                                }`
+                              : 'El docente la revisará'
+                          } y te avisaremos el resultado.`}
                     </p>
                   </div>
                 </div>
@@ -579,7 +640,11 @@ export const PostulateComoTutor = () => {
                 {textoBoton}
               </button>
               <p className="mt-2 text-center text-[9.5px] leading-relaxed text-muted">
-                Tu postulación se enviará al docente de la materia.
+                {!seleccionada
+                  ? 'Tu postulación se enviará al docente de la materia.'
+                  : revisoresSeleccionada
+                    ? `Tu postulación le llegará a ${revisoresSeleccionada}, docente de ${seleccionada.nombre} en este periodo.`
+                    : 'Esta materia todavía no tiene docente asignado en el periodo.'}
               </p>
             </aside>
           </div>

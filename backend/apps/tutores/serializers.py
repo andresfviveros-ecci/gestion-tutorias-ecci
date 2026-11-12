@@ -17,6 +17,9 @@ class SolicitudTutorSerializer(serializers.ModelSerializer):
     materia_nombre = serializers.CharField(source='materia.nombre', read_only=True)
     periodo_codigo = serializers.CharField(source='periodo.codigo', read_only=True)
     revisada_por_nombre = serializers.CharField(source='revisada_por.get_full_name', read_only=True, default=None)
+    revisores = serializers.SerializerMethodField(
+        help_text='Docentes de la materia en el periodo: quienes revisan la solicitud.'
+    )
 
     class Meta:
         model = SolicitudTutor
@@ -37,6 +40,7 @@ class SolicitudTutorSerializer(serializers.ModelSerializer):
             'motivo',
             'revisada_por',
             'revisada_por_nombre',
+            'revisores',
             'fecha_revision',
             'date_creation',
         ]
@@ -56,6 +60,9 @@ class SolicitudTutorSerializer(serializers.ModelSerializer):
             'fecha_revision',
             'date_creation',
         ]
+
+    def get_revisores(self, solicitud) -> list[str]:
+        return [docente.get_full_name() for docente in docentes_revisores(solicitud.materia, solicitud.periodo)]
 
     def validate(self, attrs):
         """RF-02 con la misma regla del historial (evaluar_postulacion):
@@ -131,6 +138,10 @@ class MateriaHistorialSerializer(serializers.Serializer):
     elegible = serializers.BooleanField()
     motivo = serializers.CharField(allow_null=True, help_text='Por qué no es elegible; null si lo es.')
     requisitos = RequisitosSerializer()
+    revisores = serializers.ListField(
+        child=serializers.CharField(),
+        help_text='Docentes de la materia en el periodo activo: a quienes les llega la postulación.',
+    )
     solicitud = SolicitudVigenteSerializer(
         allow_null=True, help_text='La solicitud más reciente en la materia para el periodo, en cualquier estado.'
     )

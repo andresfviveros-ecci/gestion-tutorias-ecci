@@ -277,6 +277,13 @@ class PlazosTests(APITestCase):
         self.assertEqual(tutoria.estado, 'CANCELADA_DOCENTE')
         self.assertEqual([m.to for m in mail.outbox], [[self.estudiante.email]])
 
+        # El estudiante ve quién canceló y por qué.
+        cancelacion = self.client.get(f'{URL}{tutoria.id}/').data['cancelacion']
+        self.assertEqual((cancelacion['origen'], cancelacion['motivo']), ('DOCENTE', 'Calamidad'))
+        self.assertEqual(cancelacion['cancelado_por'], self.docente.get_full_name())
+        listado = {t['id']: t for t in self.client.get(URL).data}
+        self.assertEqual(listado[tutoria.id]['cancelacion']['motivo'], 'Calamidad')
+
     def test_anular(self):
         tutoria = crear_tutoria(self.bloque, self.estudiante, estado='CONFIRMADA')
         cancelar_tutoria(tutoria, self.docente, 'Se revocó la habilitación del tutor.', anular=True)

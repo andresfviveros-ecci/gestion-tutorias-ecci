@@ -166,6 +166,14 @@ class EvaluacionLecturaSerializer(serializers.Serializer):
     comentario = serializers.CharField(allow_null=True)
 
 
+class CancelacionLecturaSerializer(serializers.Serializer):
+    """Quién canceló la tutoría y por qué, para que el estudiante lo vea."""
+    origen = serializers.CharField(help_text='ESTUDIANTE, DOCENTE o SISTEMA.')
+    motivo = serializers.CharField()
+    cancelado_por = serializers.CharField(allow_null=True)
+    fecha = serializers.DateTimeField(allow_null=True)
+
+
 class TutoriaSerializer(serializers.ModelSerializer):
     docente = serializers.CharField(
         source='bloque.docente.get_full_name',
@@ -181,6 +189,7 @@ class TutoriaSerializer(serializers.ModelSerializer):
     limite_cancelacion = serializers.SerializerMethodField()
     puede_evaluar = serializers.SerializerMethodField()
     evaluacion = EvaluacionLecturaSerializer(read_only=True, allow_null=True)
+    cancelacion = serializers.SerializerMethodField()
 
     class Meta:
         model = Tutoria
@@ -206,6 +215,7 @@ class TutoriaSerializer(serializers.ModelSerializer):
             'limite_cancelacion',
             'puede_evaluar',
             'evaluacion',
+            'cancelacion',
         ]
         read_only_fields = [
             'id',
@@ -233,6 +243,22 @@ class TutoriaSerializer(serializers.ModelSerializer):
 
     def get_puede_editar(self, tutoria) -> bool:
         return puede_editar(tutoria)
+
+    @extend_schema_field(CancelacionLecturaSerializer(allow_null=True))
+    def get_cancelacion(self, tutoria):
+        """La cancelación más reciente; null si la tutoría no se canceló."""
+        cancelaciones = sorted(
+            tutoria.cancelaciones.all(), key=lambda c: (c.date_creation is not None, c.date_creation, c.id)
+        )
+        if not cancelaciones:
+            return None
+        ultima = cancelaciones[-1]
+        return {
+            'origen': ultima.origen,
+            'motivo': ultima.motivo,
+            'cancelado_por': ultima.cancelado_por.get_full_name() if ultima.cancelado_por else None,
+            'fecha': ultima.date_creation,
+        }
 
     def get_limite_cancelacion(self, tutoria) -> datetime:
         """Hasta cuándo puede cancelar el estudiante (RF-08)."""

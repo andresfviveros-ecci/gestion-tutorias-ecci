@@ -343,6 +343,7 @@ export const TutorPanel = () => {
         id: item.tutoria.id,
         titulo: item.tutoria.tema || item.bloque?.materia?.nombre || 'Tutoría',
         materia: item.bloque?.materia?.nombre || 'Materia por confirmar',
+        estudiante: item.tutoria.estudiante_nombre || undefined,
         fecha: item.fecha,
         horaInicio: item.horaInicio,
         horaFin: item.horaFin,

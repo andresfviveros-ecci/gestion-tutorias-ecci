@@ -101,9 +101,12 @@ def historial_materias(estudiante, periodo, config):
     """GT-269: materias cursadas con su nota y si cumplen para ser tutor."""
     cursadas = materias_cursadas(estudiante, periodo)
     ids = [inscripcion.materia_id for inscripcion in cursadas]
-    con_docente = set(
-        DocenteMateria.objects.filter(periodo=periodo, materia_id__in=ids).values_list('materia_id', flat=True)
-    )
+    # Quién revisaría la postulación de cada materia (RF-03): sus docentes en el periodo.
+    revisores = {}
+    asignaciones = DocenteMateria.objects.filter(periodo=periodo, materia_id__in=ids).select_related('docente')
+    for asignacion in asignaciones.order_by('docente__first_name', 'docente__last_name'):
+        revisores.setdefault(asignacion.materia_id, []).append(asignacion.docente.get_full_name())
+    con_docente = set(revisores)
     solicitudes = SolicitudTutor.objects.filter(estudiante=estudiante, periodo=periodo, materia_id__in=ids)
     # La más reciente de cada materia en el periodo, en cualquier estado.
     ultimas = {}
@@ -130,6 +133,7 @@ def historial_materias(estudiante, periodo, config):
             'elegible': evaluacion['elegible'],
             'motivo': evaluacion['motivo'][1] if evaluacion['motivo'] else None,
             'requisitos': evaluacion['requisitos'],
+            'revisores': revisores.get(inscripcion.materia_id, []),
             'solicitud': solicitud and {
                 'id': solicitud.id, 'estado': solicitud.estado,
                 'fecha': solicitud.date_creation.date(),
