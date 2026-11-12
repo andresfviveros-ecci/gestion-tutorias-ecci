@@ -19,6 +19,8 @@ import { Calendario } from './pages/tutor/Calendario';
 import { StudentPanel } from './pages/estudiante/StudentPanel';
 import { BuscarTutorias } from './pages/estudiante/BuscarTutorias';
 import { MisReservas } from './pages/estudiante/MisReservas';
+import { MisTutoriasTutor } from './pages/estudiante/MisTutoriasTutor';
+import { MisHorariosTutor } from './pages/estudiante/MisHorariosTutor';
 import { Layout } from './components/Layout';
 import { MODULOS, normalizarRol, RUTA_INICIO } from './navigation/modulos';
 
@@ -262,6 +264,22 @@ export const App: React.FC = () => {
           element={
             <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
               <MisReservas />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/estudiante/mis-tutorias-tutor"
+          element={
+            <ProtectedRoute allowedRoles={['estudiante']}>
+              <MisTutoriasTutor />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/estudiante/mis-horarios"
+          element={
+            <ProtectedRoute allowedRoles={['estudiante']}>
+              <MisHorariosTutor />
             </ProtectedRoute>
           }
         />

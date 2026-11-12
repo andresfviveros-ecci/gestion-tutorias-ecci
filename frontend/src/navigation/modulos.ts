@@ -65,6 +65,20 @@ export const MODULOS: Modulo[] = [
   { id: 'estudiante-panel', etiqueta: 'Dashboard', ruta: '/estudiante/dashboard', seccion: 'Panel', roles: ['estudiante'] },
   { id: 'estudiante-buscar', etiqueta: 'Consultar horarios', ruta: '/estudiante/buscar-tutorias', seccion: 'Tutorías', roles: ['estudiante'] },
   { id: 'estudiante-reservas', etiqueta: 'Mis reservas', ruta: '/estudiante/mis-reservas', seccion: 'Tutorías', roles: ['estudiante'] },
+  {
+    id: 'estudiante-tutor-tutorias',
+    etiqueta: 'Mis tutorías como tutor',
+    ruta: '/estudiante/mis-tutorias-tutor',
+    seccion: 'Tutorías',
+    roles: ['estudiante'],
+  },
+  {
+    id: 'estudiante-tutor-horarios',
+    etiqueta: 'Mis horarios',
+    ruta: '/estudiante/mis-horarios',
+    seccion: 'Tutorías',
+    roles: ['estudiante'],
+  },
 ];
 
 /** Panel al que llega cada rol al iniciar sesión. */

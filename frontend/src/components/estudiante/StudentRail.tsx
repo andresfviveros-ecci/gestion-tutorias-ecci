@@ -111,6 +111,33 @@ const CalendarIcon: React.FC = () => (
   </svg>
 );
 
+const UsersIcon: React.FC = () => (
+  <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+    <circle cx="8" cy="7" r="2.6" stroke="currentColor" strokeWidth="1.5" />
+    <path
+      d="M3.5 16c.4-2.6 2.2-4.1 4.5-4.1s4.1 1.5 4.5 4.1"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+    <path
+      d="M13 5.2a2.6 2.6 0 0 1 0 5M14.6 11.9c1.3.4 2.2 1.6 2.5 3.3"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const ListIcon: React.FC = () => (
+  <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+    <path d="M6 5.5h10M6 10h10M6 14.5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="3.5" cy="5.5" r="1" fill="currentColor" />
+    <circle cx="3.5" cy="10" r="1" fill="currentColor" />
+    <circle cx="3.5" cy="14.5" r="1" fill="currentColor" />
+  </svg>
+);
+
 const LogoutIcon: React.FC = () => (
   <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
     <path d="M8 3.5H5a1.5 1.5 0 0 0-1.5 1.5v10A1.5 1.5 0 0 0 5 16.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -184,9 +211,17 @@ export const StudentRail: React.FC = () => {
           <ClockIcon />
         </RailIcon>
         {puedePublicar && (
-          <RailIcon to="/tutor/mi-disponibilidad" label="Mi disponibilidad">
-            <CalendarIcon />
-          </RailIcon>
+          <>
+            <RailIcon to="/estudiante/mis-tutorias-tutor" label="Mis tutorías como tutor">
+              <UsersIcon />
+            </RailIcon>
+            <RailIcon to="/estudiante/mis-horarios" label="Mis horarios">
+              <ListIcon />
+            </RailIcon>
+            <RailIcon to="/tutor/mi-disponibilidad" label="Mi disponibilidad">
+              <CalendarIcon />
+            </RailIcon>
+          </>
         )}
       </div>
 
