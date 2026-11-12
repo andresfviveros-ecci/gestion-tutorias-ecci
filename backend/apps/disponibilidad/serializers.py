@@ -5,9 +5,21 @@ from rest_framework import serializers
 
 from apps.catalogo.models import Configuracion
 from apps.tutores.services import es_tutor_estudiante, materias_habilitadas
+from apps.tutorias.estados import ACTIVOS
 
 from .models import BloqueDisponibilidad
 from .services import cupos_de_la_semana, existe_conflicto
+
+# Opción B (Emely y Luis): un horario con reservas activas no se mueve; el
+# docente lo suspende (eso avisa por correo a los estudiantes) y publica otro.
+# Lugar, enlace, observaciones y subir el cupo sí se pueden cambiar.
+CAMPOS_FIJOS_CON_RESERVAS = {
+    'fecha': 'la fecha o la hora',
+    'hora_inicio': 'la fecha o la hora',
+    'hora_fin': 'la fecha o la hora',
+    'materia': 'la materia',
+    'modalidad': 'la modalidad',
+}
 
 
 class BloqueDisponibilidadSerializer(serializers.ModelSerializer):
@@ -52,8 +64,27 @@ class BloqueDisponibilidadSerializer(serializers.ModelSerializer):
             return attrs[campo]
         return getattr(self.instance, campo, por_defecto)
 
+    def _validar_cambios_con_reservas(self, attrs):
+        """Se compara contra los valores guardados: el frontend manda todo el
+        formulario, así que repetir la misma fecha u hora no es un cambio."""
+        bloque = self.instance
+        cambiados = [
+            campo for campo in CAMPOS_FIJOS_CON_RESERVAS
+            if campo in attrs and attrs[campo] != getattr(bloque, campo)
+        ]
+        if cambiados and bloque.tutorias.filter(estado__in=ACTIVOS).exists():
+            raise serializers.ValidationError({
+                campo: (
+                    f'Este horario tiene reservas: para cambiar {CAMPOS_FIJOS_CON_RESERVAS[campo]}, '
+                    'suspéndelo y publica uno nuevo.'
+                )
+                for campo in cambiados
+            }, code='bloque_con_reservas')
+
     def validate(self, attrs):
         bloque = self.instance
+        if bloque is not None:
+            self._validar_cambios_con_reservas(attrs)
         fecha = self._valor(attrs, 'fecha')
         hora_inicio = self._valor(attrs, 'hora_inicio')
         hora_fin = self._valor(attrs, 'hora_fin')
