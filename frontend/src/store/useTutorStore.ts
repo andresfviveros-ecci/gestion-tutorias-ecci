@@ -13,6 +13,8 @@ export interface Tutor {
   correo: string;
   documento: string;
   telefono: string;
+  /** is_active del backend; null si no llega. */
+  activo: boolean | null;
   groups: TutorGroup[];
 }
 
@@ -44,6 +46,7 @@ export interface TutorBackend {
   tipo?: string;
   groups?: (string | TutorBackendGroup)[];
   is_staff?: boolean;
+  is_active?: boolean;
 }
 
 interface TutorStoreState {
@@ -188,6 +191,7 @@ export const useTutorStore = create<TutorStoreState>((set, get) => ({
           correo: email,
           documento: doc,
           telefono: tel,
+          activo: typeof item.is_active === 'boolean' ? item.is_active : null,
           groups: [
             {
               facultyName,

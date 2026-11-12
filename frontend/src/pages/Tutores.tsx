@@ -1,347 +1,293 @@
-import React, { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { AdminRail } from '../components/admin/AdminRail';
+import { FormularioUsuario, type DatosUsuario } from '../components/admin/FormularioUsuario';
+import { claseEstado, claseInput, coincide, normalizar } from '../components/admin/usuarios';
 import { Loader } from '../components/Loader';
+import { EmptyState } from '../components/constelacion/EmptyState';
+import { ArrowIcon, SearchIcon } from '../components/constelacion/Icons';
+import { Modal } from '../components/constelacion/Modal';
+import { Toast } from '../components/constelacion/Toast';
 import { useTutorStore } from '../store/useTutorStore';
+import { api } from '../api/axios';
+import { extraerLista } from '../utils/api';
 
-interface ToastState {
-  type: 'success' | 'error';
-  title: string;
-  message: string;
+interface PeriodoAPI {
+  id: number;
+  codigo: string;
+  activo: boolean;
 }
 
-export const Tutores: React.FC = () => {
+interface AsignacionAPI {
+  id: number;
+  docente: number;
+  materia: number;
+  materia_nombre?: string;
+}
+
+interface MateriasPeriodo {
+  codigo: string;
+  porDocente: Map<number, string[]>;
+}
+
+/**
+ * GT-179 (HU-005): tutores registrados y alta de nuevos tutores.
+ *
+ * La lista y el POST siguen pasando por `useTutorStore`. Las materias del
+ * periodo activo son un extra: si fallan, la lista se muestra igual.
+ * El backend solo devuelve tutores activos (`solo_activos`).
+ */
+export const Tutores = () => {
   const { tutores, loading, fetchTutores, addTutor } = useTutorStore();
-  const [submitting, setSubmitting] = useState(false);
-  const [toast, setToast] = useState<ToastState | null>(null);
+  const [cargado, setCargado] = useState(false);
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [documento, setDocumento] = useState('');
-  const [telefono, setTelefono] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [materias, setMaterias] = useState<MateriasPeriodo | null>(null);
+  const [sinMaterias, setSinMaterias] = useState(false);
 
-  const [errors, setErrors] = useState({
-    firstName: false,
-    lastName: false,
-    username: false,
-    email: false,
-    documento: false,
-    telefono: false,
-    password: false,
-  });
+  const [busqueda, setBusqueda] = useState('');
 
-  const isFormInvalid =
-    !firstName.trim() ||
-    !lastName.trim() ||
-    !username.trim() ||
-    !email.trim() ||
-    !documento.trim() ||
-    !telefono.trim() ||
-    !password.trim();
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [errorForm, setErrorForm] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    void fetchTutores();
+    let activo = true;
+    void fetchTutores().finally(() => {
+      if (activo) setCargado(true);
+    });
+    return () => {
+      activo = false;
+    };
   }, [fetchTutores]);
 
-  const showToast = (type: 'success' | 'error', title: string, message: string) => {
-    setToast({ type, title, message });
-    setTimeout(() => setToast(null), 4500);
+  useEffect(() => {
+    let activo = true;
+
+    const cargarMaterias = async () => {
+      try {
+        const { data } = await api.get('/catalogo/periodos/');
+        const periodo = extraerLista<PeriodoAPI>(data).find((item) => item.activo);
+        if (!periodo) {
+          if (activo) setSinMaterias(true);
+          return;
+        }
+        const respuesta = await api.get('/catalogo/docentes-materias/', {
+          params: { periodo: periodo.id },
+        });
+        if (!activo) return;
+        const porDocente = new Map<number, string[]>();
+        for (const asignacion of extraerLista<AsignacionAPI>(respuesta.data)) {
+          const lista = porDocente.get(asignacion.docente) ?? [];
+          lista.push(asignacion.materia_nombre ?? `Materia ${asignacion.materia}`);
+          porDocente.set(asignacion.docente, lista);
+        }
+        setMaterias({ codigo: periodo.codigo, porDocente });
+      } catch {
+        // Las materias son informativas: sin ellas la lista sigue funcionando.
+        if (activo) setSinMaterias(true);
+      }
+    };
+
+    void cargarMaterias();
+
+    return () => {
+      activo = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const temporizador = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(temporizador);
+  }, [toast]);
+
+  const abrirModal = () => {
+    setErrorForm(null);
+    setModalAbierto(true);
   };
 
-  const limpiarFormulario = () => {
-    setFirstName('');
-    setLastName('');
-    setUsername('');
-    setEmail('');
-    setDocumento('');
-    setTelefono('');
-    setPassword('');
-    setShowPassword(false);
-    setErrors({
-      firstName: false,
-      lastName: false,
-      username: false,
-      email: false,
-      documento: false,
-      telefono: false,
-      password: false,
-    });
-  };
+  const cerrarModal = useCallback(() => setModalAbierto(false), []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (isFormInvalid) {
-      showToast('error', 'Campos incompletos', 'Por favor completa todos los campos requeridos (*).');
-      return;
-    }
-
-    setSubmitting(true);
-    const result = await addTutor({
-      username: username.trim(),
-      first_name: firstName.trim(),
-      last_name: lastName.trim(),
-      documento: documento.trim(),
-      telefono: telefono.trim(),
-      email: email.trim(),
-      password: password.trim(),
-    });
-
-    if (result.success) {
-      showToast('success', '¡Tutor Registrado!', `${firstName} ${lastName} guardado correctamente.`);
-      limpiarFormulario();
+  const registrar = async (datos: DatosUsuario) => {
+    setEnviando(true);
+    setErrorForm(null);
+    // addTutor hace el POST /accounts/tutores/ y recarga la lista.
+    const resultado = await addTutor(datos);
+    setEnviando(false);
+    if (resultado.success) {
+      setModalAbierto(false);
+      setToast(`${datos.first_name} ${datos.last_name} quedó registrado.`);
     } else {
-      showToast('error', 'Error al registrar', result.error || 'No se pudo guardar el tutor.');
+      setErrorForm(resultado.error || 'No se pudo guardar el tutor.');
     }
-    setSubmitting(false);
   };
+
+  const filtrados = useMemo(() => {
+    const consulta = normalizar(busqueda);
+    return tutores.filter((tutor) =>
+      coincide(consulta, tutor.nombre, tutor.correo, tutor.documento, tutor.username),
+    );
+  }, [tutores, busqueda]);
+
+  const cargando = loading || !cargado;
 
   return (
-    <div className="w-full flex flex-col bg-[#f7f5ed] min-h-full relative">
-      <Loader hidden={!loading} />
+    <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
+      <AdminRail />
+      <Loader hidden={!cargando} />
 
-      {toast && (
-        <div className="fixed inset-0 z-[10000] bg-slate-900/40 backdrop-blur-xs flex items-start justify-center pt-10 px-4 animate-in fade-in duration-200">
-          <div className="max-w-md w-full bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-700/80 p-5 flex items-center gap-4 animate-in zoom-in-95 duration-200">
-            <div
-              className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${
-                toast.type === 'success'
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-              }`}
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] flex-1 px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
+        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[11.5px] text-muted">Usuarios · Coordinación</p>
+            <h1 className="mt-1 text-[30px] font-medium leading-tight tracking-[-0.02em] text-tinta sm:text-[36px]">
+              Tutores
+            </h1>
+            <p className="mt-1 max-w-[640px] text-[13px] leading-relaxed text-muted">
+              Docentes tutores activos y las materias que tienen asignadas en el periodo. Desde aquí
+              puedes registrar nuevos tutores.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/asignacion-materias"
+              className="inline-flex h-11 items-center gap-2 rounded-full border border-faint bg-white px-5 text-[12.5px] font-semibold text-tinta transition-colors hover:bg-mist"
             >
-              <i className={`fa-solid ${toast.type === 'success' ? 'fa-check text-lg' : 'fa-triangle-exclamation text-lg'}`}></i>
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-bold text-slate-100 tracking-tight">{toast.title}</h4>
-              <p className="text-xs text-slate-300 leading-relaxed mt-1">{toast.message}</p>
-            </div>
+              Asignar materias
+              <ArrowIcon className="h-4 w-4" />
+            </Link>
             <button
-              onClick={() => setToast(null)}
-              className="text-slate-400 hover:text-white text-sm px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              type="button"
+              onClick={abrirModal}
+              className="h-11 rounded-full bg-violeta-accion px-5 text-[12.5px] font-semibold text-white transition-colors hover:bg-violeta-profundo"
             >
-              ✕
+              Registrar tutor
             </button>
           </div>
-        </div>
-      )}
+        </header>
 
-      <header className="w-full h-[60px] bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0">
-        <div className="text-[0.82rem] text-slate-500">
-          Usuarios / <span className="font-semibold text-[#0d1b2a]">Registrar tutor</span>
-        </div>
-        <div className="text-xs font-semibold text-slate-600">Administrador</div>
-      </header>
+        <section className="rounded-[32px] bg-white p-5 sm:p-6">
+          <label className="block sm:max-w-[420px]">
+            <span className="mb-1.5 block text-[11px] font-medium text-slate-ink">Buscar</span>
+            <span className="relative block">
+              <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-pebble" />
+              <input
+                type="search"
+                value={busqueda}
+                onChange={(event) => setBusqueda(event.target.value)}
+                placeholder="Nombre, correo o documento"
+                className={`${claseInput} pl-10`}
+              />
+            </span>
+          </label>
 
-      <main className="p-8 w-full max-w-[1400px] space-y-6">
-        <div>
-          <h1 className="font-display italic text-3xl font-semibold text-[#0d1b2a] mb-1">Registrar tutor</h1>
-          <p className="text-[0.83rem] text-slate-500">Completa los datos del tutor exigidos por el sistema.</p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
-          <div className="lg:col-span-5 bg-white rounded-xl p-7 border border-slate-200 shadow-sm">
-            <form onSubmit={handleSubmit} noValidate className="space-y-4">
-              
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Nombre de usuario <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                    errors.username ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                  }`}
-                  value={username}
-                  onChange={(e) => {
-                    setUsername(e.target.value);
-                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, username: false }));
-                  }}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Nombres <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.firstName ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                    }`}
-                    value={firstName}
-                    onChange={(e) => {
-                      setFirstName(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, firstName: false }));
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Apellidos <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.lastName ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                    }`}
-                    value={lastName}
-                    onChange={(e) => {
-                      setLastName(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, lastName: false }));
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Correo electrónico <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                    errors.email ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                  }`}
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, email: false }));
-                  }}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Documento <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.documento ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                    }`}
-                    value={documento}
-                    onChange={(e) => {
-                      setDocumento(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, documento: false }));
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Teléfono <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.telefono ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                    }`}
-                    value={telefono}
-                    onChange={(e) => {
-                      setTelefono(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, telefono: false }));
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Contraseña <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    className={`w-full h-[40px] pl-3.5 pr-10 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.password ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                    }`}
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, password: false }));
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer text-sm"
-                    title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                  >
-                    <i className={`fa-solid ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex gap-3.5 pt-1">
-                <button
-                  type="submit"
-                  disabled={submitting || isFormInvalid}
-                  className={`flex-[1.2] h-[40px] bg-[#0d1b2a] text-white font-semibold text-xs rounded-md transition-all ${
-                    submitting || isFormInvalid
-                      ? 'opacity-50 cursor-not-allowed'
-                      : 'hover:bg-[#1e2d4a] cursor-pointer'
-                  }`}
-                >
-                  {submitting ? 'Guardando...' : 'Registrar tutor'}
-                </button>
-                <button
-                  type="button"
-                  onClick={limpiarFormulario}
-                  className="flex-[0.8] h-[40px] bg-transparent hover:bg-slate-50 text-[#0d1b2a] border border-slate-200 font-semibold text-xs rounded-md transition-colors cursor-pointer"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-2 px-1 text-[10.5px] text-muted">
+            <span>
+              {filtrados.length} {filtrados.length === 1 ? 'tutor' : 'tutores'}
+            </span>
+            <span>
+              {materias
+                ? `Materias del periodo ${materias.codigo}`
+                : sinMaterias
+                  ? 'No pudimos cargar las materias del periodo activo'
+                  : ''}
+            </span>
           </div>
 
-          <div className="lg:col-span-7 bg-white rounded-xl p-7 border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-[0.88rem] font-bold text-[#0d1b2a] uppercase tracking-wider">
-                Tutores registrados
-              </h3>
-              <span className="text-xs text-slate-500">{tutores.length} registro(s)</span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+          {filtrados.length === 0 ? (
+            !cargando && (
+              <EmptyState
+                titulo={tutores.length === 0 ? 'Aún no hay tutores' : 'No encontramos tutores'}
+                detalle={
+                  tutores.length === 0
+                    ? 'Registra el primer tutor con el botón de arriba.'
+                    : 'Prueba con otro nombre, correo o documento.'
+                }
+              />
+            )
+          ) : (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[860px] text-left text-[12px]">
                 <thead>
-                  <tr className="border-b border-slate-200 text-slate-400 uppercase text-[0.7rem] tracking-wider font-bold">
-                    <th className="pb-3 px-2">Tutor</th>
-                    <th className="pb-3 px-2">Usuario</th>
-                    <th className="pb-3 px-2">Documento</th>
-                    <th className="pb-3 px-2">Correo</th>
-                    <th className="pb-3 px-2">Teléfono</th>
+                  <tr className="border-b border-faint text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
+                    <th className="px-3 pb-3">Tutor</th>
+                    <th className="px-3 pb-3">Correo</th>
+                    <th className="px-3 pb-3">Documento</th>
+                    <th className="px-3 pb-3">Teléfono</th>
+                    <th className="px-3 pb-3">Materias asignadas</th>
+                    <th className="px-3 pb-3">Estado</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {tutores.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-slate-400 font-medium text-xs">
-                        No hay tutores registrados aún.
-                      </td>
-                    </tr>
-                  ) : (
-                    tutores.map((tut) => (
-                      <tr key={tut.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-2 font-semibold text-[#0d1b2a]">{tut.nombre}</td>
-                        <td className="py-3 px-2 font-mono text-slate-600">{tut.username || '—'}</td>
-                        <td className="py-3 px-2 font-mono">{tut.documento || '—'}</td>
-                        <td className="py-3 px-2">{tut.correo}</td>
-                        <td className="py-3 px-2">{tut.telefono || '—'}</td>
+                <tbody className="divide-y divide-faint">
+                  {filtrados.map((tutor) => {
+                    const estado = claseEstado(tutor.activo);
+                    const asignadas = materias?.porDocente.get(Number(tutor.id)) ?? [];
+                    return (
+                      <tr key={tutor.id} className="align-top hover:bg-mist/60">
+                        <td className="px-3 py-3">
+                          <p className="font-semibold text-tinta">{tutor.nombre}</p>
+                          <p className="mt-0.5 text-[10.5px] text-muted">{tutor.username || '—'}</p>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 text-slate-ink">{tutor.correo || '—'}</td>
+                        <td className="px-3 py-3 font-mono text-[11px] text-slate-ink">
+                          {tutor.documento || '—'}
+                        </td>
+                        <td className="px-3 py-3 text-slate-ink">{tutor.telefono || '—'}</td>
+                        <td className="px-3 py-3">
+                          {!materias ? (
+                            <span className="text-muted">—</span>
+                          ) : asignadas.length === 0 ? (
+                            <span className="text-[11px] text-muted">Sin materias</span>
+                          ) : (
+                            <div className="flex max-w-[280px] flex-wrap gap-1.5">
+                              {asignadas.map((materia) => (
+                                <span
+                                  key={materia}
+                                  className="rounded-full bg-violet-wash/30 px-2.5 py-1 text-[10px] font-semibold text-violeta-tinta"
+                                >
+                                  {materia}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className={estado.clase}>{estado.texto}</span>
+                        </td>
                       </tr>
-                    ))
-                  )}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
+          )}
+        </section>
       </main>
+
+      {modalAbierto && (
+        <Modal
+          onCerrar={cerrarModal}
+          tituloId="tutor-form"
+          eyebrow="GT-179 · Registrar tutor"
+          titulo="Nuevo tutor"
+          ancho="lg"
+          cerrable={!enviando}
+        >
+          <FormularioUsuario
+            rol="tutor"
+            enviando={enviando}
+            error={errorForm}
+            onGuardar={registrar}
+            onCancelar={cerrarModal}
+          />
+        </Modal>
+      )}
+
+      <Toast mensaje={toast} />
     </div>
   );
 };
+
+export default Tutores;
