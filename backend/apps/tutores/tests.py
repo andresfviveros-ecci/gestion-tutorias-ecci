@@ -86,7 +86,7 @@ class SolicitudesTutorTests(APITestCase):
         Inscripcion.objects.filter(pk=self.inscripcion.pk).update(nota_corte3=None)
         response = self.solicitar()
         self.assertEqual(response.status_code, 400)
-        self.assertIn('nota final registrada', response.data['detail'])
+        self.assertIn('nota en esta materia aún no está registrada', response.data['detail'])
 
     def test_avance_insuficiente(self):
         Materia.objects.filter(pk=self.materia.pk).update(semestre=4)
@@ -370,7 +370,7 @@ class HistorialMateriasTests(APITestCase):
         self.assertTrue(materias['BAJ']['aprobada'])
         self.assertFalse(materias['REP']['aprobada'])
         self.assertIsNone(materias['SIN']['nota'])
-        self.assertIn('nota final registrada', materias['SIN']['motivo'])
+        self.assertIn('nota en esta materia aún no está registrada', materias['SIN']['motivo'])
         self.assertFalse(materias['AVA']['requisitos']['avance']['cumple'])
         self.assertIn('semestres por delante', materias['AVA']['motivo'])
         self.assertIn('no tiene docente', materias['DOC']['motivo'])
@@ -382,14 +382,24 @@ class HistorialMateriasTests(APITestCase):
         self.assertFalse(any(m['elegible'] for m in materias.values()))
         self.assertFalse(materias['ELE']['requisitos']['semestre']['cumple'])
 
-    def test_muestra_la_solicitud_vigente(self):
+    def test_muestra_la_ultima_solicitud(self):
         solicitud = SolicitudTutor.objects.create(
             estudiante=self.estudiante, materia=self.elegible, periodo=self.periodo,
             nota_corte1=Decimal('4.5'), nota_corte2=Decimal('4.5'), nota_corte3=Decimal('4.5'), nota_final=Decimal('4.5'),
         )
-        self.assertEqual(self.materias()['ELE']['solicitud']['id'], solicitud.id)
+        ele = self.materias()['ELE']
+        self.assertEqual(ele['solicitud'], {
+            'id': solicitud.id, 'estado': 'PENDIENTE', 'fecha': str(solicitud.date_creation.date()),
+        })
+        # Con una solicitud pendiente o aprobada ya no es elegible.
+        self.assertFalse(ele['elegible'])
+        self.assertIn('Ya tienes una solicitud', ele['motivo'])
+        self.assertEqual(self.client.get(self.URL).data['resumen']['elegibles'], 0)
+
+        # Rechazada: se sigue mostrando (es la más reciente) y puede volver a postularse.
         SolicitudTutor.objects.filter(pk=solicitud.pk).update(estado='RECHAZADA')
-        self.assertIsNone(self.materias()['ELE']['solicitud'])
+        ele = self.materias()['ELE']
+        self.assertEqual((ele['solicitud']['estado'], ele['elegible']), ('RECHAZADA', True))
 
     def test_si_la_repitio_cuenta_la_ultima_vez(self):
         mas_antiguo = PeriodoAcademico.objects.create(

@@ -27,7 +27,7 @@ def materias_cursadas(estudiante, periodo):
     return list(ultima.values())
 
 
-def evaluar_postulacion(estudiante, inscripcion, periodo, config, con_docente):
+def evaluar_postulacion(estudiante, inscripcion, periodo, config, con_docente, con_solicitud_vigente=False):
     """GT-269 y GT-270: una sola regla para lo que muestra el historial y lo
     que valida la solicitud. Devuelve la nota, los tres requisitos, si es
     elegible y, si no, el motivo y el campo al que va el error.
@@ -36,8 +36,9 @@ def evaluar_postulacion(estudiante, inscripcion, periodo, config, con_docente):
     - nota: la nota final de la materia ≥ nota_minima.
     - avance: semestre del estudiante − semestre de la materia en el plan ≥
       diferencia_semestres.
-    Además la materia debe estar aprobada y activa, y tener docente en el
-    periodo, que es quien revisa la solicitud."""
+    Además la materia debe estar aprobada y activa, tener docente en el
+    periodo (es quien revisa la solicitud) y no tener ya una solicitud
+    pendiente o aprobada del estudiante."""
     materia = inscripcion.materia
     semestre = estudiante.semestre
     nota = inscripcion.nota_final(config)
@@ -63,7 +64,7 @@ def evaluar_postulacion(estudiante, inscripcion, periodo, config, con_docente):
 
     # El primer motivo que aplica, en el orden en que el estudiante lo resolvería.
     if nota is None:
-        motivo = ('materia', 'Aún no tiene la nota final registrada; pídele a la coordinación que la cargue.')
+        motivo = ('materia', 'Tu nota en esta materia aún no está registrada; pídele a la coordinación que la cargue.')
     elif semestre is None:
         motivo = ('non_field_errors', 'Tu semestre no está registrado; pídele a la coordinación que lo actualice.')
     elif not requisitos['semestre']['cumple']:
@@ -80,7 +81,9 @@ def evaluar_postulacion(estudiante, inscripcion, periodo, config, con_docente):
     elif not materia.activa:
         motivo = ('materia', 'La materia no está activa.')
     elif not con_docente:
-        motivo = ('materia', f'La materia no tiene docente asignado en el periodo {periodo.codigo}.')
+        motivo = ('materia', f'La materia no tiene docente asignado en {periodo.codigo}.')
+    elif con_solicitud_vigente:
+        motivo = ('materia', 'Ya tienes una solicitud pendiente o aprobada en esta materia.')
     else:
         motivo = None
 
@@ -101,17 +104,21 @@ def historial_materias(estudiante, periodo, config):
     con_docente = set(
         DocenteMateria.objects.filter(periodo=periodo, materia_id__in=ids).values_list('materia_id', flat=True)
     )
-    vigentes = {
-        solicitud.materia_id: solicitud
-        for solicitud in SolicitudTutor.objects.filter(
-            estudiante=estudiante, periodo=periodo, materia_id__in=ids, estado__in=ESTADOS_VIGENTES
-        )
-    }
+    solicitudes = SolicitudTutor.objects.filter(estudiante=estudiante, periodo=periodo, materia_id__in=ids)
+    # La más reciente de cada materia en el periodo, en cualquier estado.
+    ultimas = {}
+    for solicitud in solicitudes.order_by('-date_creation', '-id'):
+        ultimas.setdefault(solicitud.materia_id, solicitud)
+    con_vigente = set(solicitudes.filter(estado__in=ESTADOS_VIGENTES).values_list('materia_id', flat=True))
 
     materias = []
     for inscripcion in sorted(cursadas, key=lambda i: (i.materia.semestre or 0, i.materia.nombre)):
-        evaluacion = evaluar_postulacion(estudiante, inscripcion, periodo, config, inscripcion.materia_id in con_docente)
-        materia, solicitud = inscripcion.materia, vigentes.get(inscripcion.materia_id)
+        evaluacion = evaluar_postulacion(
+            estudiante, inscripcion, periodo, config,
+            con_docente=inscripcion.materia_id in con_docente,
+            con_solicitud_vigente=inscripcion.materia_id in con_vigente,
+        )
+        materia, solicitud = inscripcion.materia, ultimas.get(inscripcion.materia_id)
         materias.append({
             'materia': materia.id,
             'codigo': materia.codigo,
@@ -124,7 +131,8 @@ def historial_materias(estudiante, periodo, config):
             'motivo': evaluacion['motivo'][1] if evaluacion['motivo'] else None,
             'requisitos': evaluacion['requisitos'],
             'solicitud': solicitud and {
-                'id': solicitud.id, 'estado': solicitud.estado, 'fecha': solicitud.date_creation,
+                'id': solicitud.id, 'estado': solicitud.estado,
+                'fecha': solicitud.date_creation.date(),
             },
         })
 

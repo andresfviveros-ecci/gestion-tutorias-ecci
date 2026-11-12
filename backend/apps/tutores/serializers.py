@@ -75,17 +75,15 @@ class SolicitudTutorSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'materia': 'Solo puedes pedir ser tutor de una materia que ya cursaste.'})
 
         evaluacion = evaluar_postulacion(
-            estudiante, inscripcion, periodo, config, con_docente=bool(docentes_revisores(materia, periodo))
+            estudiante, inscripcion, periodo, config,
+            con_docente=bool(docentes_revisores(materia, periodo)),
+            con_solicitud_vigente=SolicitudTutor.objects.filter(
+                estudiante=estudiante, materia=materia, periodo=periodo, estado__in=ESTADOS_VIGENTES
+            ).exists(),
         )
         if evaluacion['motivo']:
             campo, mensaje = evaluacion['motivo']
             raise serializers.ValidationError(mensaje if campo == 'non_field_errors' else {campo: mensaje})
-        if SolicitudTutor.objects.filter(
-            estudiante=estudiante, materia=materia, periodo=periodo, estado__in=ESTADOS_VIGENTES
-        ).exists():
-            raise serializers.ValidationError({
-                'materia': 'Ya tienes una solicitud pendiente o aprobada en esta materia.'
-            })
 
         attrs.update(
             estudiante=estudiante,
@@ -119,7 +117,7 @@ class RequisitosSerializer(serializers.Serializer):
 class SolicitudVigenteSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     estado = serializers.CharField()
-    fecha = serializers.DateTimeField()
+    fecha = serializers.DateField(help_text='Día en que se creó la solicitud.')
 
 
 class MateriaHistorialSerializer(serializers.Serializer):
@@ -133,7 +131,9 @@ class MateriaHistorialSerializer(serializers.Serializer):
     elegible = serializers.BooleanField()
     motivo = serializers.CharField(allow_null=True, help_text='Por qué no es elegible; null si lo es.')
     requisitos = RequisitosSerializer()
-    solicitud = SolicitudVigenteSerializer(allow_null=True, help_text='Solicitud PENDIENTE o APROBADA, si existe.')
+    solicitud = SolicitudVigenteSerializer(
+        allow_null=True, help_text='La solicitud más reciente en la materia para el periodo, en cualquier estado.'
+    )
 
 
 class ConfigPostulacionSerializer(serializers.Serializer):
