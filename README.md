@@ -256,6 +256,7 @@ Ningún pull request se mezcla con el pipeline de integración continua en rojo.
 - [backend/README.md](backend/README.md) y [backend/DOCUMENTACION_BACKEND.md](backend/DOCUMENTACION_BACKEND.md): backend, modelos y endpoints.
 - [frontend/README.md](frontend/README.md) y [frontend/README_TESTS.md](frontend/README_TESTS.md): frontend, rutas y endpoints para pruebas de integración.
 - [docs/README.md](docs/README.md): esquema de datos y relación con el código.
+- [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md): despliegue en Railway, servicio por servicio, con sus variables.
 
 El documento SRS, los casos de uso, el cronograma, la arquitectura y los diagramas (componentes, despliegue, capas y entidad-relación) se manejan en Word/PDF fuera del repositorio.
 

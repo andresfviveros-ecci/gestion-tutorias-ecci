@@ -28,6 +28,9 @@ services:
   # Inicio configuración Django
   tutorias-django:
     container_name: tutorias_ecci
+    # La imagen corre sin root en producción; en desarrollo se usa root para
+    # que comandos como makemigrations puedan escribir en el código montado.
+    user: root
     build:
       context: ./backend
       dockerfile: Dockerfile

@@ -3,9 +3,13 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from config.salud import salud
+
 urlpatterns = [
      path('', RedirectView.as_view(url='/api/docs/', permanent=False)),
     path('admin/', admin.site.urls),
+    # Healthcheck de Railway: 200 si la base de datos responde.
+    path('api/salud/', salud, name='salud'),
     path('api/disponibilidad/', include('apps.disponibilidad.urls')),
     #ACCOUNTS
     path('api/accounts/', include('apps.accounts.urls')),

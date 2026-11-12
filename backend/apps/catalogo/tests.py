@@ -1,11 +1,13 @@
 from contextlib import redirect_stdout
 from datetime import date, timedelta
+from decimal import Decimal
 from io import StringIO
 
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
 from rest_framework.test import APITestCase
+from tablib import Dataset
 
 from apps.accounts.pruebas import (
     crear_bloque,
@@ -14,7 +16,14 @@ from apps.accounts.pruebas import (
     crear_usuario,
 )
 
-from .models import Configuracion, Inscripcion, Materia, PeriodoAcademico
+from .admin import InscripcionResource
+from .models import (
+    Configuracion,
+    DocenteMateria,
+    Inscripcion,
+    Materia,
+    PeriodoAcademico,
+)
 
 
 class PermisosCatalogoTests(APITestCase):
@@ -206,3 +215,140 @@ class ConfiguracionTests(APITestCase):
         response = self.client.patch(self.URL, {'peso_corte3': 50}, format='json')
         self.assertEqual(response.status_code, 400)
         self.assertIn('peso_corte3', response.data['errors'])
+
+
+class AsignarVariasMateriasTests(APITestCase):
+    """GT-251 y GT-252: varias materias a un docente en una sola petición."""
+    URL = '/api/catalogo/docentes-materias/asignar/'
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.coordinador = crear_usuario('Coordinador')
+        cls.docente = crear_usuario('Docente')
+        cls.programa, cls.periodo, cls.materia = crear_catalogo()
+        cls.otras = [
+            Materia.objects.create(codigo=f'AV-{n}', nombre=f'Materia {n}', programa=cls.programa) for n in range(2)
+        ]
+
+    def setUp(self):
+        self.client.force_authenticate(self.coordinador)
+
+    def asignar(self, materias, **extra):
+        return self.client.post(self.URL, {'docente': self.docente.id, 'materias': materias, **extra}, format='json')
+
+    def test_asigna_varias_en_el_periodo_activo(self):
+        ids = [self.materia.id] + [m.id for m in self.otras]
+        response = self.asignar(ids)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(sorted(a['materia'] for a in response.data), sorted(ids))
+        self.assertEqual({a['periodo'] for a in response.data}, {self.periodo.id})
+        self.assertEqual(DocenteMateria.objects.filter(docente=self.docente).count(), 3)
+
+    def test_si_una_ya_existe_no_crea_ninguna(self):
+        DocenteMateria.objects.create(docente=self.docente, materia=self.materia, periodo=self.periodo)
+        response = self.asignar([self.materia.id, self.otras[0].id])
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(self.materia.nombre, response.data['errors']['materias'][0])
+        self.assertEqual(DocenteMateria.objects.filter(docente=self.docente).count(), 1)
+
+    def test_rechaza_repetidas_vacia_o_inexistentes(self):
+        self.assertEqual(self.asignar([self.materia.id, self.materia.id]).status_code, 400)
+        self.assertEqual(self.asignar([]).status_code, 400)
+        self.assertEqual(self.asignar([999999]).status_code, 400)
+        self.assertFalse(DocenteMateria.objects.filter(docente=self.docente).exists())
+
+    def test_solo_docentes_y_solo_coordinacion(self):
+        estudiante = crear_usuario('Estudiante')
+        response = self.client.post(self.URL, {'docente': estudiante.id, 'materias': [self.materia.id]}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('docente', response.data['errors'])
+
+        self.client.force_authenticate(self.docente)
+        self.assertEqual(self.asignar([self.materia.id]).status_code, 403)
+
+    def test_periodo_explicito(self):
+        anterior = PeriodoAcademico.objects.create(
+            codigo='ANT', fecha_inicio=date(2020, 1, 1), fecha_fin=date(2020, 6, 1)
+        )
+        response = self.asignar([self.materia.id], periodo=anterior.id)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data[0]['periodo'], anterior.id)
+
+
+class NotasInscripcionTests(APITestCase):
+    """GT-269: notas de los tres cortes en la inscripción (API y admin)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.coordinador = crear_usuario('Coordinador')
+        cls.estudiante = crear_usuario('Estudiante')
+        _, cls.periodo, cls.materia = crear_catalogo()
+
+    def setUp(self):
+        self.inscripcion = Inscripcion.objects.create(estudiante=self.estudiante, materia=self.materia, periodo=self.periodo)
+        self.url = f'/api/catalogo/inscripciones/{self.inscripcion.id}/'
+
+    def test_la_coordinacion_carga_las_notas(self):
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.patch(self.url, {'nota_corte1': '4.0', 'nota_corte2': '4.5', 'nota_corte3': '4.2'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['nota_final'], '4.23')
+
+    def test_nota_final_null_si_falta_un_corte(self):
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.patch(self.url, {'nota_corte1': '4.0'}, format='json')
+        self.assertIsNone(response.data['nota_final'])
+
+    def test_notas_fuera_de_rango(self):
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.patch(self.url, {'nota_corte2': '5.1'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('nota_corte2', response.data['errors'])
+
+    def test_el_estudiante_ve_sus_notas_pero_no_las_cambia(self):
+        Inscripcion.objects.filter(pk=self.inscripcion.pk).update(nota_corte1=3, nota_corte2=3, nota_corte3=3)
+        self.client.force_authenticate(self.estudiante)
+        self.assertEqual(self.client.get(self.url).data['nota_final'], '3.00')
+        self.assertEqual(self.client.patch(self.url, {'nota_corte1': '5'}, format='json').status_code, 403)
+
+    def importar(self, *filas):
+        datos = Dataset(headers=['estudiante', 'materia', 'periodo', 'nota_corte1', 'nota_corte2', 'nota_corte3'])
+        for fila in filas:
+            datos.append(fila)
+        return InscripcionResource().import_data(datos, dry_run=False)
+
+    def test_importar_notas_por_codigo_institucional(self):
+        self.estudiante.codigo_institucional = 'EST-001'
+        self.estudiante.save(update_fields=['codigo_institucional'])
+        resultado = self.importar(['EST-001', self.materia.codigo, self.periodo.codigo, '4.0', '4.0', '5.0'])
+        self.assertFalse(resultado.has_errors() or resultado.has_validation_errors())
+        self.inscripcion.refresh_from_db()
+        self.assertEqual(self.inscripcion.nota_final(), Decimal('4.40'))
+        self.assertEqual(Inscripcion.objects.count(), 1)  # actualiza, no duplica
+
+    def test_importar_notas_por_correo(self):
+        resultado = self.importar([self.estudiante.email.upper(), self.materia.codigo, self.periodo.codigo, '3', '3', '3'])
+        self.assertFalse(resultado.has_errors() or resultado.has_validation_errors())
+        self.inscripcion.refresh_from_db()
+        self.assertEqual(self.inscripcion.nota_final(), Decimal('3.00'))
+
+    def test_importacion_rechaza_estudiante_desconocido(self):
+        resultado = self.importar(['NO-EXISTE', self.materia.codigo, self.periodo.codigo, '4', '4', '4'])
+        self.assertTrue(resultado.has_errors() or resultado.has_validation_errors())
+        self.assertEqual(Inscripcion.objects.count(), 1)
+
+    def test_importacion_rechaza_notas_fuera_de_rango(self):
+        resultado = self.importar([self.estudiante.email, self.materia.codigo, self.periodo.codigo, '7', '4', '4'])
+        self.assertTrue(resultado.has_validation_errors())
+        self.inscripcion.refresh_from_db()
+        self.assertIsNone(self.inscripcion.nota_corte1)
+
+    def test_nota_aprobatoria_configurable(self):
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.get('/api/catalogo/configuracion/')
+        self.assertEqual(response.data['nota_aprobatoria'], '3.00')
+        response = self.client.patch('/api/catalogo/configuracion/', {'nota_aprobatoria': '4.50'}, format='json')
+        self.assertEqual(response.status_code, 400)  # no puede pasar la nota mínima de tutor (4,00)
+        self.assertIn('nota_aprobatoria', response.data['errors'])
+        response = self.client.patch('/api/catalogo/configuracion/', {'nota_aprobatoria': '3.50'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)

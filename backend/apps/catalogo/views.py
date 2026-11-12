@@ -1,10 +1,11 @@
+from django.db import transaction
 from django.db.models import F, ProtectedError
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema
-from rest_framework import generics, status
+from rest_framework import generics, status, views
 from rest_framework.response import Response
 
-from apps.accounts.permisos import LecturaOCoordinador, es_coordinacion
+from apps.accounts.permisos import EsCoordinador, LecturaOCoordinador, es_coordinacion
 from config.api import UsuarioFilter
 
 from .models import (
@@ -16,6 +17,7 @@ from .models import (
     ProgramaAcademico,
 )
 from .serializer import (
+    AsignacionMateriasSerializer,
     ConfiguracionSerializer,
     DocenteMateriaSerializer,
     InscripcionSerializer,
@@ -141,6 +143,20 @@ class DocenteMateriaView(generics.ListCreateAPIView):
 
 
 @extend_schema(tags=['Docentes - Materias'])
+class AsignarMateriasView(views.APIView):
+    """GT-251: asigna varias materias a un docente en una sola petición."""
+    permission_classes = [EsCoordinador]
+
+    @extend_schema(request=AsignacionMateriasSerializer, responses={201: DocenteMateriaSerializer(many=True)})
+    @transaction.atomic
+    def post(self, request, format=None):
+        serializer = AsignacionMateriasSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        asignaciones = serializer.save()
+        return Response(DocenteMateriaSerializer(asignaciones, many=True).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=['Docentes - Materias'])
 class DocenteMateriaDetailView(generics.RetrieveDestroyAPIView):
     permission_classes = [LecturaOCoordinador]
     queryset = DocenteMateria.objects.select_related('docente', 'materia', 'periodo')
@@ -163,7 +179,8 @@ class InscripcionView(generics.ListCreateAPIView):
 
 
 @extend_schema(tags=['Inscripciones'])
-class InscripcionDetailView(generics.RetrieveDestroyAPIView):
+class InscripcionDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """GET, PATCH y PUT (notas de los cortes) y DELETE. Escribe solo la coordinación."""
     permission_classes = [LecturaOCoordinador]
     serializer_class = InscripcionSerializer
 

@@ -208,3 +208,71 @@ jobs:
       - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Las imágenes tal como corren en Railway: DEBUG apagado, base por
+  # DATABASE_URL, gunicorn en $PORT y Nginx con su plantilla. Si este job
+  # falla, el despliegue también fallaría.
+  produccion:
+    name: Imágenes de producción (Railway)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:16
+        env:
+          POSTGRES_DB: railway
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: prueba
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d railway"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Construir las imágenes
+        run: |
+          docker build -t aula-backend:prod backend
+          docker build -t aula-frontend:prod --build-arg VITE_API_URL=https://api.ejemplo.com/api frontend
+
+      - name: Levantar el backend como en Railway
+        run: |
+          docker run -d --name api --network host \
+            -e PORT=8000 \
+            -e DATABASE_URL=postgresql://postgres:prueba@localhost:5432/railway \
+            -e DJANGO_DEBUG=False \
+            -e DJANGO_SECRET_KEY=clave-solo-para-el-ci-de-produccion \
+            -e DJANGO_ALLOWED_HOSTS=localhost \
+            -e RAILWAY_ENVIRONMENT_ID=ci \
+            -e NUM_PROXIES=1 \
+            aula-backend:prod
+
+      # Railway hace el healthcheck con el host healthcheck.railway.app.
+      - name: Healthcheck del backend
+        run: |
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: healthcheck.railway.app' http://localhost:8000/api/salud/ || true)
+            [ "$code" = "200" ] && echo "Backend OK" && break
+            sleep 2
+          done
+          [ "$code" = "200" ]
+          curl -sf -o /dev/null http://localhost:8000/static/admin/css/base.css && echo "Estáticos OK"
+
+      - name: Frontend en el puerto de Railway
+        run: |
+          docker run -d --name web -p 8080:8080 -e PORT=8080 aula-frontend:prod
+          for _ in $(seq 1 15); do
+            curl -sf -o /dev/null http://localhost:8080/estudiante/dashboard && echo "Frontend OK" && exit 0
+            sleep 2
+          done
+          exit 1
+
+      - name: Logs si falla
+        if: failure()
+        run: |
+          docker logs api || true
+          docker logs web || true

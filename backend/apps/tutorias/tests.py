@@ -197,6 +197,22 @@ class RevisionTutoriasTests(APITestCase):
         self.bloque.refresh_from_db()
         self.assertEqual((self.bloque.cupo_ocupado, self.bloque.estado), (1, 'COMPLETO'))
 
+    def test_gt241_tal_como_se_reporto(self):
+        # GT-241: la base ya tiene tutorías con el código viejo TUT-<bloque>-<estudiante>
+        # y la interfaz cancela mandando también origen. Reservar de nuevo no da 500.
+        vieja = crear_tutoria(self.bloque, self.estudiante, estado='CANCELADA_ESTUDIANTE')
+        Tutoria.objects.filter(pk=vieja.pk).update(codigo=f'TUT-{self.bloque.id}-{self.estudiante.id}')
+        for _ in range(3):
+            response = self.reservar()
+            self.assertEqual(response.status_code, 201, response.data)
+            with self.captureOnCommitCallbacks(execute=True):
+                cancelada = self.client.delete(
+                    f"{URL}{response.data['tutoria']['id']}/", {'origen': 'ESTUDIANTE', 'motivo': 'Cruce'}, format='json'
+                )
+            self.assertEqual(cancelada.status_code, 200, cancelada.data)
+        codigos = list(Tutoria.objects.filter(bloque=self.bloque).values_list('codigo', flat=True))
+        self.assertEqual(len(codigos), len(set(codigos)))
+
 
 class EstadosTests(TestCase):
     """RF-10: tabla de transiciones."""

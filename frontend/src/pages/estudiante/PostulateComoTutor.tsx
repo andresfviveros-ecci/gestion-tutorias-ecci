@@ -3,7 +3,7 @@ import { StudentRail } from '../../components/estudiante/StudentRail';
 import { Loader } from '../../components/Loader';
 import { EmptyState } from '../../components/constelacion/EmptyState';
 import { Toast } from '../../components/constelacion/Toast';
-import { CheckIcon, CloseIcon, HistoryIcon } from '../../components/constelacion/Icons';
+import { CheckIcon, CloseIcon } from '../../components/constelacion/Icons';
 import { temaDeMateria } from '../../components/constelacion/temas';
 import { api } from '../../api/axios';
 import { extraerLista, mensajeError } from '../../utils/api';
@@ -95,10 +95,9 @@ const requisitosDe = (
 /**
  * Postulación del estudiante para ser tutor (GT-268, HU-043).
  *
- * Solo frontend: el historial de materias aprobadas depende de GT-269 y el
- * registro de la postulación con la nota del historial, de GT-270. Mientras
- * esos endpoints no estén, la vista muestra un estado vacío y deshabilita el
- * botón; las postulaciones ya enviadas sí salen del endpoint existente.
+ * La vista consume `GET /tutores/historial-materias/` (GT-269) y registra la
+ * postulación con `POST /tutores/solicitudes/` enviando solo la materia
+ * (GT-270). Los requisitos y la elegibilidad los decide el backend.
  */
 export const PostulateComoTutor = () => {
   const [cargando, setCargando] = useState(true);
@@ -145,7 +144,11 @@ export const PostulateComoTutor = () => {
       return primera?.materia ?? null;
     });
 
-    if (
+    if (resHistorial.status === 'rejected') {
+      setErrorCarga(
+        'No pudimos cargar tu historial académico. Revisa tu conexión e inténtalo de nuevo.',
+      );
+    } else if (
       resMe.status === 'rejected' &&
       resConfig.status === 'rejected' &&
       resSolicitudes.status === 'rejected'
@@ -323,26 +326,6 @@ export const PostulateComoTutor = () => {
             </div>
           )}
 
-          {!cargando && !historial && (
-            <div
-              role="status"
-              className="mt-5 flex items-start gap-3 rounded-2xl border border-info/20 bg-white px-4 py-3.5"
-            >
-              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-info/10 text-info">
-                <HistoryIcon className="h-3.5 w-3.5" />
-              </span>
-              <div>
-                <p className="text-[12px] font-semibold text-tinta">
-                  Todavía no podemos calcular tus requisitos
-                </p>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
-                  Estamos conectando tu historial académico. Cuando esté disponible verás aquí tus
-                  materias aprobadas y podrás postularte.
-                </p>
-              </div>
-            </div>
-          )}
-
           {historial && semestre === null && (
             <div
               role="status"
@@ -378,11 +361,15 @@ export const PostulateComoTutor = () => {
                 {materias.length === 0 ? (
                   <div className="mt-4">
                     <EmptyState
-                      titulo={historial ? 'Aún no tienes materias aprobadas' : 'Historial en preparación'}
+                      titulo={
+                        historial
+                          ? 'Aún no tienes materias aprobadas'
+                          : 'No pudimos cargar tu historial'
+                      }
                       detalle={
                         historial
                           ? 'Cuando apruebes una materia en un periodo anterior aparecerá aquí.'
-                          : 'En cuanto conectemos tu historial académico verás tus materias aprobadas.'
+                          : 'Revisa tu conexión e inténtalo de nuevo desde el botón Reintentar.'
                       }
                     />
                   </div>

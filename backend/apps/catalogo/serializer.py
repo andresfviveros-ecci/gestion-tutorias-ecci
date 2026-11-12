@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
@@ -121,15 +122,69 @@ class DocenteMateriaSerializer(serializers.ModelSerializer):
         ]
 
     def validate_docente(self, value):
-        if not value.groups.filter(name='Docente').exists():
-            raise serializers.ValidationError('El usuario no es docente.')
-        return value
+        return validar_docente(value)
+
+
+def validar_docente(usuario):
+    """Una sola regla para asignar una materia o varias a la vez."""
+    if not usuario.groups.filter(name='Docente').exists():
+        raise serializers.ValidationError('El usuario no es docente.')
+    return usuario
+
+
+class AsignacionMateriasSerializer(serializers.Serializer):
+    """GT-251: varias materias a un docente en una sola petición. Si alguna
+    ya está asignada en el periodo o viene repetida, no se crea ninguna."""
+    docente = serializers.PrimaryKeyRelatedField(queryset=get_user_model().objects.all())
+    materias = serializers.ListField(
+        child=serializers.PrimaryKeyRelatedField(queryset=Materia.objects.all()),
+        allow_empty=False,
+        max_length=50,
+    )
+    periodo = serializers.PrimaryKeyRelatedField(
+        queryset=PeriodoAcademico.objects.all(),
+        required=False,
+        help_text='Por defecto, el periodo activo.',
+    )
+
+    def validate_docente(self, value):
+        return validar_docente(value)
+
+    def validate(self, attrs):
+        materias = attrs['materias']
+        periodo = attrs.get('periodo') or PeriodoAcademico.objects.filter(activo=True).first()
+        if periodo is None:
+            raise serializers.ValidationError({'periodo': 'No hay un periodo activo; indica el periodo.'})
+
+        if len({materia.pk for materia in materias}) != len(materias):
+            raise serializers.ValidationError({'materias': 'Hay materias repetidas en la lista.'})
+
+        # GT-252: si la relación ya existe se rechaza la petición completa.
+        ya_asignadas = DocenteMateria.objects.filter(
+            docente=attrs['docente'], periodo=periodo, materia__in=materias
+        ).select_related('materia')
+        if ya_asignadas:
+            raise serializers.ValidationError({'materias': [
+                f'El docente ya tiene asignada {asignacion.materia.nombre} en {periodo.codigo}.'
+                for asignacion in ya_asignadas
+            ]})
+
+        attrs['periodo'] = periodo
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        return DocenteMateria.objects.bulk_create([
+            DocenteMateria(docente=validated_data['docente'], materia=materia, periodo=validated_data['periodo'])
+            for materia in validated_data['materias']
+        ])
 
 
 class InscripcionSerializer(serializers.ModelSerializer):
     estudiante_nombre = serializers.CharField(source='estudiante.get_full_name', read_only=True)
     materia_nombre = serializers.CharField(source='materia.nombre', read_only=True)
     periodo_codigo = serializers.CharField(source='periodo.codigo', read_only=True)
+    nota_final = serializers.SerializerMethodField()
 
     class Meta:
         model = Inscripcion
@@ -141,7 +196,19 @@ class InscripcionSerializer(serializers.ModelSerializer):
             'materia_nombre',
             'periodo',
             'periodo_codigo',
+            'nota_corte1',
+            'nota_corte2',
+            'nota_corte3',
+            'nota_final',
         ]
+
+    def get_nota_final(self, inscripcion) -> str | None:
+        """Ponderada con los pesos de Configuracion; null si falta algún corte.
+        Va como texto ("4.50"), igual que los cortes."""
+        if 'config' not in self.context:
+            self.context['config'] = Configuracion.actual()
+        nota = inscripcion.nota_final(self.context['config'])
+        return None if nota is None else str(nota)
 
     def validate_estudiante(self, value):
         if not value.groups.filter(name='Estudiante').exists():
@@ -153,6 +220,7 @@ class ConfiguracionSerializer(serializers.ModelSerializer):
         model = Configuracion
         fields = [
             'nota_minima',
+            'nota_aprobatoria',
             'peso_corte1',
             'peso_corte2',
             'peso_corte3',
@@ -169,6 +237,10 @@ class ConfiguracionSerializer(serializers.ModelSerializer):
         datos = {campo: attrs.get(campo, getattr(self.instance, campo)) for campo in self.Meta.fields}
         if datos['peso_corte1'] + datos['peso_corte2'] + datos['peso_corte3'] != 100:
             raise serializers.ValidationError({'peso_corte3': 'Los pesos de los tres cortes deben sumar 100.'})
+        if datos['nota_aprobatoria'] > datos['nota_minima']:
+            raise serializers.ValidationError({
+                'nota_aprobatoria': 'No puede ser mayor que la nota mínima para ser tutor.'
+            })
         if datos['calificacion_minima'] >= datos['calificacion_maxima']:
             raise serializers.ValidationError({
                 'calificacion_maxima': 'La calificación máxima debe ser mayor que la mínima.'
