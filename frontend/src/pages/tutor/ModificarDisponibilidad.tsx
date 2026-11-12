@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
-import { Loader } from '../../components/Loader';
 import { TutorRail } from '../../components/tutor/TutorRail';
 import {
   CalendarIcon,
@@ -476,7 +475,6 @@ export const ModificarDisponibilidad = () => {
 
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
-      <Loader hidden={!cargando} />
       <TutorRail />
 
       <main className="min-w-0 flex-1">

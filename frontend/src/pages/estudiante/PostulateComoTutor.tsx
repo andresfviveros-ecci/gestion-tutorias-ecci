@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StudentRail } from '../../components/estudiante/StudentRail';
-import { Loader } from '../../components/Loader';
 import { EmptyState } from '../../components/constelacion/EmptyState';
+import { SkeletonFilas } from '../../components/constelacion/Skeleton';
 import { Toast } from '../../components/constelacion/Toast';
 import { CheckIcon, CloseIcon } from '../../components/constelacion/Icons';
 import { temaDeMateria } from '../../components/constelacion/temas';
@@ -285,7 +285,6 @@ export const PostulateComoTutor = () => {
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
       <StudentRail />
-      <Loader hidden={!cargando} />
 
       <main className="min-w-0 flex-1">
         <div className="mx-auto w-full max-w-[1400px] px-5 py-6 pb-24 sm:px-7 lg:px-8">
@@ -369,7 +368,9 @@ export const PostulateComoTutor = () => {
                   Selecciona la materia en la que quieres orientar a otros estudiantes.
                 </p>
 
-                {materias.length === 0 ? (
+                {cargando ? (
+                  <SkeletonFilas className="mt-4" alto="h-[88px]" filas={4} />
+                ) : materias.length === 0 ? (
                   <div className="mt-4">
                     <EmptyState
                       titulo={
@@ -447,7 +448,9 @@ export const PostulateComoTutor = () => {
                   Estado de tus solicitudes para ser tutor.
                 </p>
 
-                {solicitudes.length === 0 ? (
+                {cargando ? (
+                  <SkeletonFilas className="mt-4" filas={2} />
+                ) : solicitudes.length === 0 ? (
                   <div className="mt-4 flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-mist/70 px-6 py-10 text-center">
                     <div className="relative mb-1 h-9 w-14" aria-hidden="true">
                       <span className="absolute left-0 top-0 h-8 w-10 rounded-xl bg-salvia/70" />

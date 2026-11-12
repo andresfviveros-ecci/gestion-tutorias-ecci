@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminRail } from '../components/admin/AdminRail';
-import { Loader } from '../components/Loader';
 import { EmptyState } from '../components/constelacion/EmptyState';
 import { SearchIcon } from '../components/constelacion/Icons';
+import { SkeletonFilas } from '../components/constelacion/Skeleton';
 import { api } from '../api/axios';
 import { extraerLista, mensajeError } from '../utils/api';
 
@@ -198,7 +198,6 @@ export const ReporteTutores = () => {
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
       <AdminRail />
-      <Loader hidden={!cargando} />
 
       <main className="mx-auto w-full min-w-0 max-w-[1500px] flex-1 px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -311,7 +310,9 @@ export const ReporteTutores = () => {
             <span>Promedio en escala de configuración</span>
           </div>
 
-          {filtrados.length === 0 ? (
+          {cargando ? (
+            <SkeletonFilas className="mt-2" filas={5} />
+          ) : filtrados.length === 0 ? (
             <EmptyState
               titulo="No hay datos para este filtro"
               detalle="Prueba con otro periodo, tipo o nombre de tutor."

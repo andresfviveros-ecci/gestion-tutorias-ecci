@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { motion, type Variants } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useAuthStore, type UserRole } from './store/useAuthStore';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -25,172 +25,57 @@ import { MisTutoriasTutor } from './pages/estudiante/MisTutoriasTutor';
 import { MisHorariosTutor } from './pages/estudiante/MisHorariosTutor';
 import { PostulateComoTutor } from './pages/estudiante/PostulateComoTutor';
 import { MODULOS, normalizarRol, RUTA_INICIO } from './navigation/modulos';
+import { ArrowIcon } from './components/constelacion/Icons';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles: UserRole[];
 }
 
-const cardContainerVariants: Variants = {
-  hidden: { opacity: 0, scale: 0.92, y: 30 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    y: 0,
-    transition: {
-      duration: 0.6,
-      ease: [0.16, 1, 0.3, 1],
-      staggerChildren: 0.1,
-      delayChildren: 0.1,
-    },
-  },
+const NOMBRE_ROL: Record<UserRole, string> = {
+  admin: 'Coordinación / Administración',
+  tutor: 'Docente / Tutor',
+  estudiante: 'Estudiante',
 };
 
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 15 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] },
-  },
-};
-
+/** 403: la ruta pertenece a otro rol o exige un grupo que la sesión no tiene. */
 const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
   const navigate = useNavigate();
 
-  const handleRedirect = () => navigate(RUTA_INICIO[role]);
-
-  const roleFormatted =
-    role === 'admin' ? 'Coordinador / Admin' : role === 'tutor' ? 'Docente / Tutor' : 'Estudiante';
-
   return (
-    <div className="relative min-h-screen w-full bg-[#f7f5ed] flex items-center justify-center p-4 md:p-8 overflow-hidden font-body">
-      <motion.div
-        animate={{
-          scale: [1, 1.15, 1],
-          opacity: [0.3, 0.5, 0.3],
-        }}
-        transition={{
-          duration: 8,
-          repeat: Infinity,
-          ease: 'easeInOut',
-        }}
-        className="absolute top-12 left-12 w-96 h-96 bg-[#1f7a5c]/15 rounded-full blur-3xl pointer-events-none"
-      />
-      <motion.div
-        animate={{
-          scale: [1.1, 1, 1.1],
-          opacity: [0.2, 0.4, 0.2],
-        }}
-        transition={{
-          duration: 10,
-          repeat: Infinity,
-          ease: 'easeInOut',
-          delay: 1,
-        }}
-        className="absolute bottom-12 right-12 w-[30rem] h-[30rem] bg-[#0d1b2a]/10 rounded-full blur-3xl pointer-events-none"
-      />
-
-      <div className="absolute inset-0 bg-[radial-gradient(#0d1b2a_1px,transparent_1px)] [background-size:24px_24px] opacity-10 pointer-events-none" />
-
-      <motion.div
-        variants={cardContainerVariants}
-        initial="hidden"
-        animate="visible"
-        className="relative z-10 w-full max-w-4xl bg-white/80 backdrop-blur-xl border border-[#0d1b2a]/10 rounded-3xl shadow-[0_20px_50px_rgba(13,27,42,0.08)] overflow-hidden grid grid-cols-1 md:grid-cols-12"
+    <div className="flex min-h-screen items-center justify-center bg-mist px-5 py-10 font-constelacion text-tinta">
+      <motion.main
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+        className="w-full max-w-[520px] rounded-[32px] bg-white p-7 shadow-constelacion-card sm:p-9"
       >
-        <div className="relative md:col-span-5 bg-[#0d1b2a] text-[#f7f5ed] p-8 flex flex-col justify-between overflow-hidden min-h-[260px] md:min-h-full">
-          <img
-            src="https://images.unsplash.com/photo-1497633762265-9d179a990aa6?q=80&w=1000&auto=format&fit=crop"
-            alt="Biblioteca y Estudio"
-            className="absolute inset-0 w-full h-full object-cover opacity-25 grayscale mix-blend-luminosity pointer-events-none"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0d1b2a] via-[#0d1b2a]/60 to-transparent pointer-events-none" />
+        <span className="inline-flex items-center gap-2 rounded-full bg-peligro/10 px-3 py-1.5 text-[11px] font-semibold text-peligro">
+          <span className="h-1.5 w-1.5 rounded-full bg-peligro" aria-hidden="true" />
+          Acceso restringido · 403
+        </span>
 
-          <div className="relative z-10 flex items-center gap-2">
-            <span className="font-display italic text-2xl font-semibold tracking-wide">Aula Libre</span>
-            <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded bg-[#1f7a5c] text-white">
-              Sistema
-            </span>
-          </div>
+        <h1 className="mt-5 text-[30px] font-medium leading-tight tracking-[-0.02em] sm:text-[34px]">
+          Acceso denegado
+        </h1>
+        <p className="mt-2 text-[13px] leading-relaxed text-muted">
+          Intentaste entrar a una sección asignada a otro perfil. Tu sesión está activa como:
+        </p>
 
-          <div className="relative z-10 my-auto py-6 flex flex-col items-center">
-            <motion.div
-              animate={{ y: [-6, 6, -6] }}
-              transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
-              className="relative w-20 h-20 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-2xl flex items-center justify-center"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-[#1f7a5c]/40 to-transparent rounded-2xl pointer-events-none" />
-              <svg
-                className="w-10 h-10 text-[#f7f5ed]"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.8}
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                />
-              </svg>
-            </motion.div>
-          </div>
+        <p className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-mist px-4 py-2.5 text-[12px]">
+          <span className="text-muted">Tu rol</span>
+          <span className="font-semibold text-tinta">{NOMBRE_ROL[role]}</span>
+        </p>
 
-          <div className="relative z-10 text-xs text-slate-300 font-medium">
-            Módulo restringido por políticas de seguridad institucional.
-          </div>
-        </div>
-
-        <div className="md:col-span-7 p-8 md:p-12 flex flex-col justify-center bg-white/50">
-          <motion.div variants={itemVariants} className="mb-4">
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-700 text-xs font-semibold uppercase tracking-wider">
-              <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
-              Acceso Restringido 403
-            </span>
-          </motion.div>
-
-          <motion.h2
-            variants={itemVariants}
-            className="font-display italic text-3xl md:text-4xl font-semibold text-[#0d1b2a] mb-4"
-          >
-            Zona no autorizada
-          </motion.h2>
-
-          <motion.p variants={itemVariants} className="text-sm text-slate-600 leading-relaxed mb-6">
-            Has intentado ingresar a una dirección asignada a un perfil distinto. Tu cuenta se encuentra
-            autenticada activamente como:
-          </motion.p>
-
-          <motion.div variants={itemVariants} className="mb-8">
-            <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#0d1b2a]/5 border border-[#0d1b2a]/10 text-[#0d1b2a]">
-              <span className="text-xs font-medium text-slate-500">Tu Rol:</span>
-              <span className="text-xs font-bold uppercase tracking-wider text-[#1f7a5c]">
-                {roleFormatted}
-              </span>
-            </div>
-          </motion.div>
-
-          <motion.div variants={itemVariants}>
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={handleRedirect}
-              className="w-full py-3.5 px-6 bg-[#0d1b2a] hover:bg-[#1b2a3a] text-white text-xs font-semibold rounded-xl shadow-lg shadow-[#0d1b2a]/15 transition-all flex items-center justify-center gap-3 group cursor-pointer"
-            >
-              <span>Volver a mi Panel Principal</span>
-              <svg
-                className="w-4 h-4 transform group-hover:translate-x-1 transition-transform"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-              </svg>
-            </motion.button>
-          </motion.div>
-        </div>
-      </motion.div>
+        <button
+          type="button"
+          onClick={() => navigate(RUTA_INICIO[role])}
+          className="mt-7 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-violeta-accion px-5 text-[12.5px] font-semibold text-white transition-colors hover:bg-violeta-profundo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violeta-accion"
+        >
+          Volver a mi panel
+          <ArrowIcon className="h-4 w-4" />
+        </button>
+      </motion.main>
     </div>
   );
 };

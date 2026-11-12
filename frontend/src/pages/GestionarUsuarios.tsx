@@ -11,9 +11,9 @@ import {
 } from '../components/admin/gestionUsuarios';
 import { TablaUsuarios } from '../components/admin/TablaUsuarios';
 import { coincide, normalizar } from '../components/admin/usuarios';
-import { Loader } from '../components/Loader';
 import { EmptyState } from '../components/constelacion/EmptyState';
 import { CloseIcon } from '../components/constelacion/Icons';
+import { SkeletonFilas } from '../components/constelacion/Skeleton';
 import { Toast } from '../components/constelacion/Toast';
 
 const FILTROS_INICIALES: ValoresFiltros = { usuario: '', correo: '', rol: '', estado: 'todos' };
@@ -158,7 +158,6 @@ export const GestionarUsuarios = () => {
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
       <AdminRail />
-      <Loader hidden={!cargando} />
 
       <main className="mx-auto w-full min-w-0 max-w-[1500px] flex-1 px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -214,17 +213,17 @@ export const GestionarUsuarios = () => {
             )}
           </div>
 
-          {filtrados.length === 0 ? (
-            !cargando && (
-              <EmptyState
-                titulo={usuarios.length === 0 ? 'Aún no hay usuarios' : 'No hay usuarios que coincidan'}
-                detalle={
-                  usuarios.length === 0
-                    ? 'Registra estudiantes, tutores o coordinadores desde sus pantallas.'
-                    : 'Prueba con otro nombre, correo, rol o estado.'
-                }
-              />
-            )
+          {cargando ? (
+            <SkeletonFilas className="mt-2" filas={6} />
+          ) : filtrados.length === 0 ? (
+            <EmptyState
+              titulo={usuarios.length === 0 ? 'Aún no hay usuarios' : 'No hay usuarios que coincidan'}
+              detalle={
+                usuarios.length === 0
+                  ? 'Registra estudiantes, tutores o coordinadores desde sus pantallas.'
+                  : 'Prueba con otro nombre, correo, rol o estado.'
+              }
+            />
           ) : (
             <TablaUsuarios
               usuarios={filtrados}

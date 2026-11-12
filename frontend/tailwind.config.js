@@ -7,13 +7,6 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#0d1b2a",
-        paper: "#f7f5ed",
-        sidebar: "#111a2e",
-        sidebarActive: "#1e2d4a",
-        accentGold: "#d9a036",
-        greenCustom: "#1f7a5c",
-
         // --- Sistema "Constelación" (rediseño) ---
         mist: "#F2F4F5",
         tinta: "#1C1A1E",
@@ -37,8 +30,6 @@ export default {
         info: "#3A6EA5",
       },
       fontFamily: {
-        body: ["Montserrat", "sans-serif"],
-        display: ["Fraunces", "serif"],
         constelacion: ['"Inter Tight"', "Inter", "sans-serif"],
       },
       boxShadow: {
