@@ -9,6 +9,8 @@ export interface ProximaTutorItem {
   id: number;
   titulo: string;
   materia: string;
+  /** Quién reservó la tutoría. */
+  estudiante?: string;
   fecha: string;
   horaInicio: string;
   horaFin: string;
@@ -94,7 +96,13 @@ export const ProximasTutorList = ({
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[12.5px] font-semibold text-tinta">{item.titulo}</p>
-                <p className="mt-0.5 truncate text-[11px] text-muted">· {item.materia}</p>
+                <p className="mt-0.5 truncate text-[11px] text-muted">
+                  {item.estudiante ? (
+                    <span className="font-medium text-slate-ink">{item.estudiante}</span>
+                  ) : null}
+                  {item.estudiante ? ' · ' : '· '}
+                  {item.materia}
+                </p>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <span className="rounded-full bg-mist px-2.5 py-1 text-[10px] font-medium text-slate-ink">
                     {item.modalidad}

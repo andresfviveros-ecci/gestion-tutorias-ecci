@@ -63,6 +63,8 @@ class SolicitudesTutorTests(APITestCase):
         self.assertEqual(response.data['nota_final'], '4.23')
         self.assertEqual(response.data['estado'], 'PENDIENTE')
         self.assertEqual(response.data['periodo'], self.periodo.id)
+        # El estudiante ve a quién le llegó.
+        self.assertEqual(response.data['revisores'], [self.docente.get_full_name()])
         # Le llega al docente de la materia, en la aplicación y por correo.
         self.assertTrue(Notificacion.objects.filter(usuario=self.docente, tipo='SOLICITUD_TUTOR').exists())
         self.assertEqual([m.to for m in mail.outbox], [[self.docente.email]])
@@ -363,6 +365,11 @@ class HistorialMateriasTests(APITestCase):
             'nota': {'cumple': True, 'valor': '4.50', 'minimo': '4.00'},
             'avance': {'cumple': True, 'valor': 3, 'minimo': 2},
         })
+
+    def test_dice_quien_revisa_la_postulacion(self):
+        materias = self.materias()
+        self.assertEqual(materias['ELE']['revisores'], [self.docente.get_full_name()])
+        self.assertEqual(materias['DOC']['revisores'], [])
 
     def test_motivos_de_no_elegible(self):
         materias = self.materias()

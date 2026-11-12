@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { HistoryIcon, ListIcon, UserIcon, UsersIcon } from '../../constelacion/Icons';
+import { CalendarIcon, HistoryIcon, ListIcon, UserIcon } from '../../constelacion/Icons';
 
 interface AccesosRapidosProps {
   /** Mi perfil todavía no tiene pantalla propia. */
@@ -16,16 +16,23 @@ interface Acceso {
   onClick?: () => void;
 }
 
+// Cada atajo lleva a la pantalla que nombra (antes tres iban al calendario).
 const ACCESOS: Acceso[] = [
   {
-    titulo: 'Estudiantes asignados',
-    detalle: 'Ver estudiantes',
-    icono: <UsersIcon className="h-[18px] w-[18px]" />,
-    to: '/tutor/calendario',
+    titulo: 'Solicitudes de tutor',
+    detalle: 'Postulaciones por revisar',
+    icono: <ListIcon className="h-[18px] w-[18px]" />,
+    to: '/tutor/solicitudes',
   },
   {
-    titulo: 'Historial',
-    detalle: 'Sesiones anteriores',
+    titulo: 'Publicar horario',
+    detalle: 'Gestión de disponibilidad',
+    icono: <CalendarIcon className="h-[18px] w-[18px]" />,
+    to: '/tutor/mi-disponibilidad',
+  },
+  {
+    titulo: 'Calendario',
+    detalle: 'Tus bloques de la semana',
     icono: <HistoryIcon className="h-[18px] w-[18px]" />,
     to: '/tutor/calendario',
   },
@@ -33,12 +40,6 @@ const ACCESOS: Acceso[] = [
     titulo: 'Mi perfil',
     detalle: 'Datos y configuración',
     icono: <UserIcon className="h-[18px] w-[18px]" />,
-  },
-  {
-    titulo: 'Solicitudes',
-    detalle: 'Revisar pendientes',
-    icono: <ListIcon className="h-[18px] w-[18px]" />,
-    to: '/tutor/calendario',
   },
 ];
 

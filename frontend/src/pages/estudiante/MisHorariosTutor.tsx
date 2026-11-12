@@ -17,6 +17,15 @@ interface MateriaAPI {
   nombre: string;
 }
 
+/** Lo mínimo de /tutorias/recibidas/ para saber quién reservó cada bloque. */
+interface ReservaRecibida {
+  id: number;
+  bloque: number;
+  estado: string;
+  estudiante_nombre?: string;
+  tema?: string;
+}
+
 /**
  * RF-01: el estudiante tutor ve los horarios que publicó y puede suspenderlos.
  * Suspender es un DELETE con motivo: el backend cancela las reservas activas y
@@ -26,6 +35,7 @@ export const MisHorariosTutor = () => {
   const [cargando, setCargando] = useState(true);
   const [bloques, setBloques] = useState<BloqueDisponibilidad[]>([]);
   const [materias, setMaterias] = useState<MateriaAPI[]>([]);
+  const [reservas, setReservas] = useState<ReservaRecibida[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -38,9 +48,10 @@ export const MisHorariosTutor = () => {
     let activo = true;
 
     const cargar = async () => {
-      const [resBloques, resMaterias] = await Promise.allSettled([
+      const [resBloques, resMaterias, resReservas] = await Promise.allSettled([
         api.get('/disponibilidad/disponibilidad/', { params: { docente: 'me' } }),
         api.get('/catalogo/materias/'),
+        api.get('/tutorias/recibidas/'),
       ]);
 
       if (!activo) return;
@@ -54,6 +65,10 @@ export const MisHorariosTutor = () => {
 
       if (resMaterias.status === 'fulfilled') {
         setMaterias(extraerLista<MateriaAPI>(resMaterias.value.data));
+      }
+
+      if (resReservas.status === 'fulfilled') {
+        setReservas(extraerLista<ReservaRecibida>(resReservas.value.data));
       }
 
       setCargando(false);
@@ -71,6 +86,17 @@ export const MisHorariosTutor = () => {
     const temporizador = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(temporizador);
   }, [toast]);
+
+  // Reservas activas por bloque, para mostrar quién viene a cada horario.
+  const reservasPorBloque = useMemo(() => {
+    const mapa = new Map<number, ReservaRecibida[]>();
+    reservas
+      .filter((reserva) => ['RESERVADA', 'CONFIRMADA'].includes((reserva.estado || '').toUpperCase()))
+      .forEach((reserva) => {
+        mapa.set(reserva.bloque, [...(mapa.get(reserva.bloque) ?? []), reserva]);
+      });
+    return mapa;
+  }, [reservas]);
 
   const materiasPorId = useMemo(
     () => new Map(materias.map((materia) => [materia.id, materia])),
@@ -216,6 +242,18 @@ export const MisHorariosTutor = () => {
                                 ? '1 estudiante con reserva'
                                 : `${reservados} estudiantes con reserva`}
                             </p>
+                          )}
+                          {(reservasPorBloque.get(bloque.id) ?? []).length > 0 && (
+                            <ul className="mt-2 space-y-1">
+                              {(reservasPorBloque.get(bloque.id) ?? []).map((reserva) => (
+                                <li key={reserva.id} className="text-[11px] text-slate-ink">
+                                  <span className="font-semibold text-tinta">
+                                    {reserva.estudiante_nombre || 'Estudiante'}
+                                  </span>
+                                  {reserva.tema ? ` · ${reserva.tema}` : ''}
+                                </li>
+                              ))}
+                            </ul>
                           )}
                         </div>
                       </div>

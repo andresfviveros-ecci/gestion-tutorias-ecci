@@ -36,7 +36,7 @@ class TutoriaView(generics.ListAPIView):
             return Tutoria.objects.none()
         return Tutoria.objects.filter(
             estudiante=self.request.user
-        ).select_related(*RELACIONES_LECTURA)
+        ).select_related(*RELACIONES_LECTURA).prefetch_related('cancelaciones__cancelado_por')
 
     @extend_schema(
         request=TutoriaRegisterSerializer,
@@ -72,7 +72,9 @@ class TutoriasRecibidasView(generics.ListAPIView):
             return Tutoria.objects.none()
         return Tutoria.objects.filter(
             bloque__docente=self.request.user
-        ).select_related(*RELACIONES_LECTURA).order_by('bloque__fecha', 'bloque__hora_inicio')
+        ).select_related(*RELACIONES_LECTURA).prefetch_related(
+            'cancelaciones__cancelado_por'
+        ).order_by('bloque__fecha', 'bloque__hora_inicio')
 
 
 @extend_schema(tags=['Tutorías'])
