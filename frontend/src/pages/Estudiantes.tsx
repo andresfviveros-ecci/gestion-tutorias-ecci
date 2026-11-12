@@ -1,509 +1,321 @@
-import React, { useState, useEffect } from 'react';
-import { Loader } from '../components/Loader';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AdminRail } from '../components/admin/AdminRail';
+import { FormularioUsuario, type DatosUsuario } from '../components/admin/FormularioUsuario';
+import { claseEstado, claseInput, coincide, normalizar } from '../components/admin/usuarios';
+import { EmptyState } from '../components/constelacion/EmptyState';
+import { SearchIcon } from '../components/constelacion/Icons';
+import { Modal } from '../components/constelacion/Modal';
+import { SkeletonFilas } from '../components/constelacion/Skeleton';
+import { Toast } from '../components/constelacion/Toast';
 import { api } from '../api/axios';
+import { extraerLista, mensajeError } from '../utils/api';
 
-interface StudentData {
-  first_name: string;
-  last_name: string;
-  username: string;
-  documento: string;
-  email: string;
-  telefono: string;
-  codigo_institucional: string;
-  /** RF-02: semestre que cursa. Sin este dato la postulación falla. */
-  semestre: number | null;
-}
-
-interface StudentBackend {
-  id?: string | number;
+interface EstudianteAPI {
+  id?: number;
   username?: string;
   email?: string;
   first_name?: string;
   last_name?: string;
   documento?: string | number;
   telefono?: string;
-  codigo_institucional?: string;
+  codigo_institucional?: string | null;
+  /** RF-02: semestre que cursa. Sin este dato la postulación falla. */
   semestre?: number | null;
+  is_active?: boolean;
 }
 
-interface ToastState {
-  type: 'success' | 'error';
-  title: string;
-  message: string;
+interface Estudiante {
+  clave: string;
+  nombre: string;
+  username: string;
+  email: string;
+  documento: string;
+  telefono: string;
+  codigoInstitucional: string;
+  semestre: number | null;
+  activo: boolean | null;
 }
 
-const parseBackendError = (error: unknown): string => {
-  if (typeof error === 'object' && error !== null && 'response' in error) {
-    const res = (error as { response?: { data?: Record<string, unknown> | string } }).response;
-    if (res && res.data) {
-      const data = res.data;
-      if (typeof data === 'string') return data;
-      if (typeof data === 'object') {
-        if (data.detail && typeof data.detail === 'string') return data.detail;
-        if (data.username) return 'El nombre de usuario ya existe.';
-        if (data.email) return 'El correo electrónico ya se encuentra registrado.';
-        if (data.documento) return 'El número de documento ya se encuentra registrado.';
-        
-        const firstKey = Object.keys(data)[0];
-        if (firstKey) {
-          const val = data[firstKey];
-          const msg = Array.isArray(val) ? val.join(' ') : String(val);
-          return `${firstKey.toUpperCase()}:${msg}`;
-        }
-      }
-    }
-  }
-  return 'Ocurrió un error al guardar en la base de datos.';
-};
+/** '' = todos, 'sin' = sin semestre registrado, '1'..'10' = ese semestre. */
+type FiltroSemestre = string;
 
-export const Estudiantes: React.FC = () => {
-  const [students, setStudents] = useState<StudentData[]>([]);
-  const [toast, setToast] = useState<ToastState | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+const SEMESTRES = Array.from({ length: 10 }, (_, i) => i + 1);
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [documento, setDocumento] = useState('');
-  const [telefono, setTelefono] = useState('');
-  const [codigoInstitucional, setCodigoInstitucional] = useState('');
-  const [semestre, setSemestre] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+const mapear = (lista: EstudianteAPI[]): Estudiante[] =>
+  lista.map((item, indice) => ({
+    clave: String(item.id ?? `${item.username ?? ''}-${indice}`),
+    nombre: `${item.first_name ?? ''} ${item.last_name ?? ''}`.trim() || item.username || 'Estudiante',
+    username: item.username ?? '',
+    email: item.email ?? '',
+    documento: item.documento == null ? '' : String(item.documento),
+    telefono: item.telefono ?? '',
+    codigoInstitucional: item.codigo_institucional ?? '',
+    semestre: item.semestre ?? null,
+    activo: typeof item.is_active === 'boolean' ? item.is_active : null,
+  }));
 
-  const [errors, setErrors] = useState({
-    firstName: false,
-    lastName: false,
-    username: false,
-    email: false,
-    documento: false,
-    telefono: false,
-    semestre: false,
-    password: false,
-  });
+/**
+ * GT-180 (HU-004): estudiantes registrados y alta de nuevos estudiantes.
+ * Usa GET/POST /accounts/estudiantes/ con el mismo payload de siempre.
+ */
+export const Estudiantes = () => {
+  const [estudiantes, setEstudiantes] = useState<Estudiante[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [intento, setIntento] = useState(0);
 
-  const isFormInvalid =
-    !firstName.trim() ||
-    !lastName.trim() ||
-    !username.trim() ||
-    !email.trim() ||
-    !documento.trim() ||
-    !telefono.trim() ||
-    !semestre.trim() ||
-    !password.trim();
+  const [busqueda, setBusqueda] = useState('');
+  const [semestreFiltro, setSemestreFiltro] = useState<FiltroSemestre>('');
 
-  const triggerToast = (type: 'success' | 'error', title: string, message: string) => {
-    setToast({ type, title, message });
-    setTimeout(() => setToast(null), 4500);
-  };
-
-  const mapBackendStudents = (data: StudentBackend[]): StudentData[] => {
-    return data.map((item) => ({
-      first_name: item.first_name || '',
-      last_name: item.last_name || '',
-      username: item.username || '',
-      documento: String(item.documento || ''),
-      email: item.email || '',
-      telefono: item.telefono || '',
-      codigo_institucional: item.codigo_institucional || '',
-      semestre: item.semestre ?? null,
-    }));
-  };
-
-  const fetchStudents = async () => {
-    try {
-      const response = await api.get<StudentBackend[]>('/accounts/estudiantes/');
-      setStudents(mapBackendStudents(response.data));
-    } catch (error) {
-      console.error('Error al obtener estudiantes:', error);
-    }
-  };
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [errorForm, setErrorForm] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    let isMounted = true;
+    let activo = true;
 
-    const loadStudents = async () => {
+    const cargar = async () => {
+      setCargando(true);
+      setError(null);
       try {
-        const response = await api.get<StudentBackend[]>('/accounts/estudiantes/');
-        if (isMounted) {
-          setStudents(mapBackendStudents(response.data));
-        }
-      } catch (error) {
-        console.error('Error al cargar estudiantes:', error);
+        const { data } = await api.get('/accounts/estudiantes/');
+        if (!activo) return;
+        setEstudiantes(mapear(extraerLista<EstudianteAPI>(data)));
+      } catch (err) {
+        if (!activo) return;
+        setError(mensajeError(err));
       } finally {
-        if (isMounted) setLoading(false);
+        if (activo) setCargando(false);
       }
     };
 
-    void loadStudents();
+    void cargar();
+
     return () => {
-      isMounted = false;
+      activo = false;
     };
-  }, []);
+  }, [intento]);
 
-  const limpiarFormulario = () => {
-    setFirstName('');
-    setLastName('');
-    setUsername('');
-    setEmail('');
-    setDocumento('');
-    setTelefono('');
-    setCodigoInstitucional('');
-    setSemestre('');
-    setPassword('');
-    setShowPassword(false);
-    setErrors({
-      firstName: false,
-      lastName: false,
-      username: false,
-      email: false,
-      documento: false,
-      telefono: false,
-      semestre: false,
-      password: false,
-    });
+  useEffect(() => {
+    if (!toast) return;
+    const temporizador = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(temporizador);
+  }, [toast]);
+
+  const recargar = useCallback(() => setIntento((n) => n + 1), []);
+
+  const abrirModal = () => {
+    setErrorForm(null);
+    setModalAbierto(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const cerrarModal = useCallback(() => setModalAbierto(false), []);
 
-    if (isFormInvalid) {
-      triggerToast('error', 'Campos incompletos', 'Por favor completa todos los campos requeridos (*).');
-      return;
-    }
-
-    const semestreNumero = Number(semestre);
-    if (!Number.isInteger(semestreNumero) || semestreNumero < 1 || semestreNumero > 10) {
-      triggerToast('error', 'Semestre inválido', 'El semestre debe estar entre 1 y 10.');
-      return;
-    }
-
+  const registrar = async (datos: DatosUsuario) => {
+    setEnviando(true);
+    setErrorForm(null);
     try {
-      setSubmitting(true);
-
-      const payload = {
-        username: username.trim(),
-        email: email.trim(),
-        password: password.trim(),
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        documento: documento.trim(),
-        telefono: telefono.trim(),
-        codigo_institucional: codigoInstitucional.trim() || null,
-        semestre: semestreNumero,
-      };
-
-      await api.post('/accounts/estudiantes/', payload);
-
-      triggerToast('success', '¡Estudiante Registrado!', `${firstName}${lastName} ha sido guardado con éxito.`);
-      limpiarFormulario();
-      await fetchStudents();
-    } catch (error) {
-      const errorDetail = parseBackendError(error);
-      triggerToast('error', 'No se pudo registrar', errorDetail);
+      await api.post('/accounts/estudiantes/', datos);
+      setModalAbierto(false);
+      setToast(`${datos.first_name} ${datos.last_name} quedó registrado.`);
+      recargar();
+    } catch (err) {
+      setErrorForm(mensajeError(err));
     } finally {
-      setSubmitting(false);
+      setEnviando(false);
     }
   };
+
+  const filtrados = useMemo(() => {
+    const consulta = normalizar(busqueda);
+    return estudiantes.filter((estudiante) => {
+      const coincideTexto = coincide(
+        consulta,
+        estudiante.nombre,
+        estudiante.email,
+        estudiante.documento,
+        estudiante.username,
+      );
+      const coincideSemestre =
+        semestreFiltro === '' ||
+        (semestreFiltro === 'sin'
+          ? estudiante.semestre == null
+          : estudiante.semestre === Number(semestreFiltro));
+      return coincideTexto && coincideSemestre;
+    });
+  }, [estudiantes, busqueda, semestreFiltro]);
 
   return (
-    <div className="w-full flex flex-col bg-[#f7f5ed] min-h-full relative">
-      <Loader hidden={!loading} />
+    <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
+      <AdminRail />
 
-      {toast && (
-        <div className="fixed inset-0 z-[10000] bg-slate-900/40 backdrop-blur-xs flex items-start justify-center pt-10 px-4 animate-in fade-in duration-200">
-          <div className="max-w-md w-full bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-700/80 p-5 flex items-center gap-4 animate-in zoom-in-95 duration-200">
-            <div
-              className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${
-                toast.type === 'success'
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-              }`}
-            >
-              <i className={`fa-solid ${toast.type === 'success' ? 'fa-check text-lg' : 'fa-triangle-exclamation text-lg'}`}></i>
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-bold text-slate-100 tracking-tight">{toast.title}</h4>
-              <p className="text-xs text-slate-300 leading-relaxed mt-1">{toast.message}</p>
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] flex-1 px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
+        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[11.5px] text-muted">Usuarios · Coordinación</p>
+            <h1 className="mt-1 text-[30px] font-medium leading-tight tracking-[-0.02em] text-tinta sm:text-[36px]">
+              Estudiantes
+            </h1>
+            <p className="mt-1 max-w-[640px] text-[13px] leading-relaxed text-muted">
+              Consulta los estudiantes registrados y da de alta nuevos. El semestre es obligatorio
+              para que puedan postularse como tutores.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={abrirModal}
+            className="h-11 rounded-full bg-violeta-accion px-5 text-[12.5px] font-semibold text-white transition-colors hover:bg-violeta-profundo"
+          >
+            Registrar estudiante
+          </button>
+        </header>
+
+        {error && (
+          <div
+            role="alert"
+            className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-peligro/30 bg-peligro/5 px-4 py-3 text-peligro"
+          >
+            <div className="min-w-0">
+              <p className="text-[12.5px] font-semibold">No pudimos cargar los estudiantes</p>
+              <p className="mt-1 text-[11.5px] leading-relaxed opacity-90">{error}</p>
             </div>
             <button
-              onClick={() => setToast(null)}
-              className="text-slate-400 hover:text-white text-sm px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors"
+              type="button"
+              onClick={recargar}
+              className="h-9 rounded-full border border-peligro/40 bg-white px-4 text-[12px] font-semibold text-peligro transition-colors hover:bg-peligro/5"
             >
-              ✕
+              Reintentar
             </button>
           </div>
-        </div>
-      )}
+        )}
 
-      <header className="w-full h-[60px] bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0">
-        <div className="text-[0.82rem] text-slate-500">
-          Usuarios / <span className="font-semibold text-[#0d1b2a]">Registrar estudiante</span>
-        </div>
-        <div className="text-xs font-semibold text-slate-600">Administrador</div>
-      </header>
-
-      <main className="p-8 w-full max-w-[1400px] space-y-6">
-        <div>
-          <h1 className="font-display italic text-3xl font-semibold text-[#0d1b2a] mb-1">Registrar estudiante</h1>
-          <p className="text-[0.83rem] text-slate-500">Completa los datos del estudiante exigidos por el sistema.</p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
-          <div className="lg:col-span-5 bg-white rounded-xl p-7 border border-slate-200 shadow-sm">
-            <form onSubmit={handleSubmit} noValidate className="space-y-4">
-              
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Nombre de usuario <span className="text-rose-500">*</span>
-                </label>
+        <section className="rounded-[32px] bg-white p-5 sm:p-6">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_200px]">
+            <label className="block">
+              <span className="mb-1.5 block text-[11px] font-medium text-slate-ink">Buscar</span>
+              <span className="relative block">
+                <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-pebble" />
                 <input
-                  type="text"
-                  className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                    errors.username ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                  }`}
-                  value={username}
-                  onChange={(e) => {
-                    setUsername(e.target.value);
-                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, username: false }));
-                  }}
+                  type="search"
+                  value={busqueda}
+                  onChange={(event) => setBusqueda(event.target.value)}
+                  placeholder="Nombre, correo o documento"
+                  className={`${claseInput} pl-10`}
                 />
-              </div>
+              </span>
+            </label>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Nombres <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.firstName ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                    }`}
-                    value={firstName}
-                    onChange={(e) => {
-                      setFirstName(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, firstName: false }));
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Apellidos <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.lastName ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                    }`}
-                    value={lastName}
-                    onChange={(e) => {
-                      setLastName(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, lastName: false }));
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Correo electrónico <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                    errors.email ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                  }`}
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, email: false }));
-                  }}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Documento <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.documento ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                    }`}
-                    value={documento}
-                    onChange={(e) => {
-                      setDocumento(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, documento: false }));
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Teléfono <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.telefono ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                    }`}
-                    value={telefono}
-                    onChange={(e) => {
-                      setTelefono(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, telefono: false }));
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Código Institucional</label>
-                <input
-                  type="text"
-                  className="w-full h-[40px] px-3.5 text-[0.83rem] bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
-                  value={codigoInstitucional}
-                  onChange={(e) => setCodigoInstitucional(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Semestre <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  className={`w-full h-[40px] px-3.5 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                    errors.semestre
-                      ? 'border-rose-500 ring-2 ring-rose-500/15'
-                      : 'border-slate-200 focus:border-[#0d1b2a]'
-                  }`}
-                  value={semestre}
-                  onChange={(e) => {
-                    setSemestre(e.target.value);
-                    if (e.target.value.trim()) setErrors((prev) => ({ ...prev, semestre: false }));
-                  }}
-                >
-                  <option value="">Selecciona el semestre</option>
-                  {Array.from({ length: 10 }, (_, i) => i + 1).map((valor) => (
-                    <option key={valor} value={valor}>
-                      {valor}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-[0.72rem] text-slate-400">
-                  RF-02: se usa para validar la postulación como tutor.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Contraseña <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    className={`w-full h-[40px] pl-3.5 pr-10 text-[0.83rem] bg-white border rounded-md outline-none transition-all ${
-                      errors.password ? 'border-rose-500 ring-2 ring-rose-500/15' : 'border-slate-200 focus:border-[#0d1b2a]'
-                    }`}
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      if (e.target.value.trim()) setErrors((prev) => ({ ...prev, password: false }));
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer text-sm"
-                    title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                  >
-                    <i className={`fa-solid ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex gap-3.5 pt-1">
-                <button
-                  type="submit"
-                  disabled={submitting || isFormInvalid}
-                  className={`flex-[1.2] h-[40px] bg-[#0d1b2a] text-white font-semibold text-xs rounded-md transition-all ${
-                    submitting || isFormInvalid
-                      ? 'opacity-50 cursor-not-allowed'
-                      : 'hover:bg-[#1e2d4a] cursor-pointer'
-                  }`}
-                >
-                  {submitting ? 'Guardando...' : 'Registrar estudiante'}
-                </button>
-                <button
-                  type="button"
-                  onClick={limpiarFormulario}
-                  className="flex-[0.8] h-[40px] bg-transparent hover:bg-slate-50 text-[#0d1b2a] border border-slate-200 font-semibold text-xs rounded-md transition-colors cursor-pointer"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
+            <label className="block">
+              <span className="mb-1.5 block text-[11px] font-medium text-slate-ink">Semestre</span>
+              <select
+                value={semestreFiltro}
+                onChange={(event) => setSemestreFiltro(event.target.value)}
+                className={claseInput}
+              >
+                <option value="">Todos</option>
+                <option value="sin">Sin registrar</option>
+                {SEMESTRES.map((valor) => (
+                  <option key={valor} value={valor}>
+                    {valor}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
-          <div className="lg:col-span-7 bg-white rounded-xl p-7 border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-[0.88rem] font-bold text-[#0d1b2a] uppercase tracking-wider">
-                Estudiantes registrados
-              </h3>
-              <span className="text-xs text-slate-500">{students.length} registro(s)</span>
-            </div>
+          <div className="mt-5 flex items-center justify-between px-1 text-[10.5px] text-muted">
+            <span>
+              {filtrados.length} {filtrados.length === 1 ? 'estudiante' : 'estudiantes'}
+            </span>
+            <span>{estudiantes.length} en total</span>
+          </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+          {cargando ? (
+            <SkeletonFilas className="mt-2" filas={5} />
+          ) : filtrados.length === 0 ? (
+            <EmptyState
+              titulo={estudiantes.length === 0 ? 'Aún no hay estudiantes' : 'No encontramos estudiantes'}
+              detalle={
+                estudiantes.length === 0
+                  ? 'Registra el primer estudiante con el botón de arriba.'
+                  : 'Prueba con otro texto o cambia el semestre.'
+              }
+            />
+          ) : (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-[12px]">
                 <thead>
-                  <tr className="border-b border-slate-200 text-slate-400 uppercase text-[0.7rem] tracking-wider font-bold">
-                    <th className="pb-3 px-2">Estudiante</th>
-                    <th className="pb-3 px-2">Usuario</th>
-                    <th className="pb-3 px-2">Documento</th>
-                    <th className="pb-3 px-2">Correo</th>
-                    <th className="pb-3 px-2">Teléfono</th>
-                    <th className="pb-3 px-2">Semestre</th>
-                    <th className="pb-3 px-2">Cód. Inst.</th>
+                  <tr className="border-b border-faint text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
+                    <th className="px-3 pb-3">Estudiante</th>
+                    <th className="px-3 pb-3">Correo</th>
+                    <th className="px-3 pb-3">Código institucional</th>
+                    <th className="px-3 pb-3">Semestre</th>
+                    <th className="px-3 pb-3">Estado</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {students.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-400 font-medium text-xs">
-                        No hay estudiantes registrados aún.
-                      </td>
-                    </tr>
-                  ) : (
-                    students.map((st, i) => (
-                      <tr key={i} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-2 font-semibold text-[#0d1b2a]">
-                          {st.first_name} {st.last_name}
+                <tbody className="divide-y divide-faint">
+                  {filtrados.map((estudiante) => {
+                    const estado = claseEstado(estudiante.activo);
+                    return (
+                      <tr key={estudiante.clave} className="hover:bg-mist/60">
+                        <td className="px-3 py-3">
+                          <p className="font-semibold text-tinta">{estudiante.nombre}</p>
+                          <p className="mt-0.5 text-[10.5px] text-muted">
+                            {[estudiante.username, estudiante.documento, estudiante.telefono]
+                              .filter(Boolean)
+                              .join(' · ') || '—'}
+                          </p>
                         </td>
-                        <td className="py-3 px-2 font-mono text-slate-600">{st.username || '—'}</td>
-                        <td className="py-3 px-2 font-mono">{st.documento || '—'}</td>
-                        <td className="py-3 px-2">{st.email}</td>
-                        <td className="py-3 px-2">{st.telefono || '—'}</td>
-                        <td className="py-3 px-2">
-                          {st.semestre ? (
-                            <span className="font-semibold text-slate-700">{st.semestre}</span>
-                          ) : (
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                        <td className="whitespace-nowrap px-3 py-3 text-slate-ink">{estudiante.email || '—'}</td>
+                        <td className="px-3 py-3 font-mono text-[11px] text-slate-ink">
+                          {estudiante.codigoInstitucional || '—'}
+                        </td>
+                        <td className="px-3 py-3">
+                          {estudiante.semestre == null ? (
+                            <span className="whitespace-nowrap rounded-full bg-advertencia/10 px-2.5 py-1 text-[10px] font-semibold text-advertencia">
                               Sin registrar
                             </span>
+                          ) : (
+                            <span className="font-semibold text-slate-ink">{estudiante.semestre}</span>
                           )}
                         </td>
-                        <td className="py-3 px-2">{st.codigo_institucional || '—'}</td>
+                        <td className="px-3 py-3">
+                          <span className={estado.clase}>{estado.texto}</span>
+                        </td>
                       </tr>
-                    ))
-                  )}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
+          )}
+        </section>
       </main>
+
+      {modalAbierto && (
+        <Modal
+          onCerrar={cerrarModal}
+          tituloId="estudiante-form"
+          eyebrow="GT-180 · Registrar estudiante"
+          titulo="Nuevo estudiante"
+          ancho="lg"
+          cerrable={!enviando}
+        >
+          <FormularioUsuario
+            rol="estudiante"
+            enviando={enviando}
+            error={errorForm}
+            onGuardar={registrar}
+            onCancelar={cerrarModal}
+          />
+        </Modal>
+      )}
+
+      <Toast mensaje={toast} />
     </div>
   );
 };
+
+export default Estudiantes;

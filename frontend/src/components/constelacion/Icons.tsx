@@ -104,3 +104,17 @@ export const ListIcon = ({ className }: IconProps) => (
     <circle cx="3" cy="11.8" r="0.9" fill="currentColor" />
   </svg>
 );
+
+export const EyeIcon = ({ className }: IconProps) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none" aria-hidden="true">
+    <path d="M1.6 8s2.4-4.6 6.4-4.6S14.4 8 14.4 8s-2.4 4.6-6.4 4.6S1.6 8 1.6 8Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.3" />
+  </svg>
+);
+
+export const EyeOffIcon = ({ className }: IconProps) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none" aria-hidden="true">
+    <path d="M6.3 3.6A6.6 6.6 0 0 1 8 3.4c4 0 6.4 4.6 6.4 4.6a11 11 0 0 1-1.8 2.3M4.1 4.9C2.5 6 1.6 8 1.6 8s2.4 4.6 6.4 4.6c1.2 0 2.2-.4 3.1-1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M6.6 6.6a2 2 0 0 0 2.8 2.8M2.4 2.4l11.2 11.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+  </svg>
+);

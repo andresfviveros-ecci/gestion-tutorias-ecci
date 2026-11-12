@@ -4,7 +4,7 @@ import { api } from '../../api/axios';
 import { StudentRail } from '../../components/estudiante/StudentRail';
 import { RegistrarTutoriaModal } from '../../components/tutor/panel/RegistrarTutoriaModal';
 import { EmptyState } from '../../components/constelacion/EmptyState';
-import { Loader } from '../../components/Loader';
+import { SkeletonFilas } from '../../components/constelacion/Skeleton';
 import { Toast } from '../../components/constelacion/Toast';
 import type { TutoriaRecibida } from '../../types/tutor';
 import { extraerLista, mensajeError } from '../../utils/api';
@@ -98,7 +98,6 @@ export const MisTutoriasTutor = () => {
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
       <StudentRail />
-      <Loader hidden={!cargando} />
 
       <main className="min-w-0 flex-1">
         <div className="mx-auto w-full max-w-[1100px] px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
@@ -123,7 +122,9 @@ export const MisTutoriasTutor = () => {
             </div>
           )}
 
-          {!cargando && ordenadas.length === 0 ? (
+          {cargando ? (
+            <SkeletonFilas alto="h-[104px]" filas={3} />
+          ) : ordenadas.length === 0 ? (
             <section className="rounded-[28px] bg-white p-6 sm:p-7">
               <EmptyState
                 titulo="Todavía no tienes tutorías reservadas"
