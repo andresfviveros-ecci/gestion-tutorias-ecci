@@ -7,6 +7,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Estudiantes } from './pages/Estudiantes';
 import { Tutores } from './pages/Tutores';
 import { AsignacionMaterias } from './pages/AsignacionMaterias';
+import { GestionMaterias } from './pages/GestionMaterias';
 import { Coordinadores } from './pages/Coordinadores';
 import { GestionarUsuarios } from './pages/GestionarUsuarios';
 import { ConfiguracionGeneral } from './pages/ConfiguracionGeneral';
@@ -310,6 +311,14 @@ export const App: React.FC = () => {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <AsignacionMaterias />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/materias"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <GestionMaterias />
             </ProtectedRoute>
           }
         />

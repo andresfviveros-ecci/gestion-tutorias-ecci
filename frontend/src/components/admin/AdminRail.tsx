@@ -71,6 +71,23 @@ const SlidersIcon: FC = () => (
   </svg>
 );
 
+const BookIcon: FC = () => (
+  <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+    <path
+      d="M3.5 4.2A1.7 1.7 0 0 1 5.2 2.5H9v15H5.2a1.7 1.7 0 0 1-1.7-1.7V4.2Z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M16.5 4.2a1.7 1.7 0 0 0-1.7-1.7H11v15h3.8a1.7 1.7 0 0 0 1.7-1.7V4.2Z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 const ShieldIcon: FC = () => (
   <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
     <path
@@ -98,6 +115,8 @@ const iconoDeModulo = (id: Modulo['id']): ReactNode => {
       return <UsersIcon className="h-5 w-5" />;
     case 'tutores':
       return <UserIcon className="h-5 w-5" />;
+    case 'materias':
+      return <BookIcon />;
     case 'asignacion-materias':
       return <LayersIcon className="h-5 w-5" />;
     case 'coordinadores':

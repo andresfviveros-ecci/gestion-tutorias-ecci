@@ -37,6 +37,13 @@ export const MODULOS: Modulo[] = [
     roles: ['admin'],
   },
   {
+    id: 'materias',
+    etiqueta: 'Materias',
+    ruta: '/materias',
+    seccion: 'Usuarios',
+    roles: ['admin'],
+  },
+  {
     id: 'coordinadores',
     etiqueta: 'Coordinadores',
     ruta: '/coordinadores',
