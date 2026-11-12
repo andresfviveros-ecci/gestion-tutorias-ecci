@@ -23,6 +23,7 @@ from .serializers import (
     MeSerializer,
     RecoveryTokenSerializer,
     StudentRegisterSerializer,
+    TutorPublicoSerializer,
     TutorRegisterSerializer,
 )
 
@@ -231,6 +232,15 @@ class TutorView(UsuarioListView):
         if self.request.method == 'GET':
             return [EsCoordinadorOEstudiante()]
         return [EsCoordinador()]
+
+    def get_serializer_class(self):
+        # El estudiante solo necesita el nombre del docente; el documento y el
+        # teléfono quedan para la coordinación.
+        if getattr(self, 'swagger_fake_view', False):
+            return TutorRegisterSerializer
+        if self.request.method == 'GET' and not es_coordinacion(self.request.user):
+            return TutorPublicoSerializer
+        return TutorRegisterSerializer
 
 
 @extend_schema(tags=['Docentes'])

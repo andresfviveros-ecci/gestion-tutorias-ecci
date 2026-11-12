@@ -200,6 +200,14 @@ class PermisosUsuariosTests(APITestCase):
         self.client.force_authenticate(self.docente)
         self.assertEqual(self.client.get('/api/accounts/tutores/').status_code, 403)
 
+    def test_estudiante_no_ve_documento_ni_telefono_de_docentes(self):
+        datos = self.client.get('/api/accounts/tutores/').data
+        self.assertIn('documento', datos[0])
+        self.client.force_authenticate(self.estudiante)
+        datos = self.client.get('/api/accounts/tutores/').data
+        self.assertTrue(datos)
+        self.assertEqual(set(datos[0]), {'id', 'first_name', 'last_name', 'email'})
+
     # BE-13
     def test_detalle_inexistente_responde_404(self):
         self.client.force_authenticate(self.administrador)

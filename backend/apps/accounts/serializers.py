@@ -318,6 +318,16 @@ class TutorRegisterSerializer(UsuarioSerializer):
     grupo = 'Docente'
 
 
+class TutorPublicoSerializer(serializers.ModelSerializer):
+    """Lo que ve un estudiante de un docente para reservar: sin documento ni
+    teléfono, que son datos personales que solo maneja la coordinación."""
+
+    class Meta:
+        model = get_user_model()
+        fields = ['id', 'first_name', 'last_name', 'email']
+        read_only_fields = fields
+
+
 """" SERIALIZERS PARA REGISTRAR COORDINADORES"""
 class CoordinatorSerializer(UsuarioSerializer):
     grupo = 'Coordinador'
