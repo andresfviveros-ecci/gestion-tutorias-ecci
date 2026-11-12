@@ -111,17 +111,6 @@ const CalendarIcon: React.FC = () => (
   </svg>
 );
 
-const HomeIcon: React.FC = () => (
-  <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
-    <path
-      d="M3.5 8.5 10 3.5l6.5 5V16a1 1 0 0 1-1 1h-3.5v-4.5h-4V17H4.5a1 1 0 0 1-1-1V8.5Z"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
-
 const LogoutIcon: React.FC = () => (
   <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
     <path d="M8 3.5H5a1.5 1.5 0 0 0-1.5 1.5v10A1.5 1.5 0 0 0 5 16.5h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -202,9 +191,6 @@ export const StudentRail: React.FC = () => {
       </div>
 
       <div className="flex flex-col items-center gap-2">
-        <RailIcon to="/inicio" label="Página de inicio">
-          <HomeIcon />
-        </RailIcon>
         <RailIcon onClick={handleLogout} label="Cerrar sesión">
           <span className="text-peligro">
             <LogoutIcon />

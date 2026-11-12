@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader } from '../components/Loader';
+import { AdminRail } from '../components/admin/AdminRail';
 import {
   CheckIcon,
   ChevronRightIcon,
@@ -299,10 +300,11 @@ export const AsignacionMaterias = () => {
   };
 
   return (
-    <div className="min-h-screen bg-mist font-constelacion text-tinta">
+    <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
+      <AdminRail />
       <Loader hidden={!cargando} />
 
-      <main className="mx-auto w-full max-w-[1500px] px-5 py-6 pb-24 sm:px-7 lg:px-8">
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] flex-1 px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-[11.5px] text-muted">Materias · Administrador</p>

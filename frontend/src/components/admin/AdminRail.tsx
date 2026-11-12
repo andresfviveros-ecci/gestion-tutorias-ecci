@@ -71,17 +71,6 @@ const SlidersIcon: FC = () => (
   </svg>
 );
 
-const HomeIcon: FC = () => (
-  <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
-    <path
-      d="M3.5 8.5 10 3.5l6.5 5V16a1 1 0 0 1-1 1h-3.5v-4.5h-4V17H4.5a1 1 0 0 1-1-1V8.5Z"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
-
 const ShieldIcon: FC = () => (
   <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
     <path
@@ -117,8 +106,6 @@ const iconoDeModulo = (id: Modulo['id']): ReactNode => {
       return <ListIcon className="h-5 w-5" />;
     case 'configuracion':
       return <SlidersIcon />;
-    case 'inicio':
-      return <HomeIcon />;
     default:
       return <GridIcon />;
   }
