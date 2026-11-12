@@ -11,6 +11,7 @@ import { GestionMaterias } from './pages/GestionMaterias';
 import { Coordinadores } from './pages/Coordinadores';
 import { GestionarUsuarios } from './pages/GestionarUsuarios';
 import { ConfiguracionGeneral } from './pages/ConfiguracionGeneral';
+import { ReporteTutores } from './pages/ReporteTutores';
 import { TutorPanel } from './pages/tutor/TutorPanel';
 import { SolicitudesTutor } from './pages/tutor/SolicitudesTutor';
 import { MiDisponibilidad } from './pages/tutor/MiDisponibilidad';
@@ -365,6 +366,14 @@ export const App: React.FC = () => {
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <ConfiguracionGeneral />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reportes"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <ReporteTutores />
             </ProtectedRoute>
           }
         />
