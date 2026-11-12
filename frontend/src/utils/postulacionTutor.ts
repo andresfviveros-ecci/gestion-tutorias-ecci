@@ -53,6 +53,14 @@ export interface HistorialTutor {
   materias: MateriaHistorial[];
 }
 
+/**
+ * Una solicitud solo bloquea una nueva postulación si está PENDIENTE o APROBADA.
+ * El historial devuelve la última solicitud de cada materia en cualquier estado,
+ * así que una RECHAZADA o REVOCADA no cuenta: el estudiante puede volver a postularse.
+ */
+export const esSolicitudVigente = (estado: EstadoSolicitud): boolean =>
+  estado === 'PENDIENTE' || estado === 'APROBADA';
+
 /** Respuesta de `GET /tutores/solicitudes/?estudiante=me` (endpoint ya existente). */
 export interface SolicitudTutorAPI {
   id: number;

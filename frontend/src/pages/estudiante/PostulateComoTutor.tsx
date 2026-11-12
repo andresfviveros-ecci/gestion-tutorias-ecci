@@ -8,6 +8,7 @@ import { temaDeMateria } from '../../components/constelacion/temas';
 import { api } from '../../api/axios';
 import { extraerLista, mensajeError } from '../../utils/api';
 import {
+  esSolicitudVigente,
   estadoPostulacion,
   fechaPostulacion,
   formatoNota,
@@ -139,7 +140,10 @@ export const PostulateComoTutor = () => {
         return previo;
       }
       const primera =
-        normalizado?.materias.find((item) => item.elegible && !item.solicitud) ??
+        normalizado?.materias.find(
+          (item) =>
+            item.elegible && !(item.solicitud && esSolicitudVigente(item.solicitud.estado)),
+        ) ??
         normalizado?.materias[0];
       return primera?.materia ?? null;
     });
@@ -196,12 +200,13 @@ export const PostulateComoTutor = () => {
 
   const solicitudVigente = useMemo(() => {
     if (!seleccionada) return null;
-    if (seleccionada.solicitud) return seleccionada.solicitud;
+    if (seleccionada.solicitud && esSolicitudVigente(seleccionada.solicitud.estado)) {
+      return seleccionada.solicitud;
+    }
     return (
       solicitudes.find(
         (solicitud) =>
-          solicitud.materia === seleccionada.materia &&
-          (solicitud.estado === 'PENDIENTE' || solicitud.estado === 'APROBADA'),
+          solicitud.materia === seleccionada.materia && esSolicitudVigente(solicitud.estado),
       ) ?? null
     );
   }, [seleccionada, solicitudes]);
@@ -252,6 +257,12 @@ export const PostulateComoTutor = () => {
     }
     if (solicitudVigente?.estado === 'PENDIENTE') {
       return 'Tu postulación está en revisión. El docente te avisará el resultado.';
+    }
+    const anterior = seleccionada.solicitud?.estado;
+    if (seleccionada.elegible && (anterior === 'RECHAZADA' || anterior === 'REVOCADA')) {
+      return `Tu postulación anterior fue ${
+        anterior === 'RECHAZADA' ? 'rechazada' : 'revocada'
+      }. Cumples los requisitos y puedes postularte de nuevo.`;
     }
     if (todosCumplen) {
       return `Cumples los 3 requisitos. Tu nota ${formatoNota(
