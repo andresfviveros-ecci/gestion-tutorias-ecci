@@ -23,6 +23,7 @@ import { BuscarTutorias } from './pages/estudiante/BuscarTutorias';
 import { MisReservas } from './pages/estudiante/MisReservas';
 import { MisTutoriasTutor } from './pages/estudiante/MisTutoriasTutor';
 import { MisHorariosTutor } from './pages/estudiante/MisHorariosTutor';
+import { PostulateComoTutor } from './pages/estudiante/PostulateComoTutor';
 import { MODULOS, normalizarRol, RUTA_INICIO } from './navigation/modulos';
 import { ArrowIcon } from './components/constelacion/Icons';
 
@@ -142,6 +143,14 @@ export const App: React.FC = () => {
           element={
             <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
               <BuscarTutorias />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/estudiante/postularme-tutor"
+          element={
+            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
+              <PostulateComoTutor />
             </ProtectedRoute>
           }
         />

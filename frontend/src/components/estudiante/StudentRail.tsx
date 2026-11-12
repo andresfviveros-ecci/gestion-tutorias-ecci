@@ -104,6 +104,24 @@ const ClockIcon: React.FC = () => (
   </svg>
 );
 
+const GraduationIcon: React.FC = () => (
+  <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
+    <path
+      d="M2.5 8.2 10 4.5l7.5 3.7L10 11.9 2.5 8.2Z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M5.6 10v3.1c0 1 2 2 4.4 2s4.4-1 4.4-2V10"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+    <path d="M17.2 8.6v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
 const CalendarIcon: React.FC = () => (
   <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
     <rect x="3" y="4.5" width="14" height="12" rx="2.2" stroke="currentColor" strokeWidth="1.5" />
@@ -209,6 +227,9 @@ export const StudentRail: React.FC = () => {
         </RailIcon>
         <RailIcon to="/estudiante/mis-reservas" label="Mis reservas">
           <ClockIcon />
+        </RailIcon>
+        <RailIcon to="/estudiante/postularme-tutor" label="Postúlate como tutor">
+          <GraduationIcon />
         </RailIcon>
         {puedePublicar && (
           <>
