@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { Loader } from '../../components/Loader';
 import { TutorRail } from '../../components/tutor/TutorRail';
-import { Modal } from '../../components/constelacion/Modal';
 import {
   CalendarIcon,
   CheckIcon,
@@ -162,7 +160,6 @@ export const ModificarDisponibilidad = () => {
   const [modalidad, setModalidad] = useState<'VIRTUAL' | 'PRESENCIAL'>('VIRTUAL');
   const [ubicacionOEnlace, setUbicacionOEnlace] = useState('');
   const [observaciones, setObservaciones] = useState('');
-  const [confirmarReservas, setConfirmarReservas] = useState(false);
 
   const [error, setError] = useState<{ titulo: string; detalle: string } | null>(null);
   const [exito, setExito] = useState<string | null>(null);
@@ -272,6 +269,16 @@ export const ModificarDisponibilidad = () => {
 
   const estadoBloque = (bloque?.estado || '').toUpperCase();
   const reservados = bloque?.cupo_ocupado ?? 0;
+
+  // Decisión B (GT-272): con reservas activas el backend no permite mover la
+  // fecha ni la hora, pero sí actualizar los demás datos del bloque.
+  const cambiaHorario =
+    !!bloque &&
+    (fecha !== bloque.fecha ||
+      horaInicio !== horaCorta(bloque.hora_inicio) ||
+      horaFin !== horaCorta(bloque.hora_fin));
+  const bloqueoPorReservas = reservados > 0 && cambiaHorario;
+
   const estadoTexto =
     estadoBloque === 'DISPONIBLE'
       ? 'Disponibilidad publicada'
@@ -331,7 +338,6 @@ export const ModificarDisponibilidad = () => {
     setExito(null);
     setError(null);
     setGuardando(true);
-    setConfirmarReservas(false);
 
     try {
       const { data } = await api.patch<BloqueBackend>(`/disponibilidad/${id}/actualizar/`, {
@@ -410,9 +416,14 @@ export const ModificarDisponibilidad = () => {
       return;
     }
 
-    // Con estudiantes reservados se pide confirmación antes de mover el bloque.
-    if (reservados > 0) {
-      setConfirmarReservas(true);
+    // Decisión B (GT-272): con reservas activas no se mueve el bloque. Los
+    // demás cambios (materia, modalidad, lugar, nota) sí están permitidos.
+    if (bloqueoPorReservas) {
+      setError({
+        titulo: 'No se puede mover este horario',
+        detalle:
+          'Tiene reservas activas. Para cambiar la fecha o la hora, suspende este bloque y publica uno nuevo.',
+      });
       return;
     }
 
@@ -515,8 +526,9 @@ export const ModificarDisponibilidad = () => {
                     {reservados === 1 ? 'estudiante con reserva' : 'estudiantes con reserva'}
                   </p>
                   <p className="mt-1 text-[11.4px] leading-relaxed text-advertencia/90">
-                    Si cambias la fecha u hora, las reservas existentes se mueven con el bloque.
-                    Avisa a los estudiantes antes de guardar.
+                    {bloqueoPorReservas
+                      ? 'El sistema no permite cambiar la fecha ni la hora mientras haya reservas activas. Suspende este bloque y publica uno nuevo.'
+                      : 'Puedes actualizar la materia, la modalidad, el lugar o la nota sin afectar las reservas existentes.'}
                   </p>
                 </div>
               )}
@@ -710,7 +722,9 @@ export const ModificarDisponibilidad = () => {
 
                   <div className="mt-5 flex flex-col gap-3 border-t border-faint pt-4 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-[10.7px] text-muted">
-                      Los cambios se validan antes de actualizarse.
+                      {bloqueoPorReservas
+                        ? 'Con reservas activas no se puede cambiar la fecha ni la hora.'
+                        : 'Los cambios se validan antes de actualizarse.'}
                     </p>
 
                     <div className="flex flex-col-reverse gap-2 sm:flex-row">
@@ -723,7 +737,7 @@ export const ModificarDisponibilidad = () => {
                       </button>
                       <button
                         type="submit"
-                        disabled={guardando || materias.length === 0}
+                        disabled={guardando || materias.length === 0 || bloqueoPorReservas}
                         className="h-11 rounded-full bg-violeta-accion px-6 text-[12.8px] font-semibold text-white shadow-constelacion-violet transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {guardando ? 'Guardando...' : 'Guardar cambios'}
@@ -795,48 +809,6 @@ export const ModificarDisponibilidad = () => {
           </div>
         </div>
       </main>
-
-      <AnimatePresence>
-        {confirmarReservas && (
-          <Modal
-            onCerrar={() => setConfirmarReservas(false)}
-            tituloId="modal-confirmar-reservas"
-            eyebrow="Cambio con reservas"
-            titulo="Este horario ya tiene reservas"
-            ancho="md"
-            cerrable={!guardando}
-          >
-            <div className="px-6 pb-6 pt-3 sm:px-7">
-              <p className="text-[12.5px] leading-relaxed text-muted">
-                {reservados === 1
-                  ? 'Un estudiante ya reservó este horario.'
-                  : `${reservados} estudiantes ya reservaron este horario.`}{' '}
-                Si mueves el bloque, las reservas existentes también cambian de fecha y hora.
-                Avisa a los estudiantes antes de confirmar.
-              </p>
-
-              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => setConfirmarReservas(false)}
-                  disabled={guardando}
-                  className="h-11 rounded-full bg-mist px-5 text-[12.7px] font-semibold text-tinta transition-colors hover:bg-faint disabled:opacity-60"
-                >
-                  Volver
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void ejecutarGuardado()}
-                  disabled={guardando}
-                  className="h-11 rounded-full bg-violeta-accion px-6 text-[12.7px] font-semibold text-white transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {guardando ? 'Guardando...' : 'Guardar de todas formas'}
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
-      </AnimatePresence>
     </div>
   );
 };
