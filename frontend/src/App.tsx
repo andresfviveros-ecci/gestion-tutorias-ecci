@@ -26,10 +26,16 @@ import { MisHorariosTutor } from './pages/estudiante/MisHorariosTutor';
 import { PostulateComoTutor } from './pages/estudiante/PostulateComoTutor';
 import { MODULOS, normalizarRol, RUTA_INICIO } from './navigation/modulos';
 import { ArrowIcon } from './components/constelacion/Icons';
+import { api } from './api/axios';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles: UserRole[];
+  /**
+   * RF-01: la ruta es del estudiante habilitado como tutor (solicitud aprobada
+   * en el periodo activo). Un estudiante sin habilitar ve el 403.
+   */
+  soloEstudianteTutor?: boolean;
 }
 
 const NOMBRE_ROL: Record<UserRole, string> = {
@@ -39,7 +45,7 @@ const NOMBRE_ROL: Record<UserRole, string> = {
 };
 
 /** 403: la ruta pertenece a otro rol o exige un grupo que la sesión no tiene. */
-const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
+const AccessDeniedView: React.FC<{ role: UserRole; mensaje?: string }> = ({ role, mensaje }) => {
   const navigate = useNavigate();
 
   return (
@@ -59,7 +65,8 @@ const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
           Acceso denegado
         </h1>
         <p className="mt-2 text-[13px] leading-relaxed text-muted">
-          Intentaste entrar a una sección asignada a otro perfil. Tu sesión está activa como:
+          {mensaje ??
+            'Intentaste entrar a una sección asignada a otro perfil. Tu sesión está activa como:'}
         </p>
 
         <p className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-mist px-4 py-2.5 text-[12px]">
@@ -80,9 +87,41 @@ const AccessDeniedView: React.FC<{ role: UserRole }> = ({ role }) => {
   );
 };
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles }) => {
+/**
+ * Consulta una sola vez por sesión si el estudiante puede publicar horarios
+ * (`puede_publicar` de /accounts/me/). null mientras llega la respuesta.
+ */
+const usePuedePublicar = (activo: boolean): boolean | null => {
+  const [puede, setPuede] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!activo) return;
+    let vigente = true;
+    api
+      .get('/accounts/me/')
+      .then(({ data }) => {
+        if (vigente) setPuede(Boolean(data?.puede_publicar));
+      })
+      .catch(() => {
+        if (vigente) setPuede(false);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [activo]);
+
+  return activo ? puede : true;
+};
+
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+  children,
+  allowedRoles,
+  soloEstudianteTutor = false,
+}) => {
   const user = useAuthStore((state) => state.user);
   const location = useLocation();
+  const rolActual = user ? normalizarRol(user.role || user.rol) : null;
+  const puedePublicar = usePuedePublicar(soloEstudianteTutor && rolActual === 'estudiante');
 
   const [hasHydrated, setHasHydrated] = useState(() => useAuthStore.persist.hasHydrated());
 
@@ -116,6 +155,19 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
     return <AccessDeniedView role={userRole} />;
   }
 
+  if (puedePublicar === null) {
+    return <div className="min-h-screen bg-mist" aria-busy="true" />;
+  }
+
+  if (!puedePublicar) {
+    return (
+      <AccessDeniedView
+        role={userRole}
+        mensaje="Esta sección es solo para estudiantes habilitados como tutores. Puedes postularte desde «Postúlate como tutor». Tu sesión está activa como:"
+      />
+    );
+  }
+
   return <>{children}</>;
 };
 
@@ -133,7 +185,7 @@ export const App: React.FC = () => {
         <Route
           path="/estudiante/dashboard"
           element={
-            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
+            <ProtectedRoute allowedRoles={['estudiante']}>
               <StudentPanel />
             </ProtectedRoute>
           }
@@ -141,7 +193,7 @@ export const App: React.FC = () => {
         <Route
           path="/estudiante/buscar-tutorias"
           element={
-            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
+            <ProtectedRoute allowedRoles={['estudiante']}>
               <BuscarTutorias />
             </ProtectedRoute>
           }
@@ -149,7 +201,7 @@ export const App: React.FC = () => {
         <Route
           path="/estudiante/postularme-tutor"
           element={
-            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
+            <ProtectedRoute allowedRoles={['estudiante']}>
               <PostulateComoTutor />
             </ProtectedRoute>
           }
@@ -157,7 +209,7 @@ export const App: React.FC = () => {
         <Route
           path="/estudiante/mis-reservas"
           element={
-            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
+            <ProtectedRoute allowedRoles={['estudiante']}>
               <MisReservas />
             </ProtectedRoute>
           }
@@ -165,7 +217,7 @@ export const App: React.FC = () => {
         <Route
           path="/estudiante/mis-tutorias-tutor"
           element={
-            <ProtectedRoute allowedRoles={['estudiante']}>
+            <ProtectedRoute allowedRoles={['estudiante']} soloEstudianteTutor>
               <MisTutoriasTutor />
             </ProtectedRoute>
           }
@@ -173,7 +225,7 @@ export const App: React.FC = () => {
         <Route
           path="/estudiante/mis-horarios"
           element={
-            <ProtectedRoute allowedRoles={['estudiante']}>
+            <ProtectedRoute allowedRoles={['estudiante']} soloEstudianteTutor>
               <MisHorariosTutor />
             </ProtectedRoute>
           }
@@ -182,7 +234,7 @@ export const App: React.FC = () => {
         <Route
           path="/estudiante/historial"
           element={
-            <ProtectedRoute allowedRoles={['estudiante', 'admin']}>
+            <ProtectedRoute allowedRoles={['estudiante']}>
               <MisReservas />
             </ProtectedRoute>
           }
@@ -274,7 +326,7 @@ export const App: React.FC = () => {
         <Route
           path="/tutor/dashboard"
           element={
-            <ProtectedRoute allowedRoles={['tutor', 'admin']}>
+            <ProtectedRoute allowedRoles={['tutor']}>
               <TutorPanel />
             </ProtectedRoute>
           }
@@ -282,7 +334,7 @@ export const App: React.FC = () => {
         <Route
           path="/tutor/solicitudes"
           element={
-            <ProtectedRoute allowedRoles={['tutor', 'admin']}>
+            <ProtectedRoute allowedRoles={['tutor']}>
               <SolicitudesTutor />
             </ProtectedRoute>
           }
@@ -290,7 +342,7 @@ export const App: React.FC = () => {
         <Route
           path="/tutor/mi-disponibilidad"
           element={
-            <ProtectedRoute allowedRoles={['tutor', 'estudiante', 'admin']}>
+            <ProtectedRoute allowedRoles={['tutor', 'estudiante']} soloEstudianteTutor>
               <MiDisponibilidad />
             </ProtectedRoute>
           }
@@ -298,7 +350,7 @@ export const App: React.FC = () => {
         <Route
           path="/tutor/mi-disponibilidad/:id/editar"
           element={
-            <ProtectedRoute allowedRoles={['tutor', 'admin']}>
+            <ProtectedRoute allowedRoles={['tutor']}>
               <ModificarDisponibilidad />
             </ProtectedRoute>
           }
@@ -306,7 +358,7 @@ export const App: React.FC = () => {
         <Route
           path="/tutor/calendario"
           element={
-            <ProtectedRoute allowedRoles={['tutor', 'admin']}>
+            <ProtectedRoute allowedRoles={['tutor']}>
               <Calendario />
             </ProtectedRoute>
           }

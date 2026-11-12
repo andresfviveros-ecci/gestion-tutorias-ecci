@@ -66,6 +66,7 @@ export const Calendario: React.FC = () => {
   const [errorTipo, setErrorTipo] = useState<TipoFallo>('validacion');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [cargando, setCargando] = useState(true);
 
   // 1. CARGA INICIAL
   useEffect(() => {
@@ -98,6 +99,8 @@ export const Calendario: React.FC = () => {
         }
       } catch (err) {
         console.error('Error al cargar la disponibilidad en Calendario:', err);
+      } finally {
+        if (!ignore) setCargando(false);
       }
     };
 
@@ -262,7 +265,7 @@ export const Calendario: React.FC = () => {
 
           <div className="rounded-[22px] bg-white px-4 py-3 text-right">
             <p className="text-[10.5px] text-muted">Bloques esta semana</p>
-            <p className="mt-0.5 text-[13.5px] font-medium text-tinta">{bloquesSemana}</p>
+            <p className="mt-0.5 text-[13.5px] font-medium text-tinta">{cargando ? '—' : bloquesSemana}</p>
           </div>
         </header>
 
@@ -304,53 +307,64 @@ export const Calendario: React.FC = () => {
               ))}
             </div>
 
-            <div className="grid min-h-[380px] grid-cols-7 divide-x divide-faint bg-white">
-              {DIAS_SEMANA.map((dia, index) => {
-                const colDate = new Date(monday);
-                colDate.setDate(monday.getDate() + index);
-                const colDateStr = fechaLocalISO(colDate);
-
-                const daySlots = slots.filter(
-                  (s) => s.fecha === colDateStr && s.estado !== 'CANCELADO'
-                );
-
-                return (
-                  <div key={dia} className="space-y-2 p-2">
-                    {daySlots.map((s) => {
-                      const nombreMat = getMateriaNombre(s.materia);
-                      const isLibre = s.estado === 'DISPONIBLE' || s.estado === 'Libre';
-
-                      return (
-                        <div
-                          key={s.id}
-                          onClick={() => openDrawer(s)}
-                          className={`cursor-pointer rounded-[14px] border p-3 transition-colors ${
-                            isLibre
-                              ? 'border-faint bg-white text-tinta hover:border-exito/40 hover:bg-mist'
-                              : 'border-tinta bg-tinta text-white hover:bg-carbon'
-                          }`}
-                        >
-                          <div className="mb-1 flex items-center justify-between gap-1">
-                            <span className="truncate text-[11.5px] font-semibold">{nombreMat}</span>
-                            {!isLibre && (
-                              <span className="shrink-0 rounded-full bg-white/15 px-1.5 py-0.5 text-[9px] font-medium">
-                                Reservada
-                              </span>
-                            )}
-                          </div>
-                          <div
-                            className={`text-[10.5px] ${isLibre ? 'text-muted' : 'text-white/75'}`}
-                          >
-                            {(s.horaInicio || s.hora_inicio || '').substring(0, 5)} -{' '}
-                            {(s.horaFin || s.hora_fin || '').substring(0, 5)}
-                          </div>
-                        </div>
-                      );
-                    })}
+            {cargando ? (
+              <div className="grid min-h-[380px] grid-cols-7 gap-2 bg-white p-2" aria-busy="true">
+                {DIAS_SEMANA.map((dia) => (
+                  <div key={dia} className="space-y-2">
+                    <div className="h-[72px] animate-pulse rounded-2xl bg-mist" />
+                    <div className="h-[72px] animate-pulse rounded-2xl bg-mist" />
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid min-h-[380px] grid-cols-7 divide-x divide-faint bg-white">
+                {DIAS_SEMANA.map((dia, index) => {
+                  const colDate = new Date(monday);
+                  colDate.setDate(monday.getDate() + index);
+                  const colDateStr = fechaLocalISO(colDate);
+
+                  const daySlots = slots.filter(
+                    (s) => s.fecha === colDateStr && s.estado !== 'CANCELADO'
+                  );
+
+                  return (
+                    <div key={dia} className="space-y-2 p-2">
+                      {daySlots.map((s) => {
+                        const nombreMat = getMateriaNombre(s.materia);
+                        const isLibre = s.estado === 'DISPONIBLE' || s.estado === 'Libre';
+
+                        return (
+                          <div
+                            key={s.id}
+                            onClick={() => openDrawer(s)}
+                            className={`cursor-pointer rounded-[14px] border p-3 transition-colors ${
+                              isLibre
+                                ? 'border-faint bg-white text-tinta hover:border-exito/40 hover:bg-mist'
+                                : 'border-tinta bg-tinta text-white hover:bg-carbon'
+                            }`}
+                          >
+                            <div className="mb-1 flex items-center justify-between gap-1">
+                              <span className="truncate text-[11.5px] font-semibold">{nombreMat}</span>
+                              {!isLibre && (
+                                <span className="shrink-0 rounded-full bg-white/15 px-1.5 py-0.5 text-[9px] font-medium">
+                                  Reservada
+                                </span>
+                              )}
+                            </div>
+                            <div
+                              className={`text-[10.5px] ${isLibre ? 'text-muted' : 'text-white/75'}`}
+                            >
+                              {(s.horaInicio || s.hora_inicio || '').substring(0, 5)} -{' '}
+                              {(s.horaFin || s.hora_fin || '').substring(0, 5)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </section>
       </main>
