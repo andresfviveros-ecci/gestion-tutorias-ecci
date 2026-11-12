@@ -311,19 +311,34 @@ class NotasInscripcionTests(APITestCase):
         self.assertEqual(self.client.get(self.url).data['nota_final'], '3.00')
         self.assertEqual(self.client.patch(self.url, {'nota_corte1': '5'}, format='json').status_code, 403)
 
-    def test_importar_notas_desde_un_archivo(self):
-        filas = Dataset(headers=['documento', 'materia', 'periodo', 'nota_corte1', 'nota_corte2', 'nota_corte3'])
-        filas.append([self.estudiante.documento, self.materia.codigo, self.periodo.codigo, '4.0', '4.0', '5.0'])
-        resultado = InscripcionResource().import_data(filas, dry_run=False)
+    def importar(self, *filas):
+        datos = Dataset(headers=['estudiante', 'materia', 'periodo', 'nota_corte1', 'nota_corte2', 'nota_corte3'])
+        for fila in filas:
+            datos.append(fila)
+        return InscripcionResource().import_data(datos, dry_run=False)
+
+    def test_importar_notas_por_codigo_institucional(self):
+        self.estudiante.codigo_institucional = 'EST-001'
+        self.estudiante.save(update_fields=['codigo_institucional'])
+        resultado = self.importar(['EST-001', self.materia.codigo, self.periodo.codigo, '4.0', '4.0', '5.0'])
         self.assertFalse(resultado.has_errors() or resultado.has_validation_errors())
         self.inscripcion.refresh_from_db()
         self.assertEqual(self.inscripcion.nota_final(), Decimal('4.40'))
         self.assertEqual(Inscripcion.objects.count(), 1)  # actualiza, no duplica
 
+    def test_importar_notas_por_correo(self):
+        resultado = self.importar([self.estudiante.email.upper(), self.materia.codigo, self.periodo.codigo, '3', '3', '3'])
+        self.assertFalse(resultado.has_errors() or resultado.has_validation_errors())
+        self.inscripcion.refresh_from_db()
+        self.assertEqual(self.inscripcion.nota_final(), Decimal('3.00'))
+
+    def test_importacion_rechaza_estudiante_desconocido(self):
+        resultado = self.importar(['NO-EXISTE', self.materia.codigo, self.periodo.codigo, '4', '4', '4'])
+        self.assertTrue(resultado.has_errors() or resultado.has_validation_errors())
+        self.assertEqual(Inscripcion.objects.count(), 1)
+
     def test_importacion_rechaza_notas_fuera_de_rango(self):
-        filas = Dataset(headers=['documento', 'materia', 'periodo', 'nota_corte1', 'nota_corte2', 'nota_corte3'])
-        filas.append([self.estudiante.documento, self.materia.codigo, self.periodo.codigo, '7', '4', '4'])
-        resultado = InscripcionResource().import_data(filas, dry_run=False)
+        resultado = self.importar([self.estudiante.email, self.materia.codigo, self.periodo.codigo, '7', '4', '4'])
         self.assertTrue(resultado.has_validation_errors())
         self.inscripcion.refresh_from_db()
         self.assertIsNone(self.inscripcion.nota_corte1)
