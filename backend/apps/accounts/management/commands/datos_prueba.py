@@ -30,10 +30,10 @@ from apps.catalogo.models import (
     Materia,
     PeriodoAcademico,
     ProgramaAcademico,
+    calcular_nota_final,
 )
 from apps.disponibilidad.models import BloqueDisponibilidad
 from apps.tutores.models import SolicitudTutor
-from apps.tutores.services import calcular_nota_final
 from apps.tutorias.models import Cancelacion, EvaluacionTutoria, Tutoria
 
 DOMINIO = 'aulalibre.test'

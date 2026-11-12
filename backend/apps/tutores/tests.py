@@ -6,13 +6,18 @@ from django.test import SimpleTestCase, override_settings
 from rest_framework.test import APITestCase
 
 from apps.accounts.pruebas import asignar_materia, crear_catalogo, crear_usuario
-from apps.catalogo.models import Configuracion, Inscripcion, Materia, PeriodoAcademico
+from apps.catalogo.models import (
+    Configuracion,
+    Inscripcion,
+    Materia,
+    PeriodoAcademico,
+    calcular_nota_final,
+)
 from apps.disponibilidad.models import BloqueDisponibilidad
 from apps.notificaciones.models import Notificacion
 from apps.tutorias.models import Tutoria
 
 from .models import SolicitudTutor
-from .services import calcular_nota_final
 
 URL = '/api/tutores/solicitudes/'
 BLOQUES_URL = '/api/disponibilidad/disponibilidad/'

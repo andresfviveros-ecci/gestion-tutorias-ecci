@@ -1,6 +1,4 @@
 """ REGLAS DE LAS SOLICITUDES DE TUTOR (RF-02 y RF-03) """
-from decimal import ROUND_HALF_UP, Decimal
-
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -13,12 +11,6 @@ from apps.notificaciones.services import notificar
 from apps.tutorias.services import bloque_iniciado
 
 from .models import SolicitudTutor
-
-
-def calcular_nota_final(corte1, corte2, corte3, config):
-    """Promedio ponderado de los tres cortes con los pesos de Configuracion."""
-    total = corte1 * config.peso_corte1 + corte2 * config.peso_corte2 + corte3 * config.peso_corte3
-    return (total / Decimal(100)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 def materia_cursada(estudiante, materia, periodo):

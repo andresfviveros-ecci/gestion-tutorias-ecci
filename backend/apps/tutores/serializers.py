@@ -1,9 +1,9 @@
 from rest_framework import serializers
 
-from apps.catalogo.models import Configuracion, PeriodoAcademico
+from apps.catalogo.models import Configuracion, PeriodoAcademico, calcular_nota_final
 
 from .models import SolicitudTutor
-from .services import calcular_nota_final, docentes_revisores, materia_cursada
+from .services import docentes_revisores, materia_cursada
 
 
 class SolicitudTutorSerializer(serializers.ModelSerializer):

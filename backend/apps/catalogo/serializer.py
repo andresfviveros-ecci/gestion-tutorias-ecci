@@ -184,6 +184,7 @@ class InscripcionSerializer(serializers.ModelSerializer):
     estudiante_nombre = serializers.CharField(source='estudiante.get_full_name', read_only=True)
     materia_nombre = serializers.CharField(source='materia.nombre', read_only=True)
     periodo_codigo = serializers.CharField(source='periodo.codigo', read_only=True)
+    nota_final = serializers.SerializerMethodField()
 
     class Meta:
         model = Inscripcion
@@ -195,7 +196,19 @@ class InscripcionSerializer(serializers.ModelSerializer):
             'materia_nombre',
             'periodo',
             'periodo_codigo',
+            'nota_corte1',
+            'nota_corte2',
+            'nota_corte3',
+            'nota_final',
         ]
+
+    def get_nota_final(self, inscripcion) -> str | None:
+        """Ponderada con los pesos de Configuracion; null si falta algún corte.
+        Va como texto ("4.50"), igual que los cortes."""
+        if 'config' not in self.context:
+            self.context['config'] = Configuracion.actual()
+        nota = inscripcion.nota_final(self.context['config'])
+        return None if nota is None else str(nota)
 
     def validate_estudiante(self, value):
         if not value.groups.filter(name='Estudiante').exists():
@@ -207,6 +220,7 @@ class ConfiguracionSerializer(serializers.ModelSerializer):
         model = Configuracion
         fields = [
             'nota_minima',
+            'nota_aprobatoria',
             'peso_corte1',
             'peso_corte2',
             'peso_corte3',
@@ -223,6 +237,10 @@ class ConfiguracionSerializer(serializers.ModelSerializer):
         datos = {campo: attrs.get(campo, getattr(self.instance, campo)) for campo in self.Meta.fields}
         if datos['peso_corte1'] + datos['peso_corte2'] + datos['peso_corte3'] != 100:
             raise serializers.ValidationError({'peso_corte3': 'Los pesos de los tres cortes deben sumar 100.'})
+        if datos['nota_aprobatoria'] > datos['nota_minima']:
+            raise serializers.ValidationError({
+                'nota_aprobatoria': 'No puede ser mayor que la nota mínima para ser tutor.'
+            })
         if datos['calificacion_minima'] >= datos['calificacion_maxima']:
             raise serializers.ValidationError({
                 'calificacion_maxima': 'La calificación máxima debe ser mayor que la mínima.'

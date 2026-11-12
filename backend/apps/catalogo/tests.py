@@ -1,11 +1,13 @@
 from contextlib import redirect_stdout
 from datetime import date, timedelta
+from decimal import Decimal
 from io import StringIO
 
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
 from rest_framework.test import APITestCase
+from tablib import Dataset
 
 from apps.accounts.pruebas import (
     crear_bloque,
@@ -14,6 +16,7 @@ from apps.accounts.pruebas import (
     crear_usuario,
 )
 
+from .admin import InscripcionResource
 from .models import (
     Configuracion,
     DocenteMateria,
@@ -270,3 +273,67 @@ class AsignarVariasMateriasTests(APITestCase):
         response = self.asignar([self.materia.id], periodo=anterior.id)
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data[0]['periodo'], anterior.id)
+
+
+class NotasInscripcionTests(APITestCase):
+    """GT-269: notas de los tres cortes en la inscripción (API y admin)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.coordinador = crear_usuario('Coordinador')
+        cls.estudiante = crear_usuario('Estudiante')
+        _, cls.periodo, cls.materia = crear_catalogo()
+
+    def setUp(self):
+        self.inscripcion = Inscripcion.objects.create(estudiante=self.estudiante, materia=self.materia, periodo=self.periodo)
+        self.url = f'/api/catalogo/inscripciones/{self.inscripcion.id}/'
+
+    def test_la_coordinacion_carga_las_notas(self):
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.patch(self.url, {'nota_corte1': '4.0', 'nota_corte2': '4.5', 'nota_corte3': '4.2'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['nota_final'], '4.23')
+
+    def test_nota_final_null_si_falta_un_corte(self):
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.patch(self.url, {'nota_corte1': '4.0'}, format='json')
+        self.assertIsNone(response.data['nota_final'])
+
+    def test_notas_fuera_de_rango(self):
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.patch(self.url, {'nota_corte2': '5.1'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('nota_corte2', response.data['errors'])
+
+    def test_el_estudiante_ve_sus_notas_pero_no_las_cambia(self):
+        Inscripcion.objects.filter(pk=self.inscripcion.pk).update(nota_corte1=3, nota_corte2=3, nota_corte3=3)
+        self.client.force_authenticate(self.estudiante)
+        self.assertEqual(self.client.get(self.url).data['nota_final'], '3.00')
+        self.assertEqual(self.client.patch(self.url, {'nota_corte1': '5'}, format='json').status_code, 403)
+
+    def test_importar_notas_desde_un_archivo(self):
+        filas = Dataset(headers=['documento', 'materia', 'periodo', 'nota_corte1', 'nota_corte2', 'nota_corte3'])
+        filas.append([self.estudiante.documento, self.materia.codigo, self.periodo.codigo, '4.0', '4.0', '5.0'])
+        resultado = InscripcionResource().import_data(filas, dry_run=False)
+        self.assertFalse(resultado.has_errors() or resultado.has_validation_errors())
+        self.inscripcion.refresh_from_db()
+        self.assertEqual(self.inscripcion.nota_final(), Decimal('4.40'))
+        self.assertEqual(Inscripcion.objects.count(), 1)  # actualiza, no duplica
+
+    def test_importacion_rechaza_notas_fuera_de_rango(self):
+        filas = Dataset(headers=['documento', 'materia', 'periodo', 'nota_corte1', 'nota_corte2', 'nota_corte3'])
+        filas.append([self.estudiante.documento, self.materia.codigo, self.periodo.codigo, '7', '4', '4'])
+        resultado = InscripcionResource().import_data(filas, dry_run=False)
+        self.assertTrue(resultado.has_validation_errors())
+        self.inscripcion.refresh_from_db()
+        self.assertIsNone(self.inscripcion.nota_corte1)
+
+    def test_nota_aprobatoria_configurable(self):
+        self.client.force_authenticate(self.coordinador)
+        response = self.client.get('/api/catalogo/configuracion/')
+        self.assertEqual(response.data['nota_aprobatoria'], '3.00')
+        response = self.client.patch('/api/catalogo/configuracion/', {'nota_aprobatoria': '4.50'}, format='json')
+        self.assertEqual(response.status_code, 400)  # no puede pasar la nota mínima de tutor (4,00)
+        self.assertIn('nota_aprobatoria', response.data['errors'])
+        response = self.client.patch('/api/catalogo/configuracion/', {'nota_aprobatoria': '3.50'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
