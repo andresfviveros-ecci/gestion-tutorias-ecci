@@ -30,10 +30,10 @@ from apps.catalogo.models import (
     Materia,
     PeriodoAcademico,
     ProgramaAcademico,
-    calcular_nota_final,
 )
 from apps.disponibilidad.models import BloqueDisponibilidad
 from apps.tutores.models import SolicitudTutor
+from apps.tutores.services import docentes_revisores, evaluar_postulacion
 from apps.tutorias.models import Cancelacion, EvaluacionTutoria, Tutoria
 
 DOMINIO = 'aulalibre.test'
@@ -373,39 +373,70 @@ class Command(BaseCommand):
         return tutoria
 
     def _solicitudes(self, estudiantes, materias, periodo, anterior, docentes):
-        """RF-02: los estudiantes desde tercer semestre cursaron materias el
-        periodo anterior. La cuenta de acceso rápido queda habilitada como
-        tutora de una y algunos más tienen solicitudes pendientes."""
+        """RF-02 / GT-269: los estudiantes desde tercer semestre cursaron el
+        periodo anterior materias de semestres previos, con sus tres cortes
+        (algunas perdidas y alguna sin la nota completa). Las solicitudes se
+        crean solo donde evaluar_postulacion dice que es elegible, la misma
+        regla del endpoint. La cuenta de acceso rápido queda aprobada en una
+        materia y con otra elegible libre para probar el POST."""
         config = Configuracion.actual()
         total = 0
         for estudiante in estudiantes:
             if (estudiante.semestre or 0) < config.semestre_minimo_tutor:
                 continue
-            propias = [m for m in materias if m.programa_id == estudiante.programa.id]
-            cursadas = self.rng.sample(propias, k=min(2, len(propias)))
-            for materia in cursadas:
-                Inscripcion.objects.get_or_create(estudiante=estudiante, materia=materia, periodo=anterior)
-
             principal = estudiante.email == f'estudiante@{DOMINIO}'
-            if not principal and self.rng.random() > 0.25:
+            previas = sorted(
+                (m for m in materias if m.programa_id == estudiante.programa.id
+                 and m.semestre is not None and m.semestre < estudiante.semestre),
+                key=lambda m: (m.semestre, m.codigo),
+            )
+            cursadas = previas if principal else self.rng.sample(previas, k=min(3, len(previas)))
+            elegibles = []
+            for i, materia in enumerate(cursadas):
+                cortes = self._cortes(principal, i)
+                inscripcion, _ = Inscripcion.objects.update_or_create(
+                    estudiante=estudiante, materia=materia, periodo=anterior,
+                    defaults=dict(zip(('nota_corte1', 'nota_corte2', 'nota_corte3'), cortes)),
+                )
+                revisores = docentes_revisores(materia, periodo)
+                evaluacion = evaluar_postulacion(estudiante, inscripcion, periodo, config, con_docente=bool(revisores))
+                if evaluacion['elegible']:
+                    elegibles.append((inscripcion, evaluacion['nota'], revisores))
+
+            if not elegibles or (not principal and self.rng.random() > 0.35):
                 continue
-            notas = [Decimal(self.rng.choice(['4.0', '4.3', '4.5', '4.8', '5.0'])) for _ in range(3)]
+            inscripcion, nota, revisores = elegibles[0]
             SolicitudTutor.objects.create(
                 estudiante=estudiante,
-                materia=cursadas[0],
+                materia=inscripcion.materia,
                 periodo=periodo,
-                nota_corte1=notas[0],
-                nota_corte2=notas[1],
-                nota_corte3=notas[2],
-                nota_final=calcular_nota_final(*notas, config),
+                nota_corte1=inscripcion.nota_corte1,
+                nota_corte2=inscripcion.nota_corte2,
+                nota_corte3=inscripcion.nota_corte3,
+                nota_final=nota,
                 estado='APROBADA' if principal else 'PENDIENTE',
-                revisada_por=cursadas[0].docentes.get(periodo=periodo).docente if principal else None,
+                revisada_por=revisores[0] if principal else None,
                 fecha_revision=timezone.now() if principal else None,
             )
             if principal:
-                self._bloques_tutor(estudiante, cursadas[0], periodo)
+                self._bloques_tutor(estudiante, inscripcion.materia, periodo)
             total += 1
         return total
+
+    def _cortes(self, principal, indice):
+        """Notas de 0 a 5 de los tres cortes. La cuenta principal tiene notas
+        fijas para que el historial siempre muestre lo mismo: la primera y la
+        tercera materia elegibles, la segunda aprobada pero bajo la mínima."""
+        if principal:
+            fijas = [('4.5', '4.2', '4.8'), ('3.5', '3.2', '3.8'), ('4.0', '4.5', '4.2')]
+            return [Decimal(n) for n in fijas[indice % len(fijas)]]
+        tipo = self.rng.random()
+        if tipo < 0.15:  # perdida
+            return [Decimal(self.rng.choice(['2.0', '2.5', '2.8'])) for _ in range(3)]
+        cortes = [Decimal(self.rng.choice(['3.5', '4.0', '4.3', '4.5', '4.8', '5.0'])) for _ in range(3)]
+        if tipo < 0.25:  # el tercer corte aún no está registrado
+            cortes[2] = None
+        return cortes
 
     def _bloques_tutor(self, tutor, materia, periodo):
         # RF-01: la tutora estudiante publica dos horarios la semana siguiente.
