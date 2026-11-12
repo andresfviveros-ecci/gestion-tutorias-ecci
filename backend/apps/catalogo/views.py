@@ -179,7 +179,8 @@ class InscripcionView(generics.ListCreateAPIView):
 
 
 @extend_schema(tags=['Inscripciones'])
-class InscripcionDetailView(generics.RetrieveDestroyAPIView):
+class InscripcionDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """GET, PATCH y PUT (notas de los cortes) y DELETE. Escribe solo la coordinación."""
     permission_classes = [LecturaOCoordinador]
     serializer_class = InscripcionSerializer
 

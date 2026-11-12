@@ -45,8 +45,40 @@ ALLOWED_HOSTS = [
     for host in os.getenv('DJANGO_ALLOWED_HOSTS', '*' if DEBUG else '').split(',')
     if host.strip()
 ]
+
+# Railway: el dominio público del servicio entra solo (RAILWAY_PUBLIC_DOMAIN
+# lo define Railway), y también el host con el que hace los healthchecks; sin
+# él, Django responde 400 al chequeo y Railway da el despliegue por fallido.
+RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN', '').strip()
+if RAILWAY_PUBLIC_DOMAIN:
+    ALLOWED_HOSTS.append(RAILWAY_PUBLIC_DOMAIN)
+if os.getenv('RAILWAY_ENVIRONMENT_ID'):
+    ALLOWED_HOSTS.append('healthcheck.railway.app')
+
 if not DEBUG and (not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS):
     raise ImproperlyConfigured('Con DJANGO_DEBUG=False DJANGO_ALLOWED_HOSTS debe listar los dominios, sin "*".')
+
+# Orígenes de confianza para los formularios con CSRF (el admin de Django) cuando
+# se entra por HTTPS con un dominio propio. Separados por coma, con https://.
+CSRF_TRUSTED_ORIGINS = [
+    origen.strip() for origen in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',') if origen.strip()
+]
+if RAILWAY_PUBLIC_DOMAIN:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{RAILWAY_PUBLIC_DOMAIN}')
+
+# Proxies delante de Django. En local no hay ninguno (0). En Railway hay uno
+# (1): la IP real del cliente llega en X-Forwarded-For y el HTTPS en
+# X-Forwarded-Proto. Con 0, X-Forwarded-For no se usa, porque lo podría mandar
+# el propio cliente para saltarse el límite de intentos.
+NUM_PROXIES = int(os.getenv('NUM_PROXIES', '0'))
+if NUM_PROXIES:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Cookies del admin solo por HTTPS en producción. Para probar la imagen de
+# producción en local por http://, se puede apagar con DJANGO_SECURE_COOKIES=False.
+SECURE_COOKIES = os.getenv('DJANGO_SECURE_COOKIES', str(not DEBUG)).lower() in ('true', '1', 'yes')
+SESSION_COOKIE_SECURE = SECURE_COOKIES
+CSRF_COOKIE_SECURE = SECURE_COOKIES
 
 
 # Application definition
@@ -86,6 +118,8 @@ INSTALLED_APPS = BASE_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Sirve los estáticos (admin y Swagger) sin Nginx; va justo después de SecurityMiddleware.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -153,6 +187,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # CONFIGURACION DE VARIABLES PARA ENVIOS DE CORREO
 # Con DEBUG los correos (PIN de recuperación, avisos) salen por defecto en la
 # consola del contenedor; sin DEBUG, por SMTP. Todo se puede cambiar por variable.
+# En Railway (plan Hobby) el SMTP está bloqueado: ahí se usa una API de correo
+# por HTTPS con django-anymail, por ejemplo
+# EMAIL_BACKEND=anymail.backends.resend.EmailBackend y RESEND_API_KEY.
 EMAIL_BACKEND = os.getenv(
     'EMAIL_BACKEND',
     'django.core.mail.backends.console.EmailBackend' if DEBUG else 'django.core.mail.backends.smtp.EmailBackend'
@@ -162,7 +199,17 @@ EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER or 'no-responder@ecci.edu.co'
+# Sin límite, un SMTP bloqueado deja la petición colgada (los avisos se envían
+# dentro de la petición). Con 10 s se rinde y la tutoría se guarda igual.
+EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '10'))
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL') or EMAIL_HOST_USER or 'no-responder@ecci.edu.co'
+
+# Claves de los proveedores de correo por API (solo se usa la del EMAIL_BACKEND elegido).
+ANYMAIL = {
+    clave: os.getenv(clave)
+    for clave in ('RESEND_API_KEY', 'BREVO_API_KEY', 'SENDGRID_API_KEY', 'MAILGUN_API_KEY', 'POSTMARK_SERVER_TOKEN')
+    if os.getenv(clave)
+}
 
 # Dominios de correo aceptados al registrar usuarios y al recuperar la
 # contraseña. Es la misma lista que usa el frontend (VITE_EMAIL_DOMAINS).
@@ -187,6 +234,13 @@ USE_TZ = False
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+# collectstatic los junta aquí al construir la imagen y whitenoise los sirve
+# comprimidos. Solo los usan el admin y Swagger; el frontend va aparte.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -209,9 +263,9 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    # La IP sale de REMOTE_ADDR y no de X-Forwarded-For, que lo manda el
-    # cliente: si no, basta cambiar el header para saltarse el límite.
-    'NUM_PROXIES': 0,
+    # Ver NUM_PROXIES arriba: 0 en local (la IP sale de REMOTE_ADDR) y 1 en
+    # Railway (la IP sale de X-Forwarded-For, que pone el proxy de Railway).
+    'NUM_PROXIES': NUM_PROXIES,
     # Por IP; se aplica a las vistas que declaran throttle_scope. Cada vista
     # tiene su scope para que una no agote los intentos de la otra.
     'DEFAULT_THROTTLE_RATES': {

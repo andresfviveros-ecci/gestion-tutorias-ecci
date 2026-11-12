@@ -45,7 +45,8 @@ frontend/
 │   ├── config.ts           # lee VITE_API_URL y VITE_EMAIL_DOMAINS
 │   └── App.tsx             # definición de rutas
 ├── Dockerfile              # destinos dev (Vite) y prod (Nginx)
-├── nginx.conf              # servidor de producción con fallback a index.html
+├── nginx.conf.template     # Nginx de producción (puerto $PORT, fallback a index.html)
+├── railway.json            # despliegue en Railway (ver docs/DEPLOY_RAILWAY.md)
 ├── capacitor.config.ts
 └── vite.config.ts
 ```

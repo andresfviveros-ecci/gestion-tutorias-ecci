@@ -9,9 +9,11 @@ import { Tutores } from './pages/Tutores';
 import { AsignacionMaterias } from './pages/AsignacionMaterias';
 import { Coordinadores } from './pages/Coordinadores';
 import { GestionarUsuarios } from './pages/GestionarUsuarios';
+import { ConfiguracionGeneral } from './pages/ConfiguracionGeneral';
 import { TutorPanel } from './pages/tutor/TutorPanel';
 import { SolicitudesTutor } from './pages/tutor/SolicitudesTutor';
 import { MiDisponibilidad } from './pages/tutor/MiDisponibilidad';
+import { ModificarDisponibilidad } from './pages/tutor/ModificarDisponibilidad';
 import { Calendario } from './pages/tutor/Calendario';
 import { StudentHome } from './pages/estudiante/StudentHome';
 import { StudentPanel } from './pages/estudiante/StudentPanel';
@@ -344,6 +346,14 @@ export const App: React.FC = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/configuracion"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <ConfiguracionGeneral />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Rutas de Tutor / Docente */}
         <Route
@@ -367,6 +377,14 @@ export const App: React.FC = () => {
           element={
             <ProtectedRoute allowedRoles={['tutor', 'estudiante', 'admin']}>
               <MiDisponibilidad />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tutor/mi-disponibilidad/:id/editar"
+          element={
+            <ProtectedRoute allowedRoles={['tutor', 'admin']}>
+              <ModificarDisponibilidad />
             </ProtectedRoute>
           }
         />
