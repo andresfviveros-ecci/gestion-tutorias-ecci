@@ -15,6 +15,7 @@ import { ProximasTutorList } from '../../components/tutor/panel/ProximasTutorLis
 import type { ProximaTutorItem } from '../../components/tutor/panel/ProximasTutorList';
 import { MiDisponibilidadCard } from '../../components/tutor/panel/MiDisponibilidadCard';
 import type { DiaDisponibilidad } from '../../components/tutor/panel/MiDisponibilidadCard';
+import { RegistrarTutoriaModal } from '../../components/tutor/panel/RegistrarTutoriaModal';
 import { AccesosRapidos } from '../../components/tutor/panel/AccesosRapidos';
 import { ActividadReciente } from '../../components/tutor/panel/ActividadReciente';
 import type { ActividadItem } from '../../components/tutor/panel/ActividadReciente';
@@ -124,6 +125,8 @@ export const TutorPanel = () => {
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // GT-227: tutoría que se está registrando en el modal.
+  const [tutoriaRegistrar, setTutoriaRegistrar] = useState<TutoriaRecibida | null>(null);
 
   const hoy = useMemo(() => new Date(), []);
   const hoyISO = fechaLocalISO(hoy);
@@ -152,6 +155,26 @@ export const TutorPanel = () => {
     const datos = await consultarPanel(docenteId);
     aplicarDatos(datos);
   }, [aplicarDatos, docenteId]);
+
+  // GT-227: solo se ofrece "Registrar tutoría" si el backend devolvió acciones.
+  const tieneAcciones = useCallback(
+    (tutoria: TutoriaRecibida) => (tutoria.estados_siguientes?.length ?? 0) > 0,
+    [],
+  );
+
+  const abrirRegistro = useCallback(
+    (id: number) => {
+      setTutoriaRegistrar(recibidas.find((tutoria) => tutoria.id === id) ?? null);
+    },
+    [recibidas],
+  );
+
+  const alRegistrarTutoria = (mensaje: string) => {
+    setTutoriaRegistrar(null);
+    setToast(mensaje);
+    setCargando(true);
+    void recargar();
+  };
 
   useEffect(() => {
     let activo = true;
@@ -297,6 +320,7 @@ export const TutorPanel = () => {
         horaInicio: proxima.horaInicio,
         horaFin: proxima.horaFin,
         enlaceVirtual: proxima.bloque?.enlace_virtual || '',
+        puedeRegistrar: tieneAcciones(proxima.tutoria),
       }
     : null;
 
@@ -308,8 +332,9 @@ export const TutorPanel = () => {
         materia: item.bloque?.materia?.nombre || 'Materia por confirmar',
         fechaTexto: fechaCortaSolicitud(item.fecha, item.horaInicio),
         nueva: indice === 0,
+        puedeRegistrar: tieneAcciones(item.tutoria),
       })),
-    [solicitudes],
+    [solicitudes, tieneAcciones],
   );
 
   const itemsProximas = useMemo<ProximaTutorItem[]>(
@@ -324,8 +349,9 @@ export const TutorPanel = () => {
         modalidad: modalidadLegible(item.bloque?.modalidad),
         duracion: duracionLegible(minutosEntre(item.horaInicio, item.horaFin)),
         esHoy: item.fecha === hoyISO,
+        puedeRegistrar: tieneAcciones(item.tutoria),
       })),
-    [proximas, hoyISO],
+    [proximas, hoyISO, tieneAcciones],
   );
 
   const actividad = useMemo<ActividadItem | null>(() => {
@@ -434,7 +460,15 @@ export const TutorPanel = () => {
                 </motion.section>
 
                 {/* ------------- Próxima tutoría ------------- */}
-                <ProximaTutoriaTutorCard cargando={cargando} proxima={proximaVista} />
+                <ProximaTutoriaTutorCard
+                  cargando={cargando}
+                  proxima={proximaVista}
+                  onRegistrar={
+                    proxima && tieneAcciones(proxima.tutoria)
+                      ? () => abrirRegistro(proxima.tutoria.id)
+                      : undefined
+                  }
+                />
               </div>
 
               {/* ------------- Solicitudes ------------- */}
@@ -443,6 +477,7 @@ export const TutorPanel = () => {
                 total={solicitudes.length}
                 cargando={cargando}
                 sinServicio={sinRecibidas}
+                onRegistrar={abrirRegistro}
               />
 
               {/* ------------- Próximas tutorías ------------- */}
@@ -451,6 +486,7 @@ export const TutorPanel = () => {
                 total={proximas.length}
                 cargando={cargando}
                 sinServicio={sinRecibidas}
+                onRegistrar={abrirRegistro}
               />
             </div>
 
@@ -474,6 +510,14 @@ export const TutorPanel = () => {
           </div>
         </div>
       </main>
+
+      {tutoriaRegistrar && (
+        <RegistrarTutoriaModal
+          tutoria={tutoriaRegistrar}
+          onCerrar={() => setTutoriaRegistrar(null)}
+          onGuardado={alRegistrarTutoria}
+        />
+      )}
 
       <Toast mensaje={toast} />
     </div>

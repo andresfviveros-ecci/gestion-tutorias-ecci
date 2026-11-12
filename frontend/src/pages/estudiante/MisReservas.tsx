@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../../api/axios';
 import { StudentRail } from '../../components/estudiante/StudentRail';
+import { CalificarTutorModal } from '../../components/estudiante/CalificarTutorModal';
 import { EmptyState } from '../../components/constelacion/EmptyState';
 import { ClockIcon, VideoIcon } from '../../components/constelacion/Icons';
 import { fechaLarga, hora12, horaCorta } from '../../utils/fechas';
@@ -24,6 +25,9 @@ export interface TutoriaBackend {
   enlace_virtual?: string;
   enlaceMeeting?: string;
   estado?: string;
+  /** GT-226: el backend dice si ya se puede calificar y si ya hay evaluación. */
+  puede_evaluar?: boolean;
+  evaluacion?: { calificacion?: number; comentario?: string } | null;
 }
 
 const MESES = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
@@ -110,9 +114,10 @@ interface MateriaJoin {
 interface TarjetaReservaProps {
   item: TutoriaBackend;
   hoy: boolean;
+  onCalificar?: () => void;
 }
 
-const TarjetaReserva: React.FC<TarjetaReservaProps> = ({ item, hoy }) => {
+const TarjetaReserva: React.FC<TarjetaReservaProps> = ({ item, hoy, onCalificar }) => {
   const badge = parseFechaBadge(item.fecha);
   const esVirtual = item.modalidad?.toLowerCase() === 'virtual';
   const enlace = item.enlace_virtual || item.enlaceMeeting;
@@ -182,6 +187,25 @@ const TarjetaReserva: React.FC<TarjetaReservaProps> = ({ item, hoy }) => {
           </span>
         </div>
 
+        {item.puede_evaluar && onCalificar && (
+          <button
+            type="button"
+            onClick={onCalificar}
+            className="inline-flex items-center justify-center gap-1.5 rounded-full bg-violeta-accion px-4 py-2 text-[11px] font-semibold text-white transition-colors hover:bg-violeta-profundo"
+          >
+            Calificar al tutor
+          </button>
+        )}
+
+        {!item.puede_evaluar && item.evaluacion?.calificacion != null && (
+          <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-ink">
+            <span aria-hidden="true" className="text-advertencia">
+              ★
+            </span>
+            Tu calificación: {item.evaluacion.calificacion}
+          </p>
+        )}
+
         {esVirtual ? (
           enlace ? (
             <a
@@ -209,6 +233,10 @@ const TarjetaReserva: React.FC<TarjetaReservaProps> = ({ item, hoy }) => {
 export const MisReservas: React.FC = () => {
   const [tutorias, setTutorias] = useState<TutoriaBackend[]>([]);
   const [loading, setLoading] = useState(true);
+  // GT-226: tutoría que se está calificando.
+  const [tutoriaCalificar, setTutoriaCalificar] = useState<TutoriaBackend | null>(null);
+  const [version, setVersion] = useState(0);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   // Cargar reservas del backend
   useEffect(() => {
@@ -285,7 +313,7 @@ export const MisReservas: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [version]);
 
   const hoyISO = useMemo(() => hoyLocalISO(), []);
 
@@ -311,6 +339,40 @@ export const MisReservas: React.FC = () => {
   }, [tutorias, hoyISO]);
 
   const totalProgramadas = tutoriasHoy.length + tutoriasProximas.length;
+
+  // GT-226: el backend marca puede_evaluar solo si está completada y sin nota.
+  const porCalificar = useMemo(
+    () =>
+      tutorias
+        .filter((tutoria) => Boolean(tutoria.puede_evaluar))
+        .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
+    [tutorias],
+  );
+
+  const historial = useMemo(
+    () =>
+      tutorias
+        .filter((tutoria) => {
+          const estado = (tutoria.estado || '').toUpperCase();
+          return (
+            ['COMPLETADA', 'NO_ASISTIO'].includes(estado) && !tutoria.puede_evaluar
+          );
+        })
+        .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '')),
+    [tutorias],
+  );
+
+  const hayContenido = totalProgramadas > 0 || porCalificar.length > 0 || historial.length > 0;
+
+  const calificar = (item: TutoriaBackend) => {
+    setTutoriaCalificar(item);
+  };
+
+  const alCalificar = (calificacion: number) => {
+    setTutoriaCalificar(null);
+    setAviso(`Gracias, tu calificación de ${calificacion} quedó registrada.`);
+    setVersion((valor) => valor + 1);
+  };
 
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
@@ -357,7 +419,7 @@ export const MisReservas: React.FC = () => {
                 />
               ))}
             </div>
-          ) : totalProgramadas === 0 ? (
+          ) : !hayContenido ? (
             <section className="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-7">
               <EmptyState
                 titulo="No tienes tutorías programadas"
@@ -411,6 +473,54 @@ export const MisReservas: React.FC = () => {
                   </div>
                 </section>
               )}
+
+              {porCalificar.length > 0 && (
+                <section className="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-7">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-tinta">
+                        Por calificar
+                      </h2>
+                      <p className="mt-0.5 text-[11.5px] text-muted">
+                        Cuéntanos cómo fue la tutoría para mejorar el acompañamiento.
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-violet-wash/40 px-3 py-1 text-[10px] font-semibold text-violeta-accion">
+                      {porCalificar.length}{' '}
+                      {porCalificar.length === 1 ? 'pendiente' : 'pendientes'}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {porCalificar.map((item) => (
+                      <TarjetaReserva
+                        key={item.id}
+                        item={item}
+                        hoy={false}
+                        onCalificar={() => calificar(item)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {historial.length > 0 && (
+                <section className="rounded-[28px] bg-white p-6 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-7">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-tinta">
+                      Historial
+                    </h2>
+                    <span className="rounded-full bg-mist px-3 py-1 text-[10px] font-semibold text-slate-ink">
+                      {historial.length}{' '}
+                      {historial.length === 1 ? 'tutoría' : 'tutorías'}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {historial.map((item) => (
+                      <TarjetaReserva key={item.id} item={item} hoy={false} />
+                    ))}
+                  </div>
+                </section>
+              )}
             </div>
           )}
 
@@ -419,6 +529,26 @@ export const MisReservas: React.FC = () => {
           </p>
         </div>
       </main>
+
+      {tutoriaCalificar && (
+        <CalificarTutorModal
+          tutoriaId={Number(tutoriaCalificar.id)}
+          materia={nombreMateria(tutoriaCalificar)}
+          tutor={nombreTutor(tutoriaCalificar)}
+          fechaTexto={fechaLarga(new Date(`${tutoriaCalificar.fecha}T00:00:00`))}
+          onCerrar={() => setTutoriaCalificar(null)}
+          onGuardado={alCalificar}
+        />
+      )}
+
+      {aviso && (
+        <div
+          role="status"
+          className="fixed bottom-5 left-1/2 z-50 w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl bg-tinta px-4 py-3 text-center text-[12px] font-medium text-white shadow-lg"
+        >
+          {aviso}
+        </div>
+      )}
     </div>
   );
 };
