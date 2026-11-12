@@ -38,11 +38,7 @@ const ItemCuenta: React.FC<{ modulo: Modulo }> = ({ modulo }) => (
     {({ isActive }) => (
       <>
         {isActive && <span className="absolute left-0 top-0 bottom-0 w-[4px] bg-[#d9a036]" />}
-        {modulo.id === 'inicio' ? (
-          <i className="fa-solid fa-house text-xs text-emerald-400"></i>
-        ) : (
-          <span className="text-slate-500 font-mono text-xs font-bold">=</span>
-        )}
+        <span className="text-slate-500 font-mono text-xs font-bold">=</span>
         <span>{modulo.etiqueta}</span>
       </>
     )}

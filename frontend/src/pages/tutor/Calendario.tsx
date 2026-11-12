@@ -5,6 +5,7 @@ import { api } from '../../api/axios';
 import { analizarError, type TipoFallo } from '../../utils/api';
 import { fechaLocalISO } from '../../utils/date';
 import { AlertaFormulario } from '../../components/AlertaFormulario';
+import { TutorRail } from '../../components/tutor/TutorRail';
 
 export interface MateriaBackend {
   id: number;
@@ -226,68 +227,80 @@ export const Calendario: React.FC = () => {
       ? `Semana del ${monday.getDate()} al ${sunday.getDate()} de ${m1}`
       : `Semana del ${monday.getDate()} de ${m1} al ${sunday.getDate()} de ${m2}`;
 
+  const bloquesSemana = slots.filter((s) => {
+    const isoDia = s.fecha;
+    return (
+      isoDia >= fechaLocalISO(monday) && isoDia <= fechaLocalISO(sunday) && s.estado !== 'CANCELADO'
+    );
+  }).length;
+
   return (
-    <div className="w-full flex flex-col bg-[#f7f5ed] h-screen overflow-hidden">
+    <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
       <Loader hidden={!loading} />
+      <TutorRail />
 
-      <header className="w-full h-14 bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0">
-        <div className="text-[0.82rem] text-slate-500">
-          Mi trabajo / <span className="font-semibold text-[#0d1b2a]">Calendario</span>
-        </div>
-        <div className="text-xs font-semibold text-slate-600">Tutor</div>
-      </header>
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] flex-1 px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
+        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[11.5px] text-muted">Mi trabajo · Tutor</p>
+            <h1 className="mt-1 text-[30px] font-medium leading-tight tracking-[-0.02em] text-tinta sm:text-[36px]">
+              Mi disponibilidad
+            </h1>
+            <p className="mt-1 max-w-[620px] text-[13px] leading-relaxed text-muted">
+              Revisa los horarios que publicaste. Abre un bloque para modificarlo o suspéndelo si
+              ya no puedes atenderlo.
+            </p>
+          </div>
 
-      <main className="px-8 py-6 w-full max-w-[1400px] mx-auto flex-1 flex flex-col justify-start space-y-4 overflow-hidden">
-        <div>
-          <h1 className="font-display italic text-3xl font-semibold text-[#0d1b2a] mb-1">
-            Mi disponibilidad
-          </h1>
-          <p className="text-[0.83rem] text-slate-500">
-            Haz clic en cualquier horario para ver su detalle, modificar sus ajustes o eliminarlo si ya no puedes atenderlo.
-          </p>
-        </div>
+          <div className="rounded-[22px] bg-white px-4 py-3 text-right">
+            <p className="text-[10.5px] text-muted">Bloques esta semana</p>
+            <p className="mt-0.5 text-[13.5px] font-medium text-tinta">{bloquesSemana}</p>
+          </div>
+        </header>
 
         {successMessage && (
           <AlertaFormulario tipo="exito" titulo="Horario actualizado" mensaje={successMessage} onCerrar={() => setSuccessMessage(null)} />
         )}
 
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex-1 flex flex-col justify-between overflow-hidden">
-          <div className="flex items-center justify-between mb-4 text-xs">
+        <section className="rounded-[28px] bg-white p-5 shadow-[0_1px_2px_rgba(28,26,30,0.04)] sm:p-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-faint pb-4">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setWeekOffset((prev) => prev - 1)}
-                className="w-6 h-6 border border-slate-300 rounded hover:bg-slate-100 flex items-center justify-center font-bold cursor-pointer"
+                aria-label="Semana anterior"
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-faint text-slate-ink transition-colors hover:bg-mist"
               >
                 ‹
               </button>
-              <span className="font-semibold text-slate-700">{weekText}</span>
+              <span className="px-1 text-[12.5px] font-medium text-tinta">{weekText}</span>
               <button
                 onClick={() => setWeekOffset((prev) => prev + 1)}
-                className="w-6 h-6 border border-slate-300 rounded hover:bg-slate-100 flex items-center justify-center font-bold cursor-pointer"
+                aria-label="Semana siguiente"
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-faint text-slate-ink transition-colors hover:bg-mist"
               >
                 ›
               </button>
             </div>
 
-            <div className="flex items-center gap-6 text-[11px] font-semibold text-slate-600">
+            <div className="flex flex-wrap items-center gap-4 text-[11px] text-muted">
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-700" /> Libre (sin reservas)
+                <span className="h-2.5 w-2.5 rounded-full bg-exito" /> Libre (sin reservas)
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#0d1b2a]" /> Reservada por un estudiante
+                <span className="h-2.5 w-2.5 rounded-full bg-tinta" /> Reservada por un estudiante
               </span>
-              <span className="text-slate-400 font-normal">Haz clic para ver/editar detalles →</span>
+              <span className="hidden sm:inline">Haz clic para ver o editar el detalle</span>
             </div>
           </div>
 
-          <div className="border border-slate-200 rounded-lg overflow-hidden flex-1 flex flex-col">
-            <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200 text-center text-[11px] font-bold text-slate-600 py-2.5">
+          <div className="overflow-hidden rounded-[22px] border border-faint">
+            <div className="grid grid-cols-7 border-b border-faint bg-mist py-2.5 text-center text-[11px] font-semibold text-muted">
               {DIAS_SEMANA.map((d) => (
                 <div key={d}>{d}</div>
               ))}
             </div>
 
-            <div className="grid grid-cols-7 divide-x divide-slate-200 flex-1 bg-white overflow-y-auto">
+            <div className="grid min-h-[380px] grid-cols-7 divide-x divide-faint bg-white">
               {DIAS_SEMANA.map((dia, index) => {
                 const colDate = new Date(monday);
                 colDate.setDate(monday.getDate() + index);
@@ -298,7 +311,7 @@ export const Calendario: React.FC = () => {
                 );
 
                 return (
-                  <div key={dia} className="p-2 space-y-2">
+                  <div key={dia} className="space-y-2 p-2">
                     {daySlots.map((s) => {
                       const nombreMat = getMateriaNombre(s.materia);
                       const isLibre = s.estado === 'DISPONIBLE' || s.estado === 'Libre';
@@ -307,16 +320,25 @@ export const Calendario: React.FC = () => {
                         <div
                           key={s.id}
                           onClick={() => openDrawer(s)}
-                          className={`p-3 rounded-lg text-white cursor-pointer hover:opacity-90 transition-all ${
-                            isLibre ? 'bg-emerald-700' : 'bg-[#0d1b2a]'
+                          className={`cursor-pointer rounded-[14px] border p-3 transition-colors ${
+                            isLibre
+                              ? 'border-faint bg-white text-tinta hover:border-exito/40 hover:bg-mist'
+                              : 'border-tinta bg-tinta text-white hover:bg-carbon'
                           }`}
                         >
-                          <div className="flex items-center justify-between gap-1 mb-1">
-                            <span className="font-bold text-xs truncate">{nombreMat}</span>
-                            {!isLibre && <span className="text-xs">🔒</span>}
+                          <div className="mb-1 flex items-center justify-between gap-1">
+                            <span className="truncate text-[11.5px] font-semibold">{nombreMat}</span>
+                            {!isLibre && (
+                              <span className="shrink-0 rounded-full bg-white/15 px-1.5 py-0.5 text-[9px] font-medium">
+                                Reservada
+                              </span>
+                            )}
                           </div>
-                          <div className="text-[10px] opacity-90">
-                            {(s.horaInicio || s.hora_inicio || '').substring(0, 5)} - {(s.horaFin || s.hora_fin || '').substring(0, 5)}
+                          <div
+                            className={`text-[10.5px] ${isLibre ? 'text-muted' : 'text-white/75'}`}
+                          >
+                            {(s.horaInicio || s.hora_inicio || '').substring(0, 5)} -{' '}
+                            {(s.horaFin || s.hora_fin || '').substring(0, 5)}
                           </div>
                         </div>
                       );
@@ -326,46 +348,47 @@ export const Calendario: React.FC = () => {
               })}
             </div>
           </div>
-        </div>
+        </section>
       </main>
 
       {/* DRAWER LATERAL */}
       {editingSlot && (
         <div
           onClick={closeDrawer}
-          className={`fixed inset-0 z-[1000] bg-black/40 backdrop-blur-sm flex justify-end transition-opacity duration-300 ${
+          className={`fixed inset-0 z-[1000] flex justify-end bg-tinta/40 backdrop-blur-sm transition-opacity duration-300 ${
             isDrawerOpen ? 'opacity-100' : 'opacity-0'
           }`}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`bg-white w-full max-w-[400px] h-full shadow-2xl flex flex-col justify-between transform transition-transform duration-300 ease-in-out ${
+            className={`flex h-full w-full max-w-[420px] transform flex-col justify-between bg-white shadow-constelacion-float transition-transform duration-300 ease-in-out ${
               isDrawerOpen ? 'translate-x-0' : 'translate-x-full'
             }`}
           >
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
-              <h2 className="font-display italic text-2xl font-semibold text-[#0d1b2a]">
+            <div className="flex shrink-0 items-center justify-between border-b border-faint p-5">
+              <h2 className="text-[20px] font-medium tracking-[-0.01em] text-tinta">
                 Detalle del horario
               </h2>
               <button
                 onClick={closeDrawer}
-                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
+                aria-label="Cerrar detalle"
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-mist"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-5 space-y-4 flex-1 overflow-y-auto text-xs">
+            <div className="flex-1 space-y-4 overflow-y-auto p-5 text-xs">
               {errorMessage && (
                 <AlertaFormulario tipo={errorTipo} mensaje={errorMessage} onCerrar={() => setErrorMessage(null)} />
               )}
 
               <div>
                 <span
-                  className={`inline-block px-3 py-1 rounded-full font-bold uppercase text-[10px] ${
+                  className={`inline-block rounded-full px-3 py-1 text-[10px] font-semibold uppercase ${
                     editingSlot.estado === 'DISPONIBLE' || editingSlot.estado === 'Libre'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-slate-200 text-slate-800'
+                      ? 'bg-exito/10 text-exito'
+                      : 'bg-faint text-slate-ink'
                   }`}
                 >
                   {editingSlot.estado === 'DISPONIBLE' || editingSlot.estado === 'Libre'
@@ -374,58 +397,58 @@ export const Calendario: React.FC = () => {
                 </span>
               </div>
 
-              <div className="space-y-2.5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="space-y-2.5 rounded-[18px] border border-faint bg-mist p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <span className="text-slate-500">Materia</span>
-                  <span className="text-right font-semibold text-slate-800">
+                  <span className="text-muted">Materia</span>
+                  <span className="text-right font-semibold text-tinta">
                     {getMateriaNombre(editingSlot.materia)}
                   </span>
                 </div>
                 <div className="flex items-start justify-between gap-3">
-                  <span className="text-slate-500">Fecha</span>
-                  <span className="text-right font-semibold text-slate-800">{editingSlot.fecha}</span>
+                  <span className="text-muted">Fecha</span>
+                  <span className="text-right font-semibold text-tinta">{editingSlot.fecha}</span>
                 </div>
                 <div className="flex items-start justify-between gap-3">
-                  <span className="text-slate-500">Horario</span>
-                  <span className="text-right font-semibold text-slate-800">
+                  <span className="text-muted">Horario</span>
+                  <span className="text-right font-semibold text-tinta">
                     {editingSlot.horaInicio} – {editingSlot.horaFin}
                   </span>
                 </div>
                 <div className="flex items-start justify-between gap-3">
-                  <span className="text-slate-500">Modalidad</span>
-                  <span className="text-right font-semibold text-slate-800">
+                  <span className="text-muted">Modalidad</span>
+                  <span className="text-right font-semibold text-tinta">
                     {normalizarModalidad(editingSlot.modalidad) === 'VIRTUAL' ? 'Virtual' : 'Presencial'}
                   </span>
                 </div>
                 <div className="flex items-start justify-between gap-3">
-                  <span className="text-slate-500">Cupo</span>
-                  <span className="text-right font-semibold text-slate-800">
+                  <span className="text-muted">Cupo</span>
+                  <span className="text-right font-semibold text-tinta">
                     {editingSlot.cupo_ocupado ?? 0}/{editingSlot.cupo_total ?? 0}
                   </span>
                 </div>
                 {editingSlot.estudiante && (
                   <div className="flex items-start justify-between gap-3">
-                    <span className="text-slate-500">Reservado por</span>
-                    <span className="text-right font-semibold text-slate-800">
+                    <span className="text-muted">Reservado por</span>
+                    <span className="text-right font-semibold text-tinta">
                       {editingSlot.estudiante}
                     </span>
                   </div>
                 )}
               </div>
 
-              <p className="text-[11px] leading-relaxed text-slate-500">
+              <p className="text-[11px] leading-relaxed text-muted">
                 La edición de los datos se hace en la vista de modificar disponibilidad. Aquí puedes revisar el bloque o suspenderlo.
               </p>
             </div>
 
-            <div className="p-5 border-t border-slate-100 bg-white space-y-2 shrink-0">
+            <div className="shrink-0 space-y-2 border-t border-faint bg-white p-5">
               <button
                 type="button"
                 onClick={() => {
                   closeDrawer();
                   navigate(`/tutor/mi-disponibilidad/${editingSlot.id}/editar`);
                 }}
-                className="w-full h-10 bg-[#0d1b2a] hover:bg-[#1e2d4a] text-white font-semibold text-xs rounded-md transition-colors cursor-pointer"
+                className="h-11 w-full cursor-pointer rounded-full bg-violeta-accion text-[12px] font-semibold text-white transition-colors hover:bg-violeta-profundo"
               >
                 Modificar disponibilidad
               </button>
@@ -433,7 +456,7 @@ export const Calendario: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowConfirmModal(true)}
-                className="w-full h-9 border border-rose-400 text-rose-600 hover:bg-rose-50 rounded-md font-semibold text-xs transition-colors cursor-pointer"
+                className="h-10 w-full cursor-pointer rounded-full border border-peligro/40 text-[12px] font-semibold text-peligro transition-colors hover:bg-peligro/5"
               >
                 Suspender Horario
               </button>
@@ -444,25 +467,25 @@ export const Calendario: React.FC = () => {
 
       {/* MODAL DE CONFIRMACIÓN */}
       {showConfirmModal && editingSlot && (
-        <div className="fixed inset-0 z-[1100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
-            <div className="w-14 h-14 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4 text-rose-600 text-2xl font-bold">
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-tinta/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-[28px] bg-white p-6 text-center shadow-constelacion-float">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-peligro/10 text-[22px] font-bold text-peligro">
               ⚠️
             </div>
 
-            <h3 className="font-display italic text-2xl font-bold text-[#0d1b2a] mb-2">
+            <h3 className="mb-2 text-[22px] font-medium tracking-[-0.01em] text-tinta">
               ¿Suspender este horario?
             </h3>
 
-            <p className="text-xs text-slate-600 leading-relaxed mb-6">
-              Este horario de <strong className="text-slate-800">{getMateriaNombre(editingSlot.materia)}</strong> ({editingSlot.diaSemana || 'Programado'}, {editingSlot.horaInicio}–{editingSlot.horaFin}) dejará de estar visible para los estudiantes. Puedes volver a publicarlo cuando quieras.
+            <p className="mb-6 text-[12px] leading-relaxed text-muted">
+              Este horario de <strong className="text-tinta">{getMateriaNombre(editingSlot.materia)}</strong> ({editingSlot.diaSemana || 'Programado'}, {editingSlot.horaInicio}–{editingSlot.horaFin}) dejará de estar visible para los estudiantes. Puedes volver a publicarlo cuando quieras.
             </p>
 
-            <div className="grid grid-cols-2 gap-3 text-xs font-semibold">
+            <div className="grid grid-cols-2 gap-3 text-[12px] font-semibold">
               <button
                 type="button"
                 onClick={() => setShowConfirmModal(false)}
-                className="h-10 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                className="h-11 cursor-pointer rounded-full border border-faint text-slate-ink transition-colors hover:bg-mist"
               >
                 Cancelar
               </button>
@@ -471,7 +494,7 @@ export const Calendario: React.FC = () => {
                 type="button"
                 disabled={saving}
                 onClick={handleConfirmSuspender}
-                className="h-10 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+                className="h-11 cursor-pointer rounded-full bg-peligro text-white transition-opacity hover:opacity-95 disabled:opacity-50"
               >
                 {saving ? 'Procesando...' : 'Sí, Suspender'}
               </button>

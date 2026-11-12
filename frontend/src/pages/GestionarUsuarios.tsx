@@ -14,6 +14,8 @@ interface UserAccount {
   correo: string;
   rol: 'Estudiante' | 'Tutor' | 'Coordinador' | 'Admin';
   telefono: string;
+  /** RF-02: solo aplica a estudiantes; null = sin registrar. */
+  semestre: number | null;
   activo: boolean;
   rawBackendData: Record<string, unknown>; // Objeto original completo recibido de Django
 }
@@ -54,6 +56,7 @@ interface UserBackend {
   phone?: string;
   documento?: string | number;
   identificacion?: string | number;
+  semestre?: number | null;
   is_active?: boolean;
   activo?: boolean;
   rol?: string;
@@ -300,6 +303,7 @@ const loadUsersList = async (): Promise<UserAccount[]> => {
       }
 
       const phone = String(item.telefono || item.phone || '').trim();
+      const semestreVal = typeof item.semestre === 'number' ? item.semestre : null;
       const isActive = item.is_active ?? item.activo ?? nestedUser?.is_active ?? nestedUser?.activo ?? true;
 
       userMap.set(dedupeKey, {
@@ -312,6 +316,7 @@ const loadUsersList = async (): Promise<UserAccount[]> => {
         correo: emailVal,
         rol: userRole,
         telefono: phone,
+        semestre: semestreVal,
         activo: Boolean(isActive),
         rawBackendData: (item as unknown as Record<string, unknown>) || {},
       });
@@ -398,6 +403,7 @@ const saveUserEditInBackend = async (user: UserAccount): Promise<BackendResult> 
     rol: user.rol,
     activo: user.activo,
     is_active: user.activo,
+    ...(user.endpoint === 'estudiantes' ? { semestre: user.semestre ?? null } : {}),
   };
 
   try {
@@ -832,6 +838,34 @@ export const GestionarUsuarios: React.FC = () => {
                   className="w-full h-10 px-3.5 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
                 />
               </div>
+
+              {editingUser.endpoint === 'estudiantes' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Semestre
+                  </label>
+                  <select
+                    value={editingUser.semestre ?? ''}
+                    onChange={(e) =>
+                      setEditingUser({
+                        ...editingUser,
+                        semestre: e.target.value ? Number(e.target.value) : null,
+                      })
+                    }
+                    className="w-full h-10 px-3.5 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-[#0d1b2a]"
+                  >
+                    <option value="">Sin registrar</option>
+                    {Array.from({ length: 10 }, (_, i) => i + 1).map((valor) => (
+                      <option key={valor} value={valor}>
+                        {valor}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    RF-02: se usa para validar la postulación como tutor.
+                  </p>
+                </div>
+              )}
             </form>
 
             <div className="p-6 border-t border-slate-100 flex items-center justify-end gap-3 bg-white">

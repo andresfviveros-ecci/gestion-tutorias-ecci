@@ -47,6 +47,9 @@ export interface Tutoria {
   hora_fin?: string;
   /** Lo calcula el backend: estado activo y antes del plazo de cancelación. */
   puede_cancelar?: boolean;
+  /** GT-226: el backend dice si ya se puede calificar y si ya hay evaluación. */
+  puede_evaluar?: boolean;
+  evaluacion?: { calificacion?: number; comentario?: string | null } | null;
 }
 
 export type ModalidadFiltro = 'TODAS' | 'VIRTUAL' | 'PRESENCIAL';

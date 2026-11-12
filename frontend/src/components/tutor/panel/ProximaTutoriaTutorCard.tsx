@@ -15,12 +15,15 @@ export interface ProximaTutorVista {
   horaInicio: string;
   horaFin: string;
   enlaceVirtual: string;
+  /** El backend ofrece acciones para esta tutoría (estados_siguientes). */
+  puedeRegistrar?: boolean;
 }
 
 interface ProximaTutoriaTutorCardProps {
   cargando: boolean;
   proxima: ProximaTutorVista | null;
   rutaAgenda?: string;
+  onRegistrar?: () => void;
 }
 
 const claseAccion =
@@ -31,6 +34,7 @@ export const ProximaTutoriaTutorCard = ({
   cargando,
   proxima,
   rutaAgenda = '/tutor/calendario',
+  onRegistrar,
 }: ProximaTutoriaTutorCardProps) => (
   <motion.section
     initial={{ opacity: 0, y: 12 }}
@@ -115,17 +119,24 @@ export const ProximaTutoriaTutorCard = ({
         )}
       </div>
 
-      {proxima && proxima.enlaceVirtual ? (
-        <a href={proxima.enlaceVirtual} target="_blank" rel="noreferrer" className={claseAccion}>
-          <VideoIcon className="h-4 w-4" />
-          Unirse a la reunión
-        </a>
-      ) : (
-        <Link to={rutaAgenda} className={claseAccion}>
-          Ver tutoría
-          <ArrowIcon className="h-4 w-4" />
-        </Link>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {proxima && proxima.enlaceVirtual ? (
+          <a href={proxima.enlaceVirtual} target="_blank" rel="noreferrer" className={claseAccion}>
+            <VideoIcon className="h-4 w-4" />
+            Unirse a la reunión
+          </a>
+        ) : (
+          <Link to={rutaAgenda} className={claseAccion}>
+            Ver tutoría
+            <ArrowIcon className="h-4 w-4" />
+          </Link>
+        )}
+        {proxima?.puedeRegistrar && onRegistrar && (
+          <button type="button" onClick={onRegistrar} className={claseAccion}>
+            Registrar tutoría
+          </button>
+        )}
+      </div>
     </div>
   </motion.section>
 );
