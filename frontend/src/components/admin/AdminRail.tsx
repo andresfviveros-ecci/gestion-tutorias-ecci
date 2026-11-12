@@ -128,6 +128,8 @@ const iconoDeModulo = (id: Modulo['id']): ReactNode => {
       return <UserIcon className="h-5 w-5" />;
     case 'materias':
       return <BookIcon />;
+    case 'notas':
+      return <BookIcon />;
     case 'asignacion-materias':
       return <LayersIcon className="h-5 w-5" />;
     case 'coordinadores':
