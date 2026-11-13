@@ -778,7 +778,7 @@ export const ConfiguracionGeneral = () => {
 
                     <Plazo
                       titulo="Cancelar"
-                      descripcion="Estudiantes y tutores pueden cancelar hasta este tiempo antes del inicio."
+                      descripcion="Los estudiantes pueden cancelar hasta este tiempo antes del inicio. El tutor puede cancelar hasta la hora de inicio."
                       valor={cancelar}
                       onChange={setCancelar}
                       ejemplo={ejemploCancelacion}

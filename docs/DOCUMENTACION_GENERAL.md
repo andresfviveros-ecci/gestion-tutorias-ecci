@@ -4,6 +4,8 @@ Este documento reúne en un solo lugar lo que dice cada documento del repositori
 
 Validación hecha el 23 de octubre de 2026 sobre `main`, revisando cada afirmación contra el código, `docker-compose.yml`, `requirements.txt`, `package.json` y las rutas reales de Django y React.
 
+> **Actualización del 12 de noviembre de 2026.** Las secciones 2 a 10 describen lo que decía cada documento en octubre. Desde entonces entraron, entre otras cosas, la atención de tutorías por el tutor, la cancelación del docente con plazo, la postulación del estudiante tutor, las notas por corte, los indicadores, el reporte por tutor, los permisos por rol, cerca de 200 pruebas y el despliegue en Railway. Lo vigente está en el README raíz, en esta misma sección 11 (CI/CD) y en la sección 12 (pendientes), que se reescribió con lo que falta hoy.
+
 ## Contenido
 
 1. [Inventario de documentos](#1-inventario-de-documentos)
@@ -126,14 +128,14 @@ Sistema web para la gestión de tutorías entre docentes y estudiantes. Los doce
 | Backend | Django 5.2, Django REST Framework, SimpleJWT, drf-spectacular, django-filter, django-cors-headers |
 | Base de datos | PostgreSQL 16 |
 | Infraestructura | Docker y Docker Compose; Nginx en la imagen de producción del frontend |
-| Calidad y CI/CD | GitHub Actions, Ruff, ESLint, Gitleaks, Dependabot; pytest instalado |
-| Planeado | Celery, Redis, shadcn/ui, Vitest, Playwright, Locust |
+| Calidad y CI/CD | GitHub Actions, Ruff, ESLint, Gitleaks, Dependabot; cerca de 200 pruebas del backend |
+| Planeado | Vitest, Playwright, Locust (Celery y Redis se retiraron el 12-nov-2026 porque nada los usaba) |
 
 ### Arquitectura
 
 Monolito modular en capas con frontend desacoplado. Hoy, en desarrollo, el navegador carga el frontend desde el contenedor de Vite (`FRONTEND_PORT`) y llama directamente a la API de Django (`APP_PORT`), que usa PostgreSQL.
 
-La arquitectura objetivo agrega Nginx como proxy inverso (estáticos + `/api`), un worker de Celery y Redis. La regla planeada es que la lógica de negocio viva en `services.py` por app, con vistas y serializers limitados a entrada, salida y permisos, para poder probarla sin HTTP.
+En producción (Railway) el frontend lo sirve Nginx y el backend corre con gunicorn. La lógica de negocio vive en un `services.py` por app, con vistas y serializers limitados a entrada, salida y permisos, para poder probarla sin HTTP.
 
 ### Flujo de trabajo con Git
 
@@ -174,7 +176,7 @@ Licencia: proyecto académico con fines educativos. Universidad ECCI, 2026.
 | drf-spectacular | 0.30.0 |
 | django-filter | 26.1 (la 26.2 exige Python 3.11) |
 | django-cors-headers | 4.9.0 |
-| Otros en `requirements.txt` | celery 5.6.3, redis 8.1.0, psycopg 3.3.6, pytest 8.4.2, pytest-django 4.14.0, pytest-cov 7.1.0, ruff 0.17.1, django-import-export 4.4.3 |
+| Otros en `requirements.txt` | psycopg 3.3.6, pytest 8.4.2, pytest-django 4.14.0, pytest-cov 7.1.0, ruff 0.17.1, django-import-export 4.4.3 |
 
 ### Estructura
 
@@ -495,10 +497,11 @@ Personas, documentos, teléfonos y correos son inventados; el dominio `.test` es
 | Job | Qué verifica |
 |---|---|
 | Detectar cambios | Qué partes cambiaron, para no correr todo en cada PR |
-| Backend (Django + Postgres) | Ruff (informativo), `check`, migraciones pendientes, migraciones contra PostgreSQL 16, carga/segunda corrida/reset de datos de prueba, pruebas y esquema OpenAPI |
+| Backend (Django + Postgres) | Ruff (bloqueante), `check`, migraciones pendientes, migraciones contra PostgreSQL 16, carga/segunda corrida/reset de datos de prueba, pruebas y esquema OpenAPI |
 | Frontend (React + Vite) | ESLint, build e imagen de producción con Docker |
 | Prueba de humo (docker compose) | Stack completo, API, login con usuario de prueba, frontend y CORS |
 | Buscar secretos filtrados | Gitleaks sobre todo el historial |
+| Imágenes de producción (Railway) | Backend con `DEBUG=False`, `DATABASE_URL` y healthcheck; frontend en el puerto de Railway |
 
 **CD** (`.github/workflows/cd.yml`, en cada push a `main` y en tags `vX.Y.Z`): publica `gestion-tutorias-ecci-backend` y `gestion-tutorias-ecci-frontend` en GitHub Container Registry (`latest` y `sha-<commit>`) y, con un tag, crea un Release con el frontend compilado. La URL de la API del frontend de producción sale de la variable del repositorio `VITE_API_URL`.
 
@@ -508,16 +511,24 @@ Personas, documentos, teléfonos y correos son inventados; el dominio `.test` es
 
 ## 12. Pendientes consolidados
 
-Ordenados por impacto:
+Revisados contra `main` el 12 de noviembre de 2026. Los pendientes de octubre (tutorías del docente, grupos por migración, estado `CANCELADA`, volver a reservar, permisos, plazo de cancelación, pruebas, reportes, Python 3.12 y despliegue) ya están resueltos.
 
-1. **Tutorías del docente:** `GET /api/tutorias/tutorias/` filtra solo por estudiante; el docente no ve las reservas de sus bloques ni puede registrar asistencia.
-2. **Rotar la contraseña del correo del sistema:** estuvo publicada en el historial del repositorio.
-3. **Grupos por migración:** sin datos de prueba, los grupos `Estudiante`, `Docente` y `Coordinador` no existen y el registro falla.
-4. **Estado `CANCELADA`:** la cancelación guarda un estado que no está en las opciones del modelo.
-5. **Volver a reservar el mismo bloque** después de cancelar falla por el código único `TUT-<bloque>-<estudiante>`.
-6. **Permisos:** catálogo y creación de bloques no verifican el rol.
-7. **Plazo de cancelación** y penalización: los campos existen pero no se calculan.
-8. **Pruebas automatizadas:** no hay ninguna; pytest ya está configurado.
-9. **Reportes y notificaciones:** solo modelos.
-10. **Python 3.10 → 3.12:** desbloquea Django 6 y `django-filter` 26.2.
-11. **Despliegue:** definir `DJANGO_DEBUG=False`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` y `VITE_API_URL` del entorno real.
+**Funcionalidad**
+
+1. **Notificaciones dentro de la aplicación:** se guardan todas en la base de datos, pero no hay endpoint ni pantalla para verlas. La confirmación de una tutoría por el tutor solo queda guardada, sin correo.
+2. **Periodos y programas académicos:** la API los crea y edita, pero no hay pantalla; hoy se hace desde el admin de Django.
+3. **Postulaciones de materias sin docente:** el backend deja que la coordinación las revise, pero la pantalla de solicitudes solo existe en el panel del docente.
+4. **Edición de horarios del estudiante tutor:** el backend lo permite al dueño del horario, pero la ruta de edición del frontend solo admite docentes.
+5. **Configuración incompleta:** la pantalla edita 4 de los 12 parámetros; faltan nota mínima, pesos de los cortes, semestre mínimo, diferencia de semestres y escala de calificación.
+6. **Calendario del tutor:** marca los horarios reservados pero no dice quién reservó.
+
+**Para decidir con la Product Owner**
+
+7. **Recordatorios antes de la tutoría:** no existen (el texto que los prometía se retiró). Si se quieren, la propuesta es un comando programado en Railway.
+8. **Funciones a medio camino:** la penalización por cancelar tarde (el campo existe y no se calcula), las plantillas de horario recurrente y la tabla de auditoría (modelos sin uso), el estado `CERRADO` del horario (nadie lo asigna) y la pantalla «Mi perfil» del tutor.
+
+**Operación**
+
+9. **Correo en Railway:** configurar Resend o Brevo (ver `docs/DEPLOY_RAILWAY.md`); el plan Hobby bloquea SMTP.
+10. **`django-filter` 26.2:** Dependabot lo ignora porque exigía Python 3.11; con la imagen ya en Python 3.12 se puede quitar esa excepción.
+11. **Contraseña del correo del sistema:** confirmar que se rotó la que estuvo publicada en el historial del repositorio.
