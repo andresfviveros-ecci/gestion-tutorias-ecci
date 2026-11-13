@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,6 +8,12 @@ import { useAuthStore, type FalloLogin } from "../store/useAuthStore";
 import { api } from "../api/axios";
 import { esCorreoPermitido, MENSAJE_DOMINIO } from "../config";
 import { puedeEntrarA, RUTA_INICIO } from "../navigation/modulos";
+import gsap from "gsap";
+import { DrawSVGPlugin } from "gsap/DrawSVGPlugin";
+import { useGSAP } from "@gsap/react";
+import { prefiereMenosMovimiento, useTransicionSesion } from "../store/useTransicionSesion";
+
+gsap.registerPlugin(useGSAP, DrawSVGPlugin);
 
 /** Qué se le dice al usuario según por qué falló el inicio de sesión (GT-205). */
 const AVISOS_LOGIN: Record<FalloLogin, { titulo: string; detalle: string }> = {
@@ -66,15 +72,18 @@ const AulaLibreLogo: React.FC = () => (
       aria-hidden="true"
     >
       <path
+        data-logo-trazo
         d="M34 8H17C11.477 8 7 12.477 7 18V34C7 39.523 11.477 44 17 44H35C40.523 44 45 39.523 45 34V24"
         stroke="currentColor"
         strokeWidth="4"
         strokeLinecap="round"
       />
-      <circle cx="41" cy="10" r="6.5" fill="#5433EB" />
+      <circle data-logo-punto cx="41" cy="10" r="6.5" fill="#5433EB" />
     </svg>
-    <span className="text-[32px] font-medium leading-none tracking-[-0.02em] text-tinta sm:text-[42.9px]">
-      Aula Libre
+    <span className="inline-flex overflow-hidden pb-[0.1em] text-[32px] font-medium leading-none tracking-[-0.02em] text-tinta sm:text-[42.9px]">
+      <span data-logo-texto className="inline-block">
+        Aula Libre
+      </span>
     </span>
   </div>
 );
@@ -114,9 +123,9 @@ const GuideRings: React.FC = () => (
     className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden"
     aria-hidden="true"
   >
-    <div className="h-[760px] w-[760px] shrink-0 rounded-full border border-tinta/[0.07]" />
-    <div className="absolute h-[1100px] w-[1100px] shrink-0 rounded-full border border-tinta/[0.05]" />
-    <div className="absolute h-[1400px] w-[1400px] shrink-0 rounded-full border border-tinta/[0.035]" />
+    <div data-anillo className="h-[760px] w-[760px] shrink-0 rounded-full border border-tinta/[0.07]" />
+    <div data-anillo className="absolute h-[1100px] w-[1100px] shrink-0 rounded-full border border-tinta/[0.05]" />
+    <div data-anillo className="absolute h-[1400px] w-[1400px] shrink-0 rounded-full border border-tinta/[0.035]" />
   </div>
 );
 
@@ -137,6 +146,7 @@ const FloatingShowcase: React.FC = () => {
 
   return (
   <div
+    data-flotantes
     className="pointer-events-none absolute inset-0 hidden select-none lg:block"
     aria-hidden="true"
   >
@@ -272,9 +282,57 @@ const RecoveryStepper: React.FC<{ step: 1 | 2 | 3 }> = ({ step }) => {
 };
 
 export const Login: React.FC = () => {
-  const navigate = useNavigate();
   const location = useLocation();
   const login = useAuthStore((state) => state.login);
+  const entrar = useTransicionSesion((state) => state.entrar);
+  const raizRef = useRef<HTMLDivElement>(null);
+
+  // Entrada del login: anillos, logo que se dibuja, tarjeta y objetos flotantes.
+  // Si viene de cerrar sesión, espera a que la cortina empiece a recogerse.
+  useGSAP(
+    () => {
+      if (prefiereMenosMovimiento()) return;
+      const despuesDeSalida = useTransicionSesion.getState().transicion?.tipo === "salida";
+
+      const tl = gsap.timeline({ delay: despuesDeSalida ? 0.55 : 0.1, defaults: { ease: "expo.out" } });
+      tl.from("[data-anillo]", { autoAlpha: 0, scale: 0.82, duration: 1.6, stagger: 0.12 })
+        .fromTo(
+          "[data-logo-trazo]",
+          { drawSVG: "0% 0%" },
+          { drawSVG: "0% 100%", duration: 1, ease: "power2.inOut" },
+          0.05,
+        )
+        .from("[data-logo-punto]", { scale: 0, y: -14, transformOrigin: "50% 50%", duration: 0.7, ease: "back.out(3)" }, 0.65)
+        .from("[data-logo-texto]", { yPercent: 110, duration: 0.9 }, 0.3)
+        // opacity y no autoAlpha: el formulario recibe foco aunque siga entrando.
+        .from("[data-tarjeta]", { opacity: 0, y: 40, scale: 0.97, duration: 1 }, 0.35)
+        .from(
+          "[data-vista-login] > h1, [data-vista-login] > p, [data-vista-login] form > *",
+          { opacity: 0, y: 14, duration: 0.7, stagger: 0.06 },
+          0.55,
+        )
+        .from("[data-pie]", { autoAlpha: 0, y: 12, duration: 0.7 }, 0.9)
+        .from(
+          "[data-flotantes] > div",
+          { autoAlpha: 0, y: 70, rotation: "+=10", duration: 1.3, stagger: 0.08 },
+          0.4,
+        );
+
+      // Después de entrar, los objetos flotan suave y cada uno a su ritmo.
+      tl.add(() => {
+        gsap.utils.toArray<HTMLElement>("[data-flotantes] > div").forEach((el, i) => {
+          gsap.to(el, {
+            y: i % 2 === 0 ? "+=10" : "-=10",
+            duration: gsap.utils.random(2.6, 3.8),
+            ease: "sine.inOut",
+            yoyo: true,
+            repeat: -1,
+          });
+        });
+      });
+    },
+    { scope: raizRef },
+  );
 
   const [currentView, setCurrentView] = useState<ViewState>("login");
   const [falloLogin, setFalloLogin] = useState<FalloLogin | null>(null);
@@ -345,7 +403,7 @@ export const Login: React.FC = () => {
     return "Ocurrió un error inesperado. Inténtalo de nuevo.";
   };
 
-  const onLoginSubmit = async (data: LoginFormData) => {
+  const onLoginSubmit = async (data: LoginFormData, evento?: React.BaseSyntheticEvent) => {
     if (ingresando) return;
     setFalloLogin(null);
     setIngresando(true);
@@ -370,7 +428,15 @@ export const Login: React.FC = () => {
       destino && puedeEntrarA(destino, resultado.user)
         ? destino
         : RUTA_INICIO[resultado.user.role];
-    navigate(ruta, { replace: true });
+
+    // La cortina de Aula Libre crece desde el botón y hace la navegación tapada.
+    const formulario = evento?.target as HTMLFormElement | undefined;
+    const caja = formulario?.querySelector("button[type=\"submit\"]")?.getBoundingClientRect();
+    entrar(
+      resultado.user.nombre,
+      ruta,
+      caja ? { x: caja.left + caja.width / 2, y: caja.top + caja.height / 2 } : undefined,
+    );
   };
 
   // Al escribir de nuevo se quita el aviso del intento anterior.
@@ -502,14 +568,14 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-mist font-constelacion text-tinta">
+    <div ref={raizRef} className="relative min-h-screen w-full overflow-hidden bg-mist font-constelacion text-tinta">
       <GuideRings />
       <FloatingShowcase />
 
       <main className="relative z-10 mx-auto flex min-h-screen w-full max-w-[520px] flex-col items-center justify-center gap-6 px-4 py-10">
         <AulaLibreLogo />
 
-        <section className="w-full max-w-[440px] rounded-[32px] bg-white px-6 py-8 shadow-constelacion-card sm:px-8">
+        <section data-tarjeta className="w-full max-w-[440px] rounded-[32px] bg-white px-6 py-8 shadow-constelacion-card sm:px-8">
           {["step1", "step2", "step3"].includes(currentView) && (
             <RecoveryStepper
               step={currentView === "step1" ? 1 : currentView === "step2" ? 2 : 3}
@@ -518,7 +584,7 @@ export const Login: React.FC = () => {
 
           {/* VISTA LOGIN */}
           {currentView === "login" && (
-            <div>
+            <div data-vista-login>
               <h1 className="text-center text-[26.8px] font-medium leading-[33px] tracking-[-0.02em] text-tinta">
                 Inicia sesión
               </h1>
@@ -928,7 +994,7 @@ export const Login: React.FC = () => {
           )}
         </section>
 
-        <div className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[11.6px] text-[#5F5C5B] shadow-sm">
+        <div data-pie className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[11.6px] text-[#5F5C5B] shadow-sm">
           <LockIcon />
           Universidad ECCI · Sede Cali
         </div>

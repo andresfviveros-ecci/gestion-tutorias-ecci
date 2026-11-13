@@ -1,5 +1,4 @@
 import type { FC, ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   CalendarIcon,
   CheckIcon,
@@ -10,6 +9,7 @@ import {
 } from '../constelacion/Icons';
 import { LogoutIcon, RailItem, RailLateral } from '../constelacion/Rail';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useTransicionSesion } from '../../store/useTransicionSesion';
 import { modulosVisibles, type Modulo } from '../../navigation/modulos';
 
 const GridIcon: FC = () => (
@@ -109,18 +109,13 @@ const iconoDeModulo = (id: Modulo['id']): ReactNode => {
 /** Rail lateral del administrador/coordinador; se expande y contrae como el de estudiante y tutor. */
 export const AdminRail: FC = () => {
   const user = useAuthStore((state) => state.user);
-  const logout = useAuthStore((state) => state.logout);
-  const navigate = useNavigate();
+  // Abre la confirmación; el cierre real y la animación los maneja App.
+  const handleLogout = useTransicionSesion((state) => state.pedirCierre);
 
   const nombre =
     user?.nombre ||
     `${user?.first_name || ''} ${user?.last_name || ''}`.trim() ||
     'Administrador';
-
-  const handleLogout = () => {
-    logout();
-    navigate('/', { replace: true, state: {} });
-  };
 
   // El rail sale de la misma lista que el menú legacy: los módulos nuevos
   // aparecen aquí sin tener que actualizar este componente.

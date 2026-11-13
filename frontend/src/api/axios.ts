@@ -15,8 +15,10 @@ const CLAVES_SESION = [
   "auth-storage",
 ];
 
+// logout entra aquí: si el refresh ya venció responde 401 y eso no debe
+// disparar el aviso de «sesión vencida» en medio del cierre.
 const esEndpointAuth = (url?: string) =>
-  Boolean(url?.includes("login") || url?.includes("recovery"));
+  Boolean(url?.includes("login") || url?.includes("logout") || url?.includes("recovery"));
 
 /** Lee el JWT de cualquiera de los almacenamientos que usa la app. */
 const leerTokenGuardado = (): string | null => {

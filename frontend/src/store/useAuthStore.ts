@@ -38,11 +38,22 @@ export type ResultadoLogin =
   | { ok: true; user: User }
   | { ok: false; fallo: FalloLogin; mensaje?: string };
 
+/**
+ * Cómo terminó el aviso al servidor al cerrar sesión:
+ * - `revocada`: el backend puso el refresh en la lista negra.
+ * - `vencida`: el refresh ya no servía (vencido, rotado o revocado antes).
+ * - `sin_conexion`: no se pudo avisar; la sesión se cierra igual en el equipo.
+ */
+export type ResultadoCierre = 'revocada' | 'vencida' | 'sin_conexion';
+
 interface AuthState {
   user: User | null;
   token: string | null;
   login: (correo: string, pass: string) => Promise<ResultadoLogin>;
+  /** Solo limpia la sesión en el navegador. */
   logout: () => void;
+  /** Revoca el refresh en el backend (no limpia el navegador: eso es `logout`). */
+  revocarSesion: () => Promise<ResultadoCierre>;
 }
 
 const clasificarFallo = (error: unknown): { fallo: FalloLogin; mensaje?: string } => {
@@ -122,6 +133,20 @@ export const useAuthStore = create<AuthState>()(
         localStorage.removeItem('token');
         localStorage.removeItem('refresh_token');
         set({ user: null, token: null });
+      },
+
+      revocarSesion: async () => {
+        const refresh = localStorage.getItem('refresh_token');
+        if (!refresh) return 'vencida';
+        try {
+          // TokenBlacklistView: 200 si lo revoca, 401 si ya no era válido.
+          await api.post('accounts/logout/', { refresh }, { timeout: 8000 });
+          return 'revocada';
+        } catch (error) {
+          const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+          if (status === 400 || status === 401) return 'vencida';
+          return 'sin_conexion';
+        }
       },
     }),
     {

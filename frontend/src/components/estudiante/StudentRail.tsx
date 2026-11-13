@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { LogoutIcon, RailItem, RailLateral } from "../constelacion/Rail";
 import { useAuthStore } from "../../store/useAuthStore";
+import { useTransicionSesion } from "../../store/useTransicionSesion";
 import { api } from "../../api/axios";
 
 const GridIcon: React.FC = () => (
@@ -93,8 +93,8 @@ const ListIcon: React.FC = () => (
 
 export const StudentRail: React.FC = () => {
   const user = useAuthStore((state) => state.user);
-  const logout = useAuthStore((state) => state.logout);
-  const navigate = useNavigate();
+  // Abre la confirmación; el cierre real y la animación los maneja App.
+  const handleLogout = useTransicionSesion((state) => state.pedirCierre);
   // GT-255: solo el estudiante con una solicitud de tutor aprobada publica horarios.
   const [puedePublicar, setPuedePublicar] = useState(false);
 
@@ -119,11 +119,6 @@ export const StudentRail: React.FC = () => {
     user?.nombre ||
     `${user?.first_name || ""} ${user?.last_name || ""}`.trim() ||
     "Estudiante";
-
-  const handleLogout = () => {
-    logout();
-    navigate("/", { replace: true, state: {} });
-  };
 
   return (
     <RailLateral

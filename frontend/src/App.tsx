@@ -29,6 +29,8 @@ import { PostulateComoTutor } from './pages/estudiante/PostulateComoTutor';
 import { MODULOS, normalizarRol, RUTA_INICIO } from './navigation/modulos';
 import { ArrowIcon } from './components/constelacion/Icons';
 import { api } from './api/axios';
+import { ConfirmarCierreSesion } from './components/sesion/ConfirmarCierreSesion';
+import { PantallaSesion } from './components/sesion/PantallaSesion';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -384,6 +386,10 @@ export const App: React.FC = () => {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      {/* Confirmación de cierre y cortina animada de entrada/salida, para los tres roles. */}
+      <ConfirmarCierreSesion />
+      <PantallaSesion />
     </BrowserRouter>
   );
 };
