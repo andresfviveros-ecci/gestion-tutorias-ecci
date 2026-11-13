@@ -294,28 +294,30 @@ export const Login: React.FC = () => {
       if (prefiereMenosMovimiento()) return;
       const despuesDeSalida = useTransicionSesion.getState().transicion?.tipo === "salida";
 
-      const tl = gsap.timeline({ delay: despuesDeSalida ? 0.55 : 0.1, defaults: { ease: "expo.out" } });
-      tl.from("[data-anillo]", { autoAlpha: 0, scale: 0.82, duration: 1.6, stagger: 0.12 })
+      // Todo el formulario queda listo en ~0,8 s. clearProps devuelve cada
+      // elemento a su CSS al terminar: nada puede quedarse a medio animar.
+      const tl = gsap.timeline({ delay: despuesDeSalida ? 0.35 : 0, defaults: { ease: "expo.out" } });
+      tl.from("[data-anillo]", { autoAlpha: 0, scale: 0.85, duration: 1.1, stagger: 0.08 })
         .fromTo(
           "[data-logo-trazo]",
           { drawSVG: "0% 0%" },
-          { drawSVG: "0% 100%", duration: 1, ease: "power2.inOut" },
-          0.05,
+          { drawSVG: "0% 100%", duration: 0.6, ease: "power2.inOut" },
+          0,
         )
-        .from("[data-logo-punto]", { scale: 0, y: -14, transformOrigin: "50% 50%", duration: 0.7, ease: "back.out(3)" }, 0.65)
-        .from("[data-logo-texto]", { yPercent: 110, duration: 0.9 }, 0.3)
+        .from("[data-logo-punto]", { scale: 0, transformOrigin: "50% 50%", duration: 0.45, ease: "back.out(3)" }, 0.4)
+        .from("[data-logo-texto]", { yPercent: 110, duration: 0.6, clearProps: "transform" }, 0.1)
         // opacity y no autoAlpha: el formulario recibe foco aunque siga entrando.
-        .from("[data-tarjeta]", { opacity: 0, y: 40, scale: 0.97, duration: 1 }, 0.35)
+        .from("[data-tarjeta]", { opacity: 0, y: 24, duration: 0.6, clearProps: "opacity,transform" }, 0.1)
         .from(
           "[data-vista-login] > h1, [data-vista-login] > p, [data-vista-login] form > *",
-          { opacity: 0, y: 14, duration: 0.7, stagger: 0.06 },
-          0.55,
+          { opacity: 0, y: 10, duration: 0.45, stagger: 0.035, clearProps: "opacity,transform" },
+          0.2,
         )
-        .from("[data-pie]", { autoAlpha: 0, y: 12, duration: 0.7 }, 0.9)
+        .from("[data-pie]", { autoAlpha: 0, y: 8, duration: 0.45, clearProps: "opacity,visibility,transform" }, 0.4)
         .from(
           "[data-flotantes] > div",
-          { autoAlpha: 0, y: 70, rotation: "+=10", duration: 1.3, stagger: 0.08 },
-          0.4,
+          { autoAlpha: 0, y: 50, rotation: "+=8", duration: 0.9, stagger: 0.05 },
+          0.15,
         );
 
       // Después de entrar, los objetos flotan suave y cada uno a su ritmo.
@@ -702,27 +704,31 @@ export const Login: React.FC = () => {
                   </div>
                 )}
 
-                <button
-                  type="submit"
-                  disabled={ingresando}
-                  aria-busy={ingresando}
-                  className={primaryButtonClass}
-                >
-                  {ingresando ? (
-                    <>
-                      <span
-                        aria-hidden="true"
-                        className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
-                      />
-                      Verificando…
-                    </>
-                  ) : (
-                    <>
-                      Iniciar sesión
-                      <ArrowRightIcon />
-                    </>
-                  )}
-                </button>
+                {/* GSAP anima este contenedor y no el botón: el botón tiene
+                    transition de CSS y, con los dos a la vez, quedaba invisible. */}
+                <div>
+                  <button
+                    type="submit"
+                    disabled={ingresando}
+                    aria-busy={ingresando}
+                    className={primaryButtonClass}
+                  >
+                    {ingresando ? (
+                      <>
+                        <span
+                          aria-hidden="true"
+                          className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                        />
+                        Verificando…
+                      </>
+                    ) : (
+                      <>
+                        Iniciar sesión
+                        <ArrowRightIcon />
+                      </>
+                    )}
+                  </button>
+                </div>
               </form>
             </div>
           )}
