@@ -8,23 +8,27 @@ Proyecto académico de la asignatura **Gestión de Software** — Ingeniería en
 
 ## Funcionalidades
 
-**Docente**
-- Publicar bloques de disponibilidad (fecha, hora, modalidad, cupo)
-- Ver la agenda de tutorías del día y de la semana
-- Atender una tutoría: registrar asistencia, retraso y notas de sesión
-- Cancelar bloques o tutorías indicando el motivo
+**Coordinación y administración**
+- Usuarios: registrar estudiantes (con semestre), docentes y coordinadores; editar, activar y desactivar cuentas.
+- Catálogo: materias con su semestre en el plan, asignación de materias a cada docente por periodo.
+- Materias cursadas: notas de los tres cortes por estudiante; la nota final se calcula con los pesos configurados.
+- Configuración de las reglas: cupos semanales del estudiante tutor, plazos para reservar y cancelar, nota aprobatoria.
+- Panel de indicadores del mes y reporte de cumplimiento y evaluación por tutor y periodo.
+
+**Docente (tutor)**
+- Publicar, editar y suspender horarios (presencial o virtual, con cupos).
+- Confirmar o cancelar reservas y registrar el resultado: completada (con retraso, notas y compromisos) o no asistió.
+- Revisar las postulaciones de estudiantes a tutor en sus materias: aprobar, rechazar o revocar, siempre con motivo.
 
 **Estudiante**
-- Buscar disponibilidad por docente, materia o fecha
-- Reservar una tutoría indicando el tema de la consulta
-- Consultar sus tutorías próximas y su historial
-- Cancelar una reserva dentro del plazo permitido
+- Buscar horarios por fecha, tutor, materia o modalidad y reservar indicando el tema.
+- Ver sus tutorías, cancelar dentro del plazo y calificar al tutor de 1 a 10.
+- Postularse como tutor en las materias que aprobó, si cumple semestre, nota y avance.
 
-**Coordinación**
-- Panel de indicadores: tutorías realizadas, tasa de asistencia, cancelaciones y retrasos
-- Reportes de desempeño por docente y por periodo académico
+**Estudiante tutor** (estudiante con una postulación aprobada en el periodo)
+- Publicar horarios en sus materias, con un tope semanal de cupos, y atender sus tutorías como un docente.
 
-**Estado a octubre de 2026.** Ya funcionan: publicar disponibilidad, buscar y reservar, ver y cancelar las reservas propias del estudiante, gestión de usuarios y catálogo por parte de coordinación. Faltan en el backend: que el docente vea las tutorías de sus bloques y registre asistencia, la cancelación de tutorías por parte del docente, el plazo de cancelación y los indicadores y reportes (las apps `reportes` y `notificaciones` solo tienen modelos).
+Los correos salen al reservar, al cancelar, al revisar una postulación y para recuperar la contraseña. Lo que está pendiente y priorizado vive en [docs/DOCUMENTACION_GENERAL.md](docs/DOCUMENTACION_GENERAL.md#12-pendientes-consolidados).
 
 ---
 
@@ -36,9 +40,9 @@ Proyecto académico de la asignatura **Gestión de Software** — Ingeniería en
 | Backend | Django 5.2, Django REST Framework, SimpleJWT, drf-spectacular (Swagger), django-filter, django-cors-headers |
 | Base de datos | PostgreSQL 16 |
 | Infraestructura | Docker y Docker Compose (db, backend y frontend); Nginx en la imagen de producción del frontend |
-| Calidad y CI/CD | GitHub Actions, Ruff, ESLint, Gitleaks, Dependabot; pytest instalado (aún sin pruebas) |
+| Calidad y CI/CD | GitHub Actions, Ruff, ESLint, Gitleaks, Dependabot; cerca de 200 pruebas automáticas del backend |
 
-**Planeado, todavía no implementado:** Celery y Redis (instalados en `requirements.txt` pero sin configurar), shadcn/ui, Vitest, Playwright y Locust.
+**Planeado, todavía no implementado:** pruebas del frontend con Vitest y Playwright, y pruebas de carga con Locust. Celery y Redis se retiraron de las dependencias porque nada los usaba; si se implementan los recordatorios, la idea es un comando programado en Railway.
 
 ---
 
@@ -56,19 +60,15 @@ Navegador ── http://localhost:FRONTEND_PORT ──> frontend (Vite)
                                                      db (PostgreSQL 16)
 ```
 
-**Arquitectura objetivo (documento de arquitectura):**
+**En producción (Railway, ver [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md)):**
 
 ```
-Navegador (React SPA)
-        |
-      Nginx  ──  estáticos + proxy /api
-        |
-   Django + DRF  ────  Celery Worker
-        |                  |
-   PostgreSQL           Redis
+Navegador ──> frontend (Nginx con el build de Vite)
+    |
+    └───────> backend (gunicorn + Django + DRF) ──> PostgreSQL 16
 ```
 
-La regla planeada para el backend es que la lógica de negocio viva en un `services.py` por app y que vistas y serializers solo manejen entrada, salida y permisos. Hoy la lógica está en vistas y serializers; todavía no hay archivos `services.py`.
+La lógica de negocio vive en un `services.py` por app; vistas y serializers solo manejan entrada, salida y permisos. Así las reglas se prueban sin pasar por HTTP.
 
 ---
 
@@ -83,11 +83,12 @@ La regla planeada para el backend es que la lógica de negocio viva en un `servi
 ├── backend/
 │   ├── apps/
 │   │   ├── accounts/          # usuarios, roles, autenticación, comando datos_prueba
-│   │   ├── catalogo/          # programas, materias, periodos
-│   │   ├── disponibilidad/    # bloques horarios
-│   │   ├── tutorias/          # reservas, asistencia, cancelaciones
-│   │   ├── reportes/          # modelo de auditoría
-│   │   └── notificaciones/    # modelo de notificaciones
+│   │   ├── catalogo/          # programas, materias, periodos, asignaciones, materias cursadas, configuración
+│   │   ├── disponibilidad/    # horarios publicados
+│   │   ├── tutores/           # postulaciones y habilitación del estudiante tutor
+│   │   ├── tutorias/          # reservas, resultado, cancelaciones, evaluaciones
+│   │   ├── reportes/          # indicadores del panel y reporte por tutor
+│   │   └── notificaciones/    # notificaciones guardadas y envío de correos
 │   ├── config/                # settings, urls, db
 │   ├── Dockerfile
 │   └── requirements.txt
@@ -160,7 +161,7 @@ Todos los usuarios tienen la contraseña `Aula2026*`. Para entrar rápido:
 | Estudiante | `estudiante@aulalibre.test` |
 | Admin de Django (`/admin`) | `admin@aulalibre.test` (es también el usuario) |
 
-Las personas, documentos, teléfonos y correos son inventados. Los correos usan el dominio reservado `.test`, así que el sistema nunca le escribe a nadie real. El login acepta ese dominio porque `VITE_EMAIL_DOMAINS` lo incluye en desarrollo; la recuperación de contraseña no funciona con estos usuarios (solo acepta `@ecci.edu.co`).
+Las personas, documentos, teléfonos y correos son inventados. Los correos usan el dominio reservado `.test`, así que el sistema nunca le escribe a nadie real. El login y la recuperación de contraseña aceptan ese dominio porque `VITE_EMAIL_DOMAINS` (y `EMAIL_DOMAINS` en el backend) lo incluyen; aun así, el código de recuperación no le llega a nadie porque los correos `.test` no existen. En desarrollo los correos se imprimen en el log del backend (`docker compose logs -f tutorias-django`).
 
 ```bash
 # Volver a generar los datos (borra solo los de prueba y los crea de nuevo, con fechas actualizadas)
@@ -186,7 +187,8 @@ Se configuran en el archivo `.env`, que **nunca se sube al repositorio**. La pla
 | `SEED_DEMO` | `1` carga los datos de prueba al arrancar; `0` no | `1` |
 | `VITE_EMAIL_DOMAINS` | Dominios de correo aceptados en el login | `ecci.edu.co,aulalibre.test` |
 | `VITE_USE_POLLING` | Recarga automática del frontend dentro de Docker en Windows/Mac | `true` |
-| `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | Correo del sistema para recuperar contraseña. Se piden al Scrum Master | vacío |
+| `EMAIL_BACKEND` | Cómo salen los correos. En desarrollo se imprimen en el log; en Railway se usa una API de correo (ver [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md)) | consola |
+| `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | Solo si se usa SMTP. Se piden al Scrum Master | vacío |
 
 Si cambias `FRONTEND_PORT` o `APP_PORT`, docker-compose ajusta solo la URL de la API del frontend y los orígenes CORS del backend.
 
@@ -194,16 +196,17 @@ Si cambias `FRONTEND_PORT` o `APP_PORT`, docker-compose ajusta solo la URL de la
 
 ## Pruebas
 
-Hoy no hay pruebas automatizadas escritas. Lo que sí se verifica en cada PR (GitHub Actions):
+El backend tiene cerca de 200 pruebas automáticas (reglas de reserva, cancelación, postulación, notas, permisos por rol, reportes y correos). Cada PR corre en GitHub Actions:
 
-- Backend: Ruff (informativo), `manage.py check`, migraciones pendientes, migraciones contra PostgreSQL 16, carga de datos de prueba y `manage.py test`.
-- Frontend: ESLint, build (`tsc` + Vite) e imagen de producción.
+- Backend: Ruff, `manage.py check`, migraciones pendientes, migraciones contra PostgreSQL 16, datos de prueba (carga, segunda corrida y `--reset`), `manage.py test` y validación del esquema OpenAPI.
+- Frontend: ESLint, build (`tsc` + Vite) e imagen de producción con Nginx.
 - Prueba de humo: `docker compose up` completo, API, login con usuario de prueba, frontend y CORS.
+- Imágenes de Railway: backend con `DEBUG=False` y healthcheck, frontend en el puerto de Railway.
 - Gitleaks: búsqueda de secretos en el historial.
 
 ```bash
-# Backend (cuando haya pruebas)
-docker compose exec tutorias-django pytest --cov=apps
+# Backend
+docker compose exec tutorias-django python manage.py test
 
 # Frontend
 docker compose exec frontend npm run lint
