@@ -3,16 +3,32 @@ import axios from 'axios';
 import { api } from '../api/axios';
 import { AdminRail } from '../components/admin/AdminRail';
 import { Toast } from '../components/constelacion/Toast';
-import { CalendarIcon, CheckIcon, ClockIcon } from '../components/constelacion/Icons';
+import {
+  CalendarIcon,
+  CheckIcon,
+  ClockIcon,
+  LayersIcon,
+  ListIcon,
+  UserIcon,
+} from '../components/constelacion/Icons';
 import { useAuthStore } from '../store/useAuthStore';
-import { mensajeError } from '../utils/api';
+import { erroresPorCampo, mensajeError } from '../utils/api';
 
+/** Los 12 parámetros de GET/PATCH /catalogo/configuracion/ (las notas llegan como texto decimal). */
 interface Configuracion {
   cupos_semanales_tutor: number;
   horas_anticipacion_reservar: number;
   horas_anticipacion_cancelar: number;
   /** RF-02: nota desde la que una materia cursada cuenta como aprobada. */
-  nota_aprobatoria: number;
+  nota_aprobatoria: number | string;
+  nota_minima: number | string;
+  semestre_minimo_tutor: number;
+  diferencia_semestres: number;
+  peso_corte1: number;
+  peso_corte2: number;
+  peso_corte3: number;
+  calificacion_minima: number;
+  calificacion_maxima: number;
 }
 
 interface Original {
@@ -20,7 +36,40 @@ interface Original {
   reservar: number;
   cancelar: number;
   aprobatoria: number;
+  notaMinima: number;
+  semestreMinimo: number;
+  diferencia: number;
+  peso1: number;
+  peso2: number;
+  peso3: number;
+  calificacionMinima: number;
+  calificacionMaxima: number;
 }
+
+const aNumero = (valor: unknown, porDefecto: number): number => {
+  const numero = Number(valor);
+  return Number.isFinite(numero) ? numero : porDefecto;
+};
+
+/** Valores de la pantalla a partir de la respuesta (con los mismos respaldos del backend). */
+const desdeApi = (config: Configuracion): Original => ({
+  limite: config.cupos_semanales_tutor,
+  reservar: config.horas_anticipacion_reservar,
+  cancelar: config.horas_anticipacion_cancelar,
+  aprobatoria: Number(config.nota_aprobatoria) || 3,
+  notaMinima: aNumero(config.nota_minima, 4),
+  semestreMinimo: aNumero(config.semestre_minimo_tutor, 3),
+  diferencia: aNumero(config.diferencia_semestres, 2),
+  peso1: aNumero(config.peso_corte1, 30),
+  peso2: aNumero(config.peso_corte2, 30),
+  peso3: aNumero(config.peso_corte3, 40),
+  calificacionMinima: aNumero(config.calificacion_minima, 1),
+  calificacionMaxima: aNumero(config.calificacion_maxima, 10),
+});
+
+/** Escala de la calificación del tutor que acepta el backend. */
+const CALIFICACION_MIN = 1;
+const CALIFICACION_MAX = 10;
 
 const acotar = (valor: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, valor));
@@ -139,6 +188,68 @@ const Stepper = ({
       >
         +
       </button>
+    </div>
+  );
+};
+
+interface CampoNumeroProps {
+  id: string;
+  etiqueta: string;
+  valor: number;
+  onChange: (valor: number) => void;
+  min: number;
+  max: number;
+  step?: number;
+  /** Error del backend o aviso de la validación local, debajo del campo. */
+  mensaje?: string;
+  ayuda?: string;
+}
+
+/** Campo numérico con el mismo estilo de la nota aprobatoria y su error asociado. */
+const CampoNumero = ({
+  id,
+  etiqueta,
+  valor,
+  onChange,
+  min,
+  max,
+  step = 1,
+  mensaje,
+  ayuda,
+}: CampoNumeroProps) => {
+  const idMensaje = `${id}-mensaje`;
+  const idAyuda = `${id}-ayuda`;
+  const describe = [mensaje ? idMensaje : '', ayuda ? idAyuda : ''].filter(Boolean).join(' ');
+
+  return (
+    <div className="min-w-0">
+      <label htmlFor={id} className="text-[11px] font-medium text-slate-ink">
+        {etiqueta}
+      </label>
+      <input
+        id={id}
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={valor}
+        onChange={(event) => onChange(acotar(Number(event.target.value), min, max))}
+        aria-invalid={Boolean(mensaje)}
+        aria-describedby={describe || undefined}
+        className={`mt-2 block h-12 w-32 rounded-full border bg-mist px-4 text-center text-[16px] font-semibold text-tinta outline-none transition-colors focus:border-violeta-accion ${
+          mensaje ? 'border-peligro' : 'border-faint'
+        }`}
+      />
+      {ayuda && (
+        <p id={idAyuda} className="mt-1.5 max-w-[220px] text-[10px] leading-relaxed text-muted">
+          {ayuda}
+        </p>
+      )}
+      {mensaje && (
+        <p id={idMensaje} role="alert" className="mt-1.5 max-w-[260px] text-[10.5px] leading-relaxed text-peligro">
+          {mensaje}
+        </p>
+      )}
     </div>
   );
 };
@@ -427,8 +538,36 @@ export const ConfiguracionGeneral = () => {
   const [reservar, setReservar] = useState(2);
   const [cancelar, setCancelar] = useState(1);
   const [aprobatoria, setAprobatoria] = useState(3);
+  const [notaMinima, setNotaMinima] = useState(4);
+  const [semestreMinimo, setSemestreMinimo] = useState(3);
+  const [diferencia, setDiferencia] = useState(2);
+  const [peso1, setPeso1] = useState(30);
+  const [peso2, setPeso2] = useState(30);
+  const [peso3, setPeso3] = useState(40);
+  const [calificacionMinima, setCalificacionMinima] = useState(1);
+  const [calificacionMaxima, setCalificacionMaxima] = useState(10);
   const [simulacion, setSimulacion] = useState(3);
   const [original, setOriginal] = useState<Original | null>(null);
+  // Errores por campo del último guardado fallido, con los valores que los produjeron.
+  const [erroresGuardado, setErroresGuardado] = useState<{
+    firma: string;
+    campos: Record<string, string>;
+  } | null>(null);
+
+  const aplicarValores = useCallback((valores: Original) => {
+    setLimite(valores.limite);
+    setReservar(valores.reservar);
+    setCancelar(valores.cancelar);
+    setAprobatoria(valores.aprobatoria);
+    setNotaMinima(valores.notaMinima);
+    setSemestreMinimo(valores.semestreMinimo);
+    setDiferencia(valores.diferencia);
+    setPeso1(valores.peso1);
+    setPeso2(valores.peso2);
+    setPeso3(valores.peso3);
+    setCalificacionMinima(valores.calificacionMinima);
+    setCalificacionMaxima(valores.calificacionMaxima);
+  }, []);
 
   const consultar = useCallback(async (): Promise<{
     config: Configuracion | null;
@@ -451,22 +590,14 @@ export const ConfiguracionGeneral = () => {
   const aplicar = useCallback(
     (datos: { config: Configuracion | null; error: string | null }) => {
       if (datos.config) {
-        const cargado: Original = {
-          limite: datos.config.cupos_semanales_tutor,
-          reservar: datos.config.horas_anticipacion_reservar,
-          cancelar: datos.config.horas_anticipacion_cancelar,
-          aprobatoria: Number(datos.config.nota_aprobatoria) || 3,
-        };
-        setLimite(cargado.limite);
-        setReservar(cargado.reservar);
-        setCancelar(cargado.cancelar);
-        setAprobatoria(cargado.aprobatoria);
+        const cargado = desdeApi(datos.config);
+        aplicarValores(cargado);
         setOriginal(cargado);
       }
       setErrorCarga(datos.error);
       setCargando(false);
     },
-    [],
+    [aplicarValores],
   );
 
   useEffect(() => {
@@ -491,39 +622,71 @@ export const ConfiguracionGeneral = () => {
     return () => window.clearTimeout(id);
   }, [toast]);
 
-  const sucio =
-    original !== null &&
-    (limite !== original.limite ||
-      reservar !== original.reservar ||
-      cancelar !== original.cancelar ||
-      aprobatoria !== original.aprobatoria);
+  const actual: Original = {
+    limite,
+    reservar,
+    cancelar,
+    aprobatoria,
+    notaMinima,
+    semestreMinimo,
+    diferencia,
+    peso1,
+    peso2,
+    peso3,
+    calificacionMinima,
+    calificacionMaxima,
+  };
+  const firmaActual = JSON.stringify(actual);
+  const sucio = original !== null && firmaActual !== JSON.stringify(original);
+
+  const sumaPesos = peso1 + peso2 + peso3;
+
+  // Las mismas reglas que valida el backend, para avisar antes de guardar (no bloquean).
+  const avisos: Record<string, string> = {};
+  if (sumaPesos !== 100) {
+    avisos.peso_corte3 = `Los pesos suman ${sumaPesos}. Deben sumar 100.`;
+  }
+  if (aprobatoria > notaMinima) {
+    avisos.nota_aprobatoria = 'No puede ser mayor que la nota mínima para ser tutor.';
+  }
+  if (calificacionMaxima <= calificacionMinima) {
+    avisos.calificacion_maxima = 'La calificación máxima debe ser mayor que la mínima.';
+  }
+
+  // El error del backend se muestra mientras los valores sean los que se enviaron.
+  const erroresVigentes =
+    erroresGuardado && erroresGuardado.firma === firmaActual ? erroresGuardado.campos : {};
+  const mensajeDe = (campo: string): string | undefined => erroresVigentes[campo] ?? avisos[campo];
 
   const guardar = async () => {
     setGuardando(true);
     setErrorGuardado(null);
+    setErroresGuardado(null);
 
     try {
+      // Se envían los 12 parámetros: el backend valida las reglas cruzadas con todos.
       const { data } = await api.patch<Configuracion>('/catalogo/configuracion/', {
         cupos_semanales_tutor: limite,
         horas_anticipacion_reservar: reservar,
         horas_anticipacion_cancelar: cancelar,
         nota_aprobatoria: aprobatoria,
+        nota_minima: notaMinima,
+        semestre_minimo_tutor: semestreMinimo,
+        diferencia_semestres: diferencia,
+        peso_corte1: peso1,
+        peso_corte2: peso2,
+        peso_corte3: peso3,
+        calificacion_minima: calificacionMinima,
+        calificacion_maxima: calificacionMaxima,
       });
 
-      const guardado: Original = {
-        limite: data.cupos_semanales_tutor,
-        reservar: data.horas_anticipacion_reservar,
-        cancelar: data.horas_anticipacion_cancelar,
-        aprobatoria: Number(data.nota_aprobatoria) || 3,
-      };
-      setLimite(guardado.limite);
-      setReservar(guardado.reservar);
-      setCancelar(guardado.cancelar);
-      setAprobatoria(guardado.aprobatoria);
+      const guardado = desdeApi(data);
+      aplicarValores(guardado);
       setOriginal(guardado);
       setToast('Configuración guardada. Los cambios ya aplican a toda la plataforma.');
     } catch (error) {
       setErrorGuardado(mensajeError(error));
+      setErroresGuardado({ firma: firmaActual, campos: erroresPorCampo(error) });
     } finally {
       setGuardando(false);
     }
@@ -531,11 +694,9 @@ export const ConfiguracionGeneral = () => {
 
   const descartar = () => {
     if (!original) return;
-    setLimite(original.limite);
-    setReservar(original.reservar);
-    setCancelar(original.cancelar);
-    setAprobatoria(original.aprobatoria);
+    aplicarValores(original);
     setErrorGuardado(null);
+    setErroresGuardado(null);
   };
 
   const reintentar = () => {
@@ -550,7 +711,9 @@ export const ConfiguracionGeneral = () => {
     ? 'Guardando cambios…'
     : errorGuardado
       ? errorGuardado
-      : sucio
+      : sucio && Object.keys(avisos).length > 0
+        ? 'Tienes cambios sin guardar. Revisa los campos marcados en rojo.'
+        : sucio
         ? 'Tienes cambios sin guardar.'
         : 'Todo guardado. Los valores actuales ya están aplicados.';
 
@@ -708,22 +871,16 @@ export const ConfiguracionGeneral = () => {
                   </div>
 
                   <div className="mt-5 flex flex-wrap items-end gap-4">
-                    <label className="block">
-                      <span className="text-[11px] font-medium text-slate-ink">
-                        Nota aprobatoria
-                      </span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={5}
-                        step={0.1}
-                        value={aprobatoria}
-                        onChange={(event) =>
-                          setAprobatoria(acotar(Number(event.target.value), 0, 5))
-                        }
-                        className="mt-2 h-12 w-32 rounded-full border border-faint bg-mist px-4 text-center text-[16px] font-semibold text-tinta outline-none transition-colors focus:border-violeta-accion"
-                      />
-                    </label>
+                    <CampoNumero
+                      id="nota-aprobatoria"
+                      etiqueta="Nota aprobatoria"
+                      valor={aprobatoria}
+                      onChange={setAprobatoria}
+                      min={0}
+                      max={5}
+                      step={0.1}
+                      mensaje={mensajeDe('nota_aprobatoria')}
+                    />
 
                     <div>
                       <p className="text-[10.5px] text-muted">Valores frecuentes</p>
@@ -787,6 +944,168 @@ export const ConfiguracionGeneral = () => {
 
                   <p className="mt-5 text-[10.5px] leading-relaxed text-muted">
                     Al cancelar se libera el cupo y se envía un correo a la otra persona.
+                  </p>
+                </section>
+
+                <section className="rounded-[28px] bg-white p-5 sm:p-6">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-terracota/15 text-terracota">
+                      <UserIcon className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <h2 className="text-[16px] font-semibold text-tinta">
+                        Requisitos para ser tutor
+                      </h2>
+                      <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">
+                        Lo que debe cumplir un estudiante para postularse como tutor de una materia y
+                        a quién puede atender.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap gap-x-6 gap-y-4">
+                    <CampoNumero
+                      id="nota-minima"
+                      etiqueta="Nota mínima en la materia"
+                      valor={notaMinima}
+                      onChange={setNotaMinima}
+                      min={0}
+                      max={5}
+                      step={0.1}
+                      ayuda="Debe ser igual o mayor que la nota aprobatoria."
+                      mensaje={mensajeDe('nota_minima')}
+                    />
+                    <CampoNumero
+                      id="semestre-minimo"
+                      etiqueta="Semestre mínimo"
+                      valor={semestreMinimo}
+                      onChange={setSemestreMinimo}
+                      min={1}
+                      max={20}
+                      ayuda="Desde qué semestre puede postularse."
+                      mensaje={mensajeDe('semestre_minimo_tutor')}
+                    />
+                    <CampoNumero
+                      id="diferencia-semestres"
+                      etiqueta="Diferencia de semestres"
+                      valor={diferencia}
+                      onChange={setDiferencia}
+                      min={0}
+                      max={20}
+                      ayuda="Cuántos semestres por delante debe ir el tutor estudiante."
+                      mensaje={mensajeDe('diferencia_semestres')}
+                    />
+                  </div>
+
+                  <p className="mt-4 text-[10.5px] leading-relaxed text-muted">
+                    Un estudiante desde el semestre{' '}
+                    <strong className="font-semibold text-tinta">{semestreMinimo}</strong> con{' '}
+                    <strong className="font-semibold text-tinta">
+                      {notaMinima.toFixed(1).replace('.', ',')}
+                    </strong>{' '}
+                    o más en la materia puede postularse, y atiende a estudiantes que vayan al menos{' '}
+                    <strong className="font-semibold text-tinta">
+                      {diferencia} {diferencia === 1 ? 'semestre' : 'semestres'}
+                    </strong>{' '}
+                    detrás.
+                  </p>
+                </section>
+
+                <section className="rounded-[28px] bg-white p-5 sm:p-6">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violeta/10 text-violeta-accion">
+                      <LayersIcon className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <h2 className="text-[16px] font-semibold text-tinta">Nota final</h2>
+                      <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">
+                        Cuánto pesa cada corte en la nota final de una materia cursada. Los tres pesos
+                        deben sumar 100.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap gap-x-6 gap-y-4">
+                    <CampoNumero
+                      id="peso-corte1"
+                      etiqueta="Corte 1 (%)"
+                      valor={peso1}
+                      onChange={setPeso1}
+                      min={0}
+                      max={100}
+                      mensaje={mensajeDe('peso_corte1')}
+                    />
+                    <CampoNumero
+                      id="peso-corte2"
+                      etiqueta="Corte 2 (%)"
+                      valor={peso2}
+                      onChange={setPeso2}
+                      min={0}
+                      max={100}
+                      mensaje={mensajeDe('peso_corte2')}
+                    />
+                    <CampoNumero
+                      id="peso-corte3"
+                      etiqueta="Corte 3 (%)"
+                      valor={peso3}
+                      onChange={setPeso3}
+                      min={0}
+                      max={100}
+                      mensaje={mensajeDe('peso_corte3')}
+                    />
+                  </div>
+
+                  <p
+                    aria-live="polite"
+                    className={`mt-4 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold ${
+                      sumaPesos === 100 ? 'bg-exito/10 text-exito' : 'bg-peligro/10 text-peligro'
+                    }`}
+                  >
+                    Suma: {sumaPesos} de 100
+                  </p>
+                </section>
+
+                <section className="rounded-[28px] bg-white p-5 sm:p-6">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-salvia/40 text-exito">
+                      <ListIcon className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <h2 className="text-[16px] font-semibold text-tinta">
+                        Calificación del tutor
+                      </h2>
+                      <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">
+                        Escala con la que los estudiantes califican la tutoría al terminarla.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap gap-x-6 gap-y-4">
+                    <CampoNumero
+                      id="calificacion-minima"
+                      etiqueta="Mínima"
+                      valor={calificacionMinima}
+                      onChange={setCalificacionMinima}
+                      min={CALIFICACION_MIN}
+                      max={CALIFICACION_MAX}
+                      mensaje={mensajeDe('calificacion_minima')}
+                    />
+                    <CampoNumero
+                      id="calificacion-maxima"
+                      etiqueta="Máxima"
+                      valor={calificacionMaxima}
+                      onChange={setCalificacionMaxima}
+                      min={CALIFICACION_MIN}
+                      max={CALIFICACION_MAX}
+                      mensaje={mensajeDe('calificacion_maxima')}
+                    />
+                  </div>
+
+                  <p className="mt-4 text-[10.5px] leading-relaxed text-muted">
+                    Los estudiantes califican de{' '}
+                    <strong className="font-semibold text-tinta">{calificacionMinima}</strong> a{' '}
+                    <strong className="font-semibold text-tinta">{calificacionMaxima}</strong>. La
+                    escala admitida va de {CALIFICACION_MIN} a {CALIFICACION_MAX}.
                   </p>
                 </section>
               </div>
