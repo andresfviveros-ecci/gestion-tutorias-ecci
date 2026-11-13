@@ -23,7 +23,7 @@ gsap.registerPlugin(DrawSVGPlugin);
 type Estado = 'trabajando' | ResultadoCierre | 'listo';
 
 /** Cuánto dura como mínimo, para que no parpadee si el backend responde al instante. */
-const MINIMO_MS = 1700;
+const MINIMO_MS = { entrada: 800, salida: 1000 } as const;
 
 const MENSAJES: Record<Estado, string> = {
   trabajando: '',
@@ -128,35 +128,39 @@ const Cortina: FC<{ transicion: Transicion }> = ({ transicion }) => {
         return;
       }
 
+      // Posiciones absolutas: la intro que se espera termina a ~1 s.
       intro
         .fromTo(
           el,
           { clipPath: `circle(0px at ${x}px ${y}px)` },
-          { clipPath: `circle(${radio}px at ${x}px ${y}px)`, duration: 0.85, ease: 'expo.inOut' },
+          { clipPath: `circle(${radio}px at ${x}px ${y}px)`, duration: 0.55, ease: 'expo.inOut' },
+          0,
         )
-        .from(q('[data-brillo]'), { autoAlpha: 0, scale: 0.6, duration: 1.4 }, '-=0.45')
-        .from(q('[data-anillo]'), { autoAlpha: 0, scale: 0.55, duration: 1.2, stagger: 0.09 }, '<')
         .fromTo(
           q('[data-trazo]'),
           { drawSVG: '0% 0%' },
-          { drawSVG: '0% 100%', duration: 0.95, ease: 'power2.inOut' },
-          '<0.05',
+          { drawSVG: '0% 100%', duration: 0.5, ease: 'power2.inOut' },
+          0.25,
         )
         .from(
           q('[data-punto]'),
-          { scale: 0, y: -22, transformOrigin: '50% 50%', duration: 0.75, ease: 'back.out(3.2)' },
-          '-=0.4',
+          { scale: 0, y: -22, transformOrigin: '50% 50%', duration: 0.4, ease: 'back.out(3.2)' },
+          0.6,
         )
-        .from(q('[data-letra]'), { yPercent: 115, duration: 0.75, stagger: 0.03 }, '-=0.6')
-        .from(q('[data-saludo]'), { autoAlpha: 0, y: 10, duration: 0.6 }, '-=0.5')
-        .from(q('[data-progreso]'), { autoAlpha: 0, y: 8, duration: 0.5 }, '-=0.45')
-        .fromTo(q('[data-barra]'), { scaleX: 0 }, { scaleX: 0.72, duration: 1.3, ease: 'power2.out' }, '<');
+        .from(q('[data-letra]'), { yPercent: 115, duration: 0.45, stagger: 0.02 }, 0.4)
+        .from(q('[data-saludo]'), { autoAlpha: 0, y: 10, duration: 0.35 }, 0.6)
+        .from(q('[data-progreso]'), { autoAlpha: 0, y: 8, duration: 0.3 }, 0.7);
+
+      // Lo decorativo va aparte: acompaña, pero no se espera a que termine.
+      gsap.from(q('[data-brillo]'), { autoAlpha: 0, scale: 0.6, duration: 0.9, delay: 0.3, ease: 'expo.out' });
+      gsap.from(q('[data-anillo]'), { autoAlpha: 0, scale: 0.55, duration: 0.8, stagger: 0.05, delay: 0.3, ease: 'expo.out' });
+      gsap.fromTo(q('[data-barra]'), { scaleX: 0 }, { scaleX: 0.72, duration: 1, ease: 'power2.out', delay: 0.6 });
 
       // Pulso del punto violeta mientras se espera al servidor.
       gsap.fromTo(
         q('[data-pulso]'),
         { scale: 1, autoAlpha: 0.55, transformOrigin: '50% 50%' },
-        { scale: 2.8, autoAlpha: 0, duration: 1.5, repeat: -1, ease: 'power2.out', delay: 1.3, immediateRender: false },
+        { scale: 2.8, autoAlpha: 0, duration: 1.5, repeat: -1, ease: 'power2.out', delay: 0.9, immediateRender: false },
       );
       // Los anillos giran despacio, como el fondo del login.
       gsap.to(q('[data-anillos]'), { rotation: 360, duration: 60, repeat: -1, ease: 'none' });
@@ -164,14 +168,30 @@ const Cortina: FC<{ transicion: Transicion }> = ({ transicion }) => {
 
     const correr = async () => {
       const tarea: Promise<Estado> = transicion.tipo === 'salida' ? transicion.tarea : Promise.resolve('listo');
-      const restante = Math.max(0, (reducir ? 400 : MINIMO_MS) - (performance.now() - inicio));
+      const restante = Math.max(0, (reducir ? 400 : MINIMO_MS[transicion.tipo]) - (performance.now() - inicio));
       const [resultado] = await Promise.all([tarea, terminada(intro), esperar(restante)]);
       if (cancelado) return;
+
+      // Al entrar no hace falta un «listo»: la barra se completa y se pasa al panel.
+      // Al salir sí se muestra cómo terminó el aviso al servidor.
+      if (transicion.tipo === 'entrada') {
+        let completar!: gsap.core.Tween;
+        ctx.add(() => {
+          completar = gsap.to(q('[data-barra]'), { scaleX: 1, duration: 0.25, ease: 'power3.out', overwrite: true });
+        });
+        await terminada(completar);
+        if (cancelado) return;
+        navegar.current(transicion.destino, { replace: true });
+        await siguienteCuadro();
+        if (cancelado) return;
+        await recoger();
+        return;
+      }
 
       // Cambio de mensaje: sale el de espera, entra el resultado con su icono.
       let ocultar!: gsap.core.Tween;
       ctx.add(() => {
-        ocultar = gsap.to(q('[data-estado]'), { autoAlpha: 0, y: -6, duration: reducir ? 0.01 : 0.2 });
+        ocultar = gsap.to(q('[data-estado]'), { autoAlpha: 0, y: -6, duration: reducir ? 0.01 : 0.15 });
       });
       await terminada(ocultar);
       if (cancelado) return;
@@ -183,24 +203,24 @@ const Cortina: FC<{ transicion: Transicion }> = ({ transicion }) => {
       ctx.add(() => {
         final = gsap.timeline();
         final
-          .fromTo(q('[data-estado]'), { autoAlpha: 0, y: 6 }, { autoAlpha: 1, y: 0, duration: 0.3, ease: 'power2.out' })
-          .to(q('[data-barra]'), { scaleX: 1, duration: 0.45, ease: 'power3.out' }, '<')
-          .from(q('[data-icono-estado]'), { scale: 0, duration: 0.45, ease: 'back.out(3)' }, '<0.05')
-          .to({}, { duration: resultado === 'sin_conexion' ? 1.1 : 0.55 });
+          .fromTo(q('[data-estado]'), { autoAlpha: 0, y: 6 }, { autoAlpha: 1, y: 0, duration: 0.25, ease: 'power2.out' })
+          .to(q('[data-barra]'), { scaleX: 1, duration: 0.3, ease: 'power3.out', overwrite: true }, '<')
+          .from(q('[data-icono-estado]'), { scale: 0, duration: 0.35, ease: 'back.out(3)' }, '<0.05')
+          .to({}, { duration: resultado === 'sin_conexion' ? 1 : 0.25 });
       });
       await terminada(final);
       if (cancelado) return;
 
       // El cambio de ruta pasa detrás de la cortina.
-      if (transicion.tipo === 'salida') {
-        useAuthStore.getState().logout();
-        navegar.current('/', { replace: true, state: {} });
-      } else {
-        navegar.current(transicion.destino, { replace: true });
-      }
+      useAuthStore.getState().logout();
+      navegar.current('/', { replace: true, state: {} });
       await siguienteCuadro();
       if (cancelado) return;
+      await recoger();
+    };
 
+    /** La cortina se recoge hacia el centro y deja ver la pantalla nueva. */
+    const recoger = async () => {
       let salidaCortina!: gsap.core.Timeline;
       ctx.add(() => {
         salidaCortina = gsap.timeline();
@@ -209,16 +229,16 @@ const Cortina: FC<{ transicion: Transicion }> = ({ transicion }) => {
           return;
         }
         salidaCortina
-          .to(q('[data-contenido]'), { autoAlpha: 0, scale: 0.94, y: -10, duration: 0.4, ease: 'power2.in' })
-          .to(q('[data-anillo]'), { autoAlpha: 0, scale: 1.15, duration: 0.5, stagger: 0.05, ease: 'power2.in' }, '<')
+          .to(q('[data-contenido]'), { autoAlpha: 0, scale: 0.94, y: -10, duration: 0.3, ease: 'power2.in' })
+          .to(q('[data-anillo]'), { autoAlpha: 0, scale: 1.15, duration: 0.35, stagger: 0.03, ease: 'power2.in' }, '<')
           .to(
             el,
             {
               clipPath: `circle(0px at ${ancho / 2}px ${alto / 2}px)`,
-              duration: 0.8,
+              duration: 0.5,
               ease: 'expo.inOut',
             },
-            '-=0.15',
+            '-=0.2',
           );
       });
       await terminada(salidaCortina);
