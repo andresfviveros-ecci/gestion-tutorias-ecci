@@ -264,6 +264,18 @@ export const Calendario: React.FC = () => {
     return mapa;
   }, [reservas]);
 
+  // GT-273: un horario está libre solo si nadie lo ha reservado. El estado
+  // DISPONIBLE no basta: sigue así hasta que se llena el último cupo.
+  const reservasDe = (slot: ScheduleSlot) => reservasPorBloque.get(String(slot.id)) ?? [];
+  const numeroReservas = (slot: ScheduleSlot) =>
+    Math.max(slot.cupo_ocupado ?? 0, reservasDe(slot).length);
+  const estaLibre = (slot: ScheduleSlot) => numeroReservas(slot) === 0;
+  // 'Ana' · 'Ana y Luis' · 'Ana, Luis y Sara'.
+  const listarNombres = (nombres: string[]) =>
+    nombres.length <= 1
+      ? (nombres[0] ?? '')
+      : `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}`;
+
   const { monday, sunday } = getWeekRange(weekOffset);
   const m1 = MESES[monday.getMonth()];
   const m2 = MESES[sunday.getMonth()];
@@ -335,7 +347,7 @@ export const Calendario: React.FC = () => {
                 <span className="h-2.5 w-2.5 rounded-full bg-exito" /> Libre (sin reservas)
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-tinta" /> Reservada por un estudiante
+                <span className="h-2.5 w-2.5 rounded-full bg-tinta" /> Con reservas
               </span>
               <span className="hidden sm:inline">Haz clic para ver o editar el detalle</span>
             </div>
@@ -377,7 +389,7 @@ export const Calendario: React.FC = () => {
                     <div key={dia} className="space-y-2 p-2">
                       {daySlots.map((s) => {
                         const nombreMat = getMateriaNombre(s.materia);
-                        const isLibre = s.estado === 'DISPONIBLE' || s.estado === 'Libre';
+                        const isLibre = estaLibre(s);
                         const reservasBloque = reservasPorBloque.get(String(s.id)) ?? [];
                         const primerNombre = reservasBloque[0]?.estudiante_nombre?.trim();
 
@@ -487,14 +499,14 @@ export const Calendario: React.FC = () => {
               <div>
                 <span
                   className={`inline-block rounded-full px-3 py-1 text-[10px] font-semibold uppercase ${
-                    editingSlot.estado === 'DISPONIBLE' || editingSlot.estado === 'Libre'
-                      ? 'bg-exito/10 text-exito'
-                      : 'bg-faint text-slate-ink'
+                    estaLibre(editingSlot) ? 'bg-exito/10 text-exito' : 'bg-advertencia/10 text-advertencia'
                   }`}
                 >
-                  {editingSlot.estado === 'DISPONIBLE' || editingSlot.estado === 'Libre'
-                    ? 'LIBRE (SIN RESERVAS)'
-                    : 'RESERVADA'}
+                  {estaLibre(editingSlot)
+                    ? 'Libre (sin reservas)'
+                    : numeroReservas(editingSlot) === 1
+                      ? 'Con 1 reserva'
+                      : `Con ${numeroReservas(editingSlot)} reservas`}
                 </span>
               </div>
 
@@ -596,9 +608,31 @@ export const Calendario: React.FC = () => {
               ¿Suspender este horario?
             </h3>
 
-            <p className="mb-6 text-[12px] leading-relaxed text-muted">
+            <p className={`${estaLibre(editingSlot) ? 'mb-6' : 'mb-3'} text-[12px] leading-relaxed text-muted`}>
               Este horario de <strong className="text-tinta">{getMateriaNombre(editingSlot.materia)}</strong> ({editingSlot.diaSemana || 'Programado'}, {editingSlot.horaInicio}–{editingSlot.horaFin}) dejará de estar visible para los estudiantes. Puedes volver a publicarlo cuando quieras.
             </p>
+
+            {/* GT-273: suspender un horario con reservas cancela esas tutorías; se dice a quiénes. */}
+            {!estaLibre(editingSlot) && (
+              <div
+                role="alert"
+                className="mb-6 rounded-2xl border border-peligro/30 bg-peligro/5 px-4 py-3 text-left text-[11.5px] leading-relaxed text-peligro"
+              >
+                <p className="font-semibold">
+                  {numeroReservas(editingSlot) === 1
+                    ? 'Este horario tiene 1 reserva.'
+                    : `Este horario tiene ${numeroReservas(editingSlot)} reservas.`}
+                </p>
+                <p className="mt-1">
+                  {reservasDe(editingSlot).length > 0
+                    ? `Se cancelarán las tutorías de ${listarNombres(
+                        reservasDe(editingSlot).map((reserva) => reserva.estudiante_nombre || 'un estudiante'),
+                      )}.`
+                    : 'Se cancelarán sus tutorías.'}{' '}
+                  Cada estudiante recibirá un correo con el aviso.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3 text-[12px] font-semibold">
               <button
@@ -615,7 +649,11 @@ export const Calendario: React.FC = () => {
                 onClick={handleConfirmSuspender}
                 className="h-11 cursor-pointer rounded-full bg-peligro text-white transition-opacity hover:opacity-95 disabled:opacity-50"
               >
-                {saving ? 'Procesando...' : 'Sí, Suspender'}
+                {saving
+                  ? 'Procesando...'
+                  : estaLibre(editingSlot)
+                    ? 'Sí, Suspender'
+                    : 'Sí, suspender y cancelar'}
               </button>
             </div>
           </div>

@@ -14,6 +14,8 @@ interface RevisionSolicitudModalProps {
   onConfirmar: (decision: DecisionRevision, motivo: string) => Promise<void>;
   /** Se llama al cerrar después de una decisión registrada. */
   onVerListado?: (estado: DecisionRevision) => void;
+  /** Quién revisa: el docente de la materia o la coordinación (materia sin docente). */
+  revisor?: 'docente' | 'coordinacion';
 }
 
 const ETIQUETAS: Record<EstadoSolicitud, string> = {
@@ -86,7 +88,9 @@ export const RevisionSolicitudModal = ({
   onCerrar,
   onConfirmar,
   onVerListado,
+  revisor = 'docente',
 }: RevisionSolicitudModalProps) => {
+  const quienRevisa = revisor === 'coordinacion' ? 'Coordinación' : 'Docente';
   const [fase, setFase] = useState<'revision' | 'error' | 'exito'>(
     solicitud.estado !== 'PENDIENTE' ? 'exito' : 'revision',
   );
@@ -175,7 +179,7 @@ export const RevisionSolicitudModal = ({
     <Modal
       onCerrar={onCerrar}
       tituloId="titulo-revision-solicitud"
-      eyebrow={`Gestión académica · Docente · Solicitud ${numero}`}
+      eyebrow={`Gestión académica · ${quienRevisa} · Solicitud ${numero}`}
       titulo="Aprobación o rechazo de solicitud"
       ancho="xl"
       cerrable={!enviando}
@@ -188,7 +192,8 @@ export const RevisionSolicitudModal = ({
               <div>
                 <h3 className="text-[15px] font-semibold text-tinta">Solicitud de tutoría</h3>
                 <p className="mt-0.5 text-[10.5px] text-muted">
-                  Revisión docente · {solicitud.materia_nombre}
+                  {revisor === 'coordinacion' ? 'Revisión de coordinación' : 'Revisión docente'} ·{' '}
+                  {solicitud.materia_nombre}
                 </p>
               </div>
               <span className="rounded-full bg-white px-3 py-1 text-[10.5px] font-medium text-muted">

@@ -403,6 +403,7 @@ export const ContenidoSolicitudes = ({ variante }: { variante: VarianteSolicitud
           onCerrar={() => setSeleccionada(null)}
           onConfirmar={confirmar}
           onVerListado={(estado) => setFiltro(estado)}
+          revisor={esCoordinacion ? 'coordinacion' : 'docente'}
         />
       )}
 
