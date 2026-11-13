@@ -42,7 +42,6 @@ Las versiones fijadas en `requirements.txt` incluyen:
 | django-cors-headers | Configuración de CORS para el frontend |
 | django-import-export | Funciones de importación y exportación en el admin |
 
-También están instalados Celery, Redis, pytest y Ruff. En el código revisado no se encontraron tareas de Celery ni configuración de Redis. Los archivos `tests.py` de las aplicaciones no contienen pruebas funcionales.
 
 ## Estructura del proyecto
 
@@ -122,7 +121,7 @@ La base de datos impide que un estudiante tenga más de una tutoría activa para
 
 `BaseModel` es abstracto y ofrece campos de auditoría: usuario y fecha de creación, y usuario y fecha de actualización. Los modelos que heredan de él reciben esos campos sin crear una tabla independiente para `BaseModel`.
 
-`Notificacion` almacena usuario, tutoría opcional, tipo, título, mensaje y los indicadores de lectura y envío por correo. `Auditoria` registra usuario, entidad, acción, datos anteriores y posteriores, e IP. Aunque los modelos existen, no hay endpoints funcionales para consultar o administrar notificaciones o reportes.
+`Notificacion` almacena usuario, tutoría opcional, tipo, título, mensaje y los indicadores de lectura y envío por correo. `Auditoria` registra usuario, entidad, acción, datos anteriores y posteriores, e IP. Los reportes ya tienen endpoints (`/api/accounts/dashboard-stats/` y `/api/reportes/tutores/`). Las notificaciones se crean y se envían por correo desde los servicios, pero todavía no hay endpoint para consultarlas, y `Auditoria` sigue sin uso.
 
 ## Autenticación y cuentas
 
@@ -256,7 +255,6 @@ docker compose exec tutorias-django python manage.py check
 - `GET /api/tutorias/tutorias/` y el detalle `/api/tutorias/tutorias/<id>/` filtran solo por estudiante. Un docente no ve las tutorías reservadas en sus bloques.
 - Por defecto `DEBUG` está activado y `ALLOWED_HOSTS` permite cualquier host. Para un despliegue hay que definir `DJANGO_DEBUG=False`, `DJANGO_SECRET_KEY` y `DJANGO_ALLOWED_HOSTS`.
 - El código de una tutoría es `TUT-<bloque>-<estudiante>` y es único: si un estudiante cancela y vuelve a reservar el mismo bloque, la segunda reserva choca con el código de la primera.
-- `celery` y `redis` están en `requirements.txt` pero no hay tareas ni configuración que los use.
 
 ## Variables de entorno
 

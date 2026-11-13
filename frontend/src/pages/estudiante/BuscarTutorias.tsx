@@ -923,12 +923,12 @@ export const BuscarTutorias = () => {
                   <FilaResumen
                     icono={<CheckIcon className="h-4 w-4" />}
                     titulo="Confirmación al reservar"
-                    detalle="Se notificará al docente de la tutoría."
+                    detalle="Te llega un correo con los datos de la tutoría, y al tutor también."
                   />
                   <FilaResumen
                     icono={<ClockIcon className="h-4 w-4" />}
-                    titulo="Recordatorios"
-                    detalle="Se enviará un aviso 24 h y 15 minutos antes del inicio."
+                    titulo="Si no puedes asistir"
+                    detalle="Cancela desde Mis reservas para liberar el cupo; el tutor recibe el aviso."
                   />
                 </div>
               </motion.section>
