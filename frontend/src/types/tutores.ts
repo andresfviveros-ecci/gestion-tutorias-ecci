@@ -23,6 +23,8 @@ export interface SolicitudTutor {
   motivo: string | null;
   revisada_por: number | null;
   revisada_por_nombre: string | null;
+  /** Docentes de la materia en el periodo: quienes revisan la solicitud (vacío = la coordinación). */
+  revisores?: string[];
   fecha_revision: string | null;
   date_creation: string;
 }
