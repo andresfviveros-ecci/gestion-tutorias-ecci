@@ -350,7 +350,7 @@ export const App: React.FC = () => {
         <Route
           path="/tutor/mi-disponibilidad/:id/editar"
           element={
-            <ProtectedRoute allowedRoles={['tutor']}>
+            <ProtectedRoute allowedRoles={['tutor', 'estudiante']} soloEstudianteTutor>
               <ModificarDisponibilidad />
             </ProtectedRoute>
           }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../../api/axios';
 import { StudentRail } from '../../components/estudiante/StudentRail';
 import { EmptyState } from '../../components/constelacion/EmptyState';
@@ -37,7 +37,12 @@ export const MisHorariosTutor = () => {
   const [materias, setMaterias] = useState<MateriaAPI[]>([]);
   const [reservas, setReservas] = useState<ReservaRecibida[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  // La pantalla de edición regresa aquí con el aviso de éxito en el estado de la navegación.
+  const [toast, setToast] = useState<string | null>(
+    () => (location.state as { toast?: string } | null)?.toast ?? null,
+  );
 
   const [bloqueSuspender, setBloqueSuspender] = useState<BloqueDisponibilidad | null>(null);
   const [motivo, setMotivo] = useState('');
@@ -80,6 +85,13 @@ export const MisHorariosTutor = () => {
       activo = false;
     };
   }, []);
+
+  // Se limpia el estado para que el aviso no vuelva a salir al recargar.
+  useEffect(() => {
+    if ((location.state as { toast?: string } | null)?.toast) {
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     if (!toast) return;
@@ -264,6 +276,13 @@ export const MisHorariosTutor = () => {
                             {bloque.estado}
                           </span>
                         )}
+                        <Link
+                          to={`/tutor/mi-disponibilidad/${bloque.id}/editar`}
+                          aria-label={`Editar el horario del ${diaYNumero(bloque.fecha)}`}
+                          className="rounded-full border border-faint bg-white px-4 py-2 text-[11px] font-semibold text-tinta transition-colors hover:bg-mist focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violeta-accion"
+                        >
+                          Editar
+                        </Link>
                         <button
                           type="button"
                           onClick={() => abrirSuspension(bloque)}
