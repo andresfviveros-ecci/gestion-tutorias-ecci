@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { LogoutIcon, RailItem, RailLateral } from "../constelacion/Rail";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useTransicionSesion } from "../../store/useTransicionSesion";
-import { api } from "../../api/axios";
+import { usePuedePublicar } from "../../store/usePermisoTutor";
 
 const GridIcon: React.FC = () => (
   <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
@@ -96,24 +96,8 @@ export const StudentRail: React.FC = () => {
   // Abre la confirmación; el cierre real y la animación los maneja App.
   const handleLogout = useTransicionSesion((state) => state.pedirCierre);
   // GT-255: solo el estudiante con una solicitud de tutor aprobada publica horarios.
-  const [puedePublicar, setPuedePublicar] = useState(false);
-
-  useEffect(() => {
-    let activo = true;
-
-    api
-      .get('/accounts/me/')
-      .then(({ data }) => {
-        if (activo) setPuedePublicar(Boolean(data?.puede_publicar));
-      })
-      .catch(() => {
-        // Sin la consulta se oculta la entrada; el resto del rail sigue igual.
-      });
-
-    return () => {
-      activo = false;
-    };
-  }, []);
+  // Sale del valor guardado por sesión, así no parpadea al cambiar de pantalla.
+  const puedePublicar = usePuedePublicar() === true;
 
   const nombre =
     user?.nombre ||
