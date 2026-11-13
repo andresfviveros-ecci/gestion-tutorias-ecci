@@ -3,6 +3,8 @@ import type { FormEvent, ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { TutorRail } from '../../components/tutor/TutorRail';
+import { StudentRail } from '../../components/estudiante/StudentRail';
+import { useAuthStore } from '../../store/useAuthStore';
 import {
   CalendarIcon,
   CheckIcon,
@@ -54,6 +56,23 @@ interface AsignacionDocenteMateria {
   materia_nombre?: string;
   periodo: number | string;
 }
+
+/** Lo mínimo de /tutores/solicitudes/ para saber qué materias tiene aprobadas el estudiante. */
+interface SolicitudAprobada {
+  materia: number | string;
+  materia_nombre?: string;
+  periodo: number | string;
+  estado?: string;
+}
+
+/**
+ * Rail y pantalla de regreso según quién edita: el docente vuelve a su
+ * Calendario y el estudiante tutor a Mis horarios (RF-01).
+ */
+const navegacionPorRol = (esEstudiante: boolean) =>
+  esEstudiante
+    ? { Rail: StudentRail, volverA: '/estudiante/mis-horarios', textoVolver: 'Volver a mis horarios' }
+    : { Rail: TutorRail, volverA: '/tutor/calendario', textoVolver: 'Volver al calendario' };
 
 const DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] as const;
 
@@ -144,6 +163,8 @@ const InfoRow = ({ icon, titulo, detalle }: InfoRowProps) => (
 export const ModificarDisponibilidad = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const esEstudiante = useAuthStore((state) => state.user?.role) === 'estudiante';
+  const { Rail, volverA, textoVolver } = navegacionPorRol(esEstudiante);
 
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -152,6 +173,8 @@ export const ModificarDisponibilidad = () => {
   const [bloque, setBloque] = useState<BloqueBackend | null>(null);
   const [materias, setMaterias] = useState<MateriaBackend[]>([]);
   const [bloquesDocente, setBloquesDocente] = useState<BloqueBackend[]>([]);
+  // Si no se pudo consultar qué materias tiene habilitadas, solo se conserva la actual.
+  const [sinCatalogo, setSinCatalogo] = useState(false);
 
   const [materiaId, setMateriaId] = useState<number | ''>('');
   const [fecha, setFecha] = useState('');
@@ -187,22 +210,41 @@ export const ModificarDisponibilidad = () => {
         setUbicacionOEnlace(esPresencial ? (data.lugar ?? '') : (data.enlace_virtual ?? ''));
         setObservaciones(data.observaciones || '');
 
-        const [resAsignaciones, resBloques] = await Promise.allSettled([
-          // Solo las materias que el docente tiene asignadas: el backend
-          // rechaza el PATCH si se cambia a una materia no habilitada.
+        const [resAsignaciones, resSolicitudes, resBloques] = await Promise.allSettled([
+          // Solo las materias habilitadas en el periodo del bloque: las
+          // asignadas al docente o aprobadas al estudiante tutor. El backend
+          // rechaza el PATCH si se cambia a una materia fuera de ese conjunto.
           api.get('/catalogo/docentes-materias/?docente=me'),
+          api.get('/tutores/solicitudes/?estudiante=me&estado=APROBADA'),
           api.get('/disponibilidad/disponibilidad/?docente=me&incluir_pasados=1'),
         ]);
 
         if (!activo) return;
 
-        if (resAsignaciones.status === 'fulfilled') {
-          const asignadas = extraerLista<AsignacionDocenteMateria>(resAsignaciones.value.data)
-            .filter((asignacion) => String(asignacion.periodo) === String(data.periodo))
-            .map((asignacion) => ({
-              id: Number(asignacion.materia),
-              nombre: asignacion.materia_nombre || `Materia ${asignacion.materia}`,
-            }));
+        if (resAsignaciones.status === 'fulfilled' || resSolicitudes.status === 'fulfilled') {
+          const delPeriodo = (periodo: number | string) => String(periodo) === String(data.periodo);
+          const asignadas: MateriaBackend[] = [];
+          const agregar = (materia: number | string, nombre?: string) => {
+            const idMateria = Number(materia);
+            if (!asignadas.some((item) => item.id === idMateria)) {
+              asignadas.push({ id: idMateria, nombre: nombre || `Materia ${materia}` });
+            }
+          };
+
+          if (resAsignaciones.status === 'fulfilled') {
+            extraerLista<AsignacionDocenteMateria>(resAsignaciones.value.data)
+              .filter((asignacion) => delPeriodo(asignacion.periodo))
+              .forEach((asignacion) => agregar(asignacion.materia, asignacion.materia_nombre));
+          }
+
+          if (resSolicitudes.status === 'fulfilled') {
+            extraerLista<SolicitudAprobada>(resSolicitudes.value.data)
+              .filter(
+                (solicitud) =>
+                  (solicitud.estado || '').toUpperCase() === 'APROBADA' && delPeriodo(solicitud.periodo),
+              )
+              .forEach((solicitud) => agregar(solicitud.materia, solicitud.materia_nombre));
+          }
 
           // La materia actual se conserva aunque ya no esté asignada: el
           // backend permite mantenerla al editar y el selector no queda vacío.
@@ -215,6 +257,12 @@ export const ModificarDisponibilidad = () => {
           }
 
           setMaterias(asignadas);
+        } else {
+          const actual = idDeMateria(data.materia);
+          if (actual !== '') {
+            setMaterias([{ id: actual, nombre: data.materia_nombre || 'Materia actual' }]);
+          }
+          setSinCatalogo(true);
         }
 
         if (resBloques.status === 'fulfilled') {
@@ -360,6 +408,10 @@ export const ModificarDisponibilidad = () => {
       });
 
       setBloque(data);
+      if (esEstudiante) {
+        navigate(volverA, { state: { toast: 'Guardaste los cambios del horario.' } });
+        return;
+      }
       setExito('Los cambios se guardaron correctamente y el horario publicado quedó actualizado.');
     } catch (err) {
       setError(describirError(err));
@@ -380,7 +432,7 @@ export const ModificarDisponibilidad = () => {
       });
 
       setConfirmarSuspension(false);
-      navigate('/tutor/calendario');
+      navigate(volverA);
     } catch (err) {
       setConfirmarSuspension(false);
       setError({
@@ -454,7 +506,7 @@ export const ModificarDisponibilidad = () => {
   if (noEncontrado) {
     return (
       <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
-        <TutorRail />
+        <Rail />
         <main className="min-w-0 flex-1 p-5 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-[640px] rounded-[32px] bg-white p-8 text-center">
             <h1 className="text-[22px] font-semibold text-tinta">No encontramos este horario</h1>
@@ -462,10 +514,10 @@ export const ModificarDisponibilidad = () => {
               El bloque no existe o no pertenece a tu cuenta.
             </p>
             <Link
-              to="/tutor/calendario"
+              to={volverA}
               className="mt-5 inline-flex h-11 items-center justify-center rounded-full bg-violeta-accion px-6 text-[12.5px] font-semibold text-white transition-colors hover:bg-violeta-profundo"
             >
-              Volver al calendario
+              {textoVolver}
             </Link>
           </div>
         </main>
@@ -475,13 +527,13 @@ export const ModificarDisponibilidad = () => {
 
   return (
     <div className="flex min-h-screen bg-mist font-constelacion text-tinta">
-      <TutorRail />
+      <Rail />
 
       <main className="min-w-0 flex-1">
         <div className="mx-auto w-full max-w-[1600px] px-5 py-6 pb-24 sm:px-7 md:pb-6 lg:px-8">
           <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-[11.5px] text-muted">Mi trabajo · Tutor</p>
+              <p className="text-[11.5px] text-muted">Mi trabajo · {esEstudiante ? 'Estudiante tutor' : 'Tutor'}</p>
               <h1 className="mt-1 text-[30px] font-medium leading-tight tracking-[-0.02em] text-tinta sm:text-[36px]">
                 Modificar disponibilidad
               </h1>
@@ -684,7 +736,8 @@ export const ModificarDisponibilidad = () => {
                         id="area-tutoria"
                         required
                         value={materiaId}
-                        disabled={bloqueadoPorReservas}
+                        disabled={bloqueadoPorReservas || sinCatalogo}
+                        aria-describedby={sinCatalogo ? 'area-tutoria-nota' : undefined}
                         onChange={(event) => {
                           setMateriaId(Number(event.target.value));
                           limpiarAvisos();
@@ -701,6 +754,11 @@ export const ModificarDisponibilidad = () => {
                           ))
                         )}
                       </select>
+                      {sinCatalogo && (
+                        <p id="area-tutoria-nota" className="mt-1.5 text-[10.7px] leading-relaxed text-muted">
+                          No pudimos consultar tus materias habilitadas. Se conserva la materia actual.
+                        </p>
+                      )}
                     </Field>
 
                     <Field label="Modalidad" htmlFor="modalidad">
@@ -774,7 +832,7 @@ export const ModificarDisponibilidad = () => {
                     <div className="flex flex-col-reverse gap-2 sm:flex-row">
                       <button
                         type="button"
-                        onClick={() => navigate('/tutor/calendario')}
+                        onClick={() => navigate(volverA)}
                         className="h-11 rounded-full bg-mist px-5 text-[12.9px] font-semibold text-tinta transition-colors hover:bg-faint"
                       >
                         Cancelar

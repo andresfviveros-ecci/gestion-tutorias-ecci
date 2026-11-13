@@ -2,6 +2,7 @@ import type { FC, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CalendarIcon,
+  CheckIcon,
   LayersIcon,
   ListIcon,
   UserIcon,
@@ -94,6 +95,8 @@ const iconoDeModulo = (id: Modulo['id']): ReactNode => {
       return <ShieldIcon />;
     case 'gestionar-usuarios':
       return <ListIcon className="h-5 w-5" />;
+    case 'solicitudes':
+      return <CheckIcon className="h-5 w-5" />;
     case 'periodos':
       return <CalendarIcon className="h-5 w-5" />;
     case 'configuracion':

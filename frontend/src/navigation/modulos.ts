@@ -28,6 +28,7 @@ export const MODULOS: Modulo[] = [
   // Coordinación
   { id: 'dashboard', etiqueta: 'Dashboard', ruta: '/dashboard', seccion: 'Panel', roles: ['admin'] },
   { id: 'reportes', etiqueta: 'Reportes', ruta: '/reportes', seccion: 'Panel', roles: ['admin'] },
+  { id: 'solicitudes', etiqueta: 'Solicitudes de tutor', ruta: '/solicitudes', seccion: 'Panel', roles: ['admin'] },
   { id: 'estudiantes', etiqueta: 'Estudiantes', ruta: '/estudiantes', seccion: 'Usuarios', roles: ['admin'] },
   { id: 'tutores', etiqueta: 'Tutores', ruta: '/tutores', seccion: 'Usuarios', roles: ['admin'] },
   {
