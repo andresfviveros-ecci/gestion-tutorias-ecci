@@ -28,7 +28,7 @@ import { MisHorariosTutor } from './pages/estudiante/MisHorariosTutor';
 import { PostulateComoTutor } from './pages/estudiante/PostulateComoTutor';
 import { MODULOS, normalizarRol, RUTA_INICIO } from './navigation/modulos';
 import { ArrowIcon } from './components/constelacion/Icons';
-import { api } from './api/axios';
+import { usePuedePublicar } from './store/usePermisoTutor';
 import { ConfirmarCierreSesion } from './components/sesion/ConfirmarCierreSesion';
 import { PantallaSesion } from './components/sesion/PantallaSesion';
 
@@ -91,32 +91,6 @@ const AccessDeniedView: React.FC<{ role: UserRole; mensaje?: string }> = ({ role
   );
 };
 
-/**
- * Consulta una sola vez por sesión si el estudiante puede publicar horarios
- * (`puede_publicar` de /accounts/me/). null mientras llega la respuesta.
- */
-const usePuedePublicar = (activo: boolean): boolean | null => {
-  const [puede, setPuede] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (!activo) return;
-    let vigente = true;
-    api
-      .get('/accounts/me/')
-      .then(({ data }) => {
-        if (vigente) setPuede(Boolean(data?.puede_publicar));
-      })
-      .catch(() => {
-        if (vigente) setPuede(false);
-      });
-    return () => {
-      vigente = false;
-    };
-  }, [activo]);
-
-  return activo ? puede : true;
-};
-
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   allowedRoles,
@@ -125,7 +99,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const user = useAuthStore((state) => state.user);
   const location = useLocation();
   const rolActual = user ? normalizarRol(user.role || user.rol) : null;
-  const puedePublicar = usePuedePublicar(soloEstudianteTutor && rolActual === 'estudiante');
+  // Guardado por sesión: al navegar entre estas rutas no se vuelve a esperar.
+  const exigePermiso = soloEstudianteTutor && rolActual === 'estudiante';
+  const permisoGuardado = usePuedePublicar(exigePermiso);
+  const puedePublicar = exigePermiso ? permisoGuardado : true;
 
   const [hasHydrated, setHasHydrated] = useState(() => useAuthStore.persist.hasHydrated());
 
