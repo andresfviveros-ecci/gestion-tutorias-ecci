@@ -79,3 +79,21 @@ export const extraerLista = <T,>(data: unknown): T[] => {
   }
   return [];
 };
+
+/**
+ * Errores por campo de una respuesta 400 del backend:
+ * `{ detail, code, errors: { campo: ["mensaje", ...] } }` → `{ campo: "mensaje" }`.
+ * Solo toma el primer mensaje legible de cada campo.
+ */
+export const erroresPorCampo = (error: unknown): Record<string, string> => {
+  const errors = (error as { response?: { data?: { errors?: unknown } } })?.response?.data?.errors;
+  if (!errors || typeof errors !== 'object') return {};
+
+  const resultado: Record<string, string> = {};
+  for (const [campo, valor] of Object.entries(errors as Record<string, unknown>)) {
+    const lista = Array.isArray(valor) ? valor : [valor];
+    const mensaje = lista.map(textoLegible).find((texto): texto is string => Boolean(texto));
+    if (mensaje) resultado[campo] = mensaje;
+  }
+  return resultado;
+};
