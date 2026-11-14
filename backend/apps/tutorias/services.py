@@ -212,7 +212,7 @@ def cambiar_estado_por_tutor(tutoria, usuario, estado, motivo=None, **datos):
             tutoria.estudiante, 'RESERVA_CONFIRMADA', 'Tutoría confirmada',
             f'{tutoria.bloque.docente.get_full_name()} confirmó la tutoría {tutoria.codigo} del '
             f'{_cuando(tutoria.bloque)}.',
-            tutoria=tutoria,
+            tutoria=tutoria, correo=True,
         )
     return tutoria
 
