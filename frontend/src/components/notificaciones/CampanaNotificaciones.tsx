@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { api } from '../../api/axios';
 import { EmptyState } from '../constelacion/EmptyState';
 import { SegmentedFilter } from '../constelacion/Filters';
@@ -45,6 +46,29 @@ const DESTINO_TUTORIA: Record<UserRole, string> = {
   estudiante: '/estudiante/mis-reservas',
   tutor: '/tutor/dashboard',
   admin: '/dashboard',
+};
+
+/** Avisos sin tutoría que tienen una pantalla propia (postulaciones a tutor). */
+const DESTINO_POR_TIPO: Partial<Record<string, Partial<Record<UserRole, string>>>> = {
+  SOLICITUD_TUTOR: { tutor: '/tutor/solicitudes', admin: '/solicitudes' },
+  HABILITACION: { estudiante: '/estudiante/postularme-tutor' },
+};
+
+/**
+ * El estudiante tutor recibe avisos de sus reservas y de las tutorías que da
+ * en sus horarios. Si la tutoría no es suya como estudiante (la API responde
+ * 404), es una que él atiende y va a Mis tutorías como tutor.
+ */
+const destinoParaEstudiante = async (tutoriaId: number): Promise<string> => {
+  try {
+    await api.get(`/tutorias/tutorias/${tutoriaId}/`);
+    return '/estudiante/mis-reservas';
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return '/estudiante/mis-tutorias-tutor';
+    }
+    return '/estudiante/mis-reservas';
+  }
 };
 
 const paramsDe = (filtro: Filtro, pagina: number) =>
@@ -166,10 +190,21 @@ export const CampanaNotificaciones = () => {
       }
     }
 
-    // Sin tutoría (p. ej. postulaciones) solo se marca como leída.
     if (notificacion.tutoria != null) {
+      const destino =
+        rol === 'estudiante'
+          ? await destinoParaEstudiante(notificacion.tutoria)
+          : DESTINO_TUTORIA[rol];
       setAbierta(false);
-      navigate(DESTINO_TUTORIA[rol]);
+      navigate(destino);
+      return;
+    }
+
+    // Postulaciones a tutor: llevan a su pantalla; el resto solo se marca como leído.
+    const destinoTipo = DESTINO_POR_TIPO[notificacion.tipo]?.[rol];
+    if (destinoTipo) {
+      setAbierta(false);
+      navigate(destinoTipo);
     }
   };
 
