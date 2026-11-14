@@ -23,4 +23,6 @@ urlpatterns = [
     path('api/tutores/', include('apps.tutores.urls')),
     # REPORTES (RF-09)
     path('api/reportes/', include('apps.reportes.urls')),
+    # NOTIFICACIONES DENTRO DE LA APLICACIÓN
+    path('api/notificaciones/', include('apps.notificaciones.urls')),
 ]

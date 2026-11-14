@@ -21,6 +21,7 @@ from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import Group
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.catalogo.models import (
@@ -32,6 +33,7 @@ from apps.catalogo.models import (
     ProgramaAcademico,
 )
 from apps.disponibilidad.models import BloqueDisponibilidad
+from apps.notificaciones.models import Notificacion
 from apps.tutores.models import SolicitudTutor
 from apps.tutores.services import docentes_revisores, evaluar_postulacion
 from apps.tutorias.models import Cancelacion, EvaluacionTutoria, Tutoria
@@ -137,11 +139,12 @@ class Command(BaseCommand):
             bloques = self._bloques(asignaciones, periodo)
             tutorias = self._tutorias(bloques, inscritos)
             solicitudes = self._solicitudes(estudiantes, materias, periodo, anterior, docentes)
+            notificaciones = self._notificaciones()
 
         self.stdout.write(self.style.SUCCESS(
             f'Listo: {len(materias)} materias, {len(coordinadores)} coordinadores, {len(docentes)} docentes, '
-            f'{len(estudiantes)} estudiantes, {len(bloques)} bloques, {tutorias} tutorías '
-            f'y {solicitudes} solicitudes de tutor.'
+            f'{len(estudiantes)} estudiantes, {len(bloques)} bloques, {tutorias} tutorías, '
+            f'{solicitudes} solicitudes de tutor y {notificaciones} notificaciones.'
         ))
         self.stdout.write(f'Contraseña de todos los usuarios: {PASSWORD}')
         self.stdout.write(f'Accesos rápidos: coordinador@{DOMINIO}, docente@{DOMINIO}, estudiante@{DOMINIO}')
@@ -437,6 +440,40 @@ class Command(BaseCommand):
         if tipo < 0.25:  # el tercer corte aún no está registrado
             cortes[2] = None
         return cortes
+
+    def _notificaciones(self):
+        """Avisos de ejemplo para la campana de las cuentas de acceso rápido,
+        sacados de sus tutorías y postulaciones: los dos más recientes sin
+        leer y el resto leídos."""
+        avisos = []
+        for nombre in ('estudiante', 'docente'):
+            usuario = self.User.objects.get(email=f'{nombre}@{DOMINIO}')
+            tutorias = (
+                Tutoria.objects.filter(Q(estudiante=usuario) | Q(bloque__docente=usuario))
+                .select_related('estudiante', 'bloque__materia').order_by('-id')[:4]
+            )
+            for i, tutoria in enumerate(tutorias):
+                if tutoria.estudiante_id == usuario.id:
+                    tipo, titulo = 'RESERVA_CONFIRMADA', 'Tutoría reservada'
+                    mensaje = f'Reservaste la tutoría {tutoria.codigo} de {tutoria.bloque.materia.nombre}.'
+                else:
+                    tipo, titulo = 'NUEVA_RESERVA', 'Nueva reserva'
+                    mensaje = f'{tutoria.estudiante.get_full_name()} reservó la tutoría {tutoria.codigo}.'
+                avisos.append(Notificacion(
+                    usuario=usuario, tutoria=tutoria, tipo=tipo, titulo=titulo, mensaje=mensaje, leida=i >= 2,
+                ))
+
+        coordinador = self.User.objects.get(email=f'coordinador@{DOMINIO}')
+        for i, solicitud in enumerate(SolicitudTutor.objects.filter(estado='PENDIENTE').select_related(
+            'estudiante', 'materia'
+        )[:3]):
+            avisos.append(Notificacion(
+                usuario=coordinador, tipo='SOLICITUD_TUTOR', titulo='Nueva solicitud de tutor',
+                mensaje=f'{solicitud.estudiante.get_full_name()} pidió ser tutor de {solicitud.materia.nombre}.',
+                leida=i >= 2,
+            ))
+        Notificacion.objects.bulk_create(avisos)
+        return len(avisos)
 
     def _bloques_tutor(self, tutor, materia, periodo):
         # RF-01: la tutora estudiante publica dos horarios la semana siguiente.
