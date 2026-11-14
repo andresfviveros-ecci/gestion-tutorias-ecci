@@ -106,11 +106,24 @@ interface RailItemProps {
   disabled?: boolean;
   /** Para "Cerrar sesión". */
   peligro?: boolean;
+  /** Número sobre el icono (p. ej. notificaciones sin leer); 0 o nada no lo muestra. */
+  insignia?: number;
+  /** Nombre accesible si debe decir más que el texto visible (p. ej. el conteo). */
+  ariaLabel?: string;
   children: ReactNode;
 }
 
 /** Entrada del rail: solo icono si está contraído, icono y nombre si está expandido. */
-export const RailItem: FC<RailItemProps> = ({ label, to, onClick, disabled, peligro, children }) => {
+export const RailItem: FC<RailItemProps> = ({
+  label,
+  to,
+  onClick,
+  disabled,
+  peligro,
+  insignia,
+  ariaLabel,
+  children,
+}) => {
   const expandido = useContext(RailContexto);
   const forma = expandido
     ? 'h-10 w-full justify-start gap-3 px-3'
@@ -124,7 +137,17 @@ export const RailItem: FC<RailItemProps> = ({ label, to, onClick, disabled, peli
 
   const contenido = (
     <>
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center">{children}</span>
+      <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
+        {children}
+        {Boolean(insignia) && (
+          <span
+            aria-hidden="true"
+            className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-violeta-accion px-1 text-[9.5px] font-semibold leading-none text-white"
+          >
+            {insignia && insignia > 9 ? '9+' : insignia}
+          </span>
+        )}
+      </span>
       {expandido && (
         <span className="min-w-0 truncate text-[13px] font-medium">
           {label}
@@ -166,7 +189,7 @@ export const RailItem: FC<RailItemProps> = ({ label, to, onClick, disabled, peli
       type="button"
       onClick={onClick}
       title={expandido ? undefined : label}
-      aria-label={label}
+      aria-label={ariaLabel ?? label}
       className={`${base} ${idle}`}
     >
       {contenido}

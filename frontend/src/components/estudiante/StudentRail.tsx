@@ -1,5 +1,6 @@
 import React from "react";
 import { LogoutIcon, RailItem, RailLateral } from "../constelacion/Rail";
+import { CampanaNotificaciones } from "../notificaciones/CampanaNotificaciones";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useTransicionSesion } from "../../store/useTransicionSesion";
 import { usePuedePublicar } from "../../store/usePermisoTutor";
@@ -17,18 +18,6 @@ const SearchIcon: React.FC = () => (
   <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
     <circle cx="9" cy="9" r="5.5" stroke="currentColor" strokeWidth="1.5" />
     <path d="m13.2 13.2 3.3 3.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
-
-const BellIcon: React.FC = () => (
-  <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" aria-hidden="true">
-    <path
-      d="M10 3a4.5 4.5 0 0 0-4.5 4.5v3L4 13.5h12l-1.5-3v-3A4.5 4.5 0 0 0 10 3Z"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinejoin="round"
-    />
-    <path d="M8.2 16a1.9 1.9 0 0 0 3.6 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
   </svg>
 );
 
@@ -118,9 +107,7 @@ export const StudentRail: React.FC = () => {
           <RailItem to="/estudiante/buscar-tutorias" label="Consultar horarios">
             <SearchIcon />
           </RailItem>
-          <RailItem label="Notificaciones" disabled>
-            <BellIcon />
-          </RailItem>
+          <CampanaNotificaciones />
           <RailItem to="/estudiante/mis-reservas" label="Mis reservas">
             <ClockIcon />
           </RailItem>

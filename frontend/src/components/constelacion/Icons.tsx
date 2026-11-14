@@ -118,3 +118,15 @@ export const EyeOffIcon = ({ className }: IconProps) => (
     <path d="M6.6 6.6a2 2 0 0 0 2.8 2.8M2.4 2.4l11.2 11.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
   </svg>
 );
+
+export const BellIcon = ({ className }: IconProps) => (
+  <svg viewBox="0 0 16 16" className={className} fill="none" aria-hidden="true">
+    <path
+      d="M8 2.4a3.6 3.6 0 0 0-3.6 3.6v2.4L3.2 10.8h9.6l-1.2-2.4V6A3.6 3.6 0 0 0 8 2.4Z"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinejoin="round"
+    />
+    <path d="M6.6 12.8a1.5 1.5 0 0 0 2.8 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+  </svg>
+);

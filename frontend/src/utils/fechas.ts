@@ -99,3 +99,24 @@ export const duracionLegible = (minutos: number): string => {
   const textoHoras = `${horas} ${horas === 1 ? 'hora' : 'horas'}`;
   return resto === 0 ? textoHoras : `${textoHoras} ${resto} min`;
 };
+
+/**
+ * Momento relativo de algo que ya pasó (fecha y hora ISO completa):
+ * 'Ahora', 'Hace 5 min', 'Hace 3 h', 'Ayer' o 'Jueves 29'.
+ */
+export const haceCuanto = (isoFechaHora: string, ahora = new Date()): string => {
+  const momento = new Date(isoFechaHora);
+  if (Number.isNaN(momento.getTime())) return '';
+  const minutos = Math.floor((ahora.getTime() - momento.getTime()) / 60_000);
+  if (minutos < 1) return 'Ahora';
+  if (minutos < 60) return `Hace ${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24 && momento.getDate() === ahora.getDate()) return `Hace ${horas} h`;
+  const ayer = new Date(ahora);
+  ayer.setDate(ahora.getDate() - 1);
+  if (momento.toDateString() === ayer.toDateString()) return 'Ayer';
+  const dia = `${momento.getFullYear()}-${String(momento.getMonth() + 1).padStart(2, '0')}-${String(
+    momento.getDate(),
+  ).padStart(2, '0')}`;
+  return diaYNumero(dia);
+};

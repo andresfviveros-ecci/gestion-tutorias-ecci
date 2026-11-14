@@ -1,6 +1,7 @@
 import React from 'react';
 import { CalendarIcon, ClockIcon, ListIcon } from '../constelacion/Icons';
 import { LogoutIcon, RailItem, RailLateral } from '../constelacion/Rail';
+import { CampanaNotificaciones } from '../notificaciones/CampanaNotificaciones';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTransicionSesion } from '../../store/useTransicionSesion';
 
@@ -49,9 +50,12 @@ export const TutorRail: React.FC = () => {
           </>
         }
         abajo={
-          <RailItem onClick={handleLogout} label="Cerrar sesión" peligro>
-            <LogoutIcon />
-          </RailItem>
+          <>
+            <CampanaNotificaciones />
+            <RailItem onClick={handleLogout} label="Cerrar sesión" peligro>
+              <LogoutIcon />
+            </RailItem>
+          </>
         }
       />
 
@@ -71,6 +75,7 @@ export const TutorRail: React.FC = () => {
         <RailItem to="/tutor/calendario" label="Calendario">
           <ClockIcon className="h-5 w-5" />
         </RailItem>
+        <CampanaNotificaciones />
         <RailItem onClick={handleLogout} label="Cerrar sesión" peligro>
           <LogoutIcon />
         </RailItem>
