@@ -169,6 +169,26 @@ class SolicitudesTutorTests(APITestCase):
         self.docente.materias_asignadas.all().delete()
         self.assertEqual(self.revisar(solicitud_id, 'aprobar', usuario=coordinador, motivo='Sin docente asignado.').status_code, 200)
 
+    def test_filtro_sin_docente(self):
+        con_docente_id = self.solicitar().data['id']
+        huerfana = Materia.objects.create(
+            codigo='SIN-DOC', nombre='Materia sin docente', programa=self.materia.programa, semestre=3
+        )
+        sin_docente = SolicitudTutor.objects.create(
+            estudiante=self.estudiante, materia=huerfana, periodo=self.periodo,
+            nota_corte1=Decimal(5), nota_corte2=Decimal(5), nota_corte3=Decimal(5), nota_final=Decimal(5),
+        )
+        coordinador = crear_usuario('Coordinador')
+        self.client.force_authenticate(coordinador)
+        self.assertEqual([s['id'] for s in self.client.get(URL, {'sin_docente': 'true'}).data], [sin_docente.id])
+        self.assertEqual([s['id'] for s in self.client.get(URL, {'sin_docente': 'false'}).data], [con_docente_id])
+        self.assertEqual(len(self.client.get(URL).data), 2)
+
+        # La coordinación decide la que no tiene docente, pero no la otra.
+        motivo = {'motivo': 'Sin docente asignado.'}
+        self.assertEqual(self.revisar(sin_docente.id, 'aprobar', usuario=coordinador, **motivo).status_code, 200)
+        self.assertEqual(self.revisar(con_docente_id, 'aprobar', usuario=coordinador, **motivo).status_code, 403)
+
     def test_quien_ve_que(self):
         self.solicitar()
         otra = crear_usuario('Estudiante')
