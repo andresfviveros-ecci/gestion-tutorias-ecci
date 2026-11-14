@@ -8,6 +8,7 @@ import {
   UsersIcon,
 } from '../constelacion/Icons';
 import { LogoutIcon, RailItem, RailLateral } from '../constelacion/Rail';
+import { CampanaNotificaciones } from '../notificaciones/CampanaNotificaciones';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useTransicionSesion } from '../../store/useTransicionSesion';
 import { modulosVisibles, type Modulo } from '../../navigation/modulos';
@@ -143,6 +144,7 @@ export const AdminRail: FC = () => {
                 {iconoDeModulo(modulo.id)}
               </RailItem>
             ))}
+            <CampanaNotificaciones />
             <RailItem onClick={handleLogout} label="Cerrar sesión" peligro>
               <LogoutIcon />
             </RailItem>
@@ -159,6 +161,7 @@ export const AdminRail: FC = () => {
             {iconoDeModulo(modulo.id)}
           </RailItem>
         ))}
+        <CampanaNotificaciones />
         <RailItem onClick={handleLogout} label="Cerrar sesión" peligro>
           <LogoutIcon />
         </RailItem>
