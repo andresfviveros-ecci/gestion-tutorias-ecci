@@ -37,10 +37,19 @@ def solicitudes_visibles(user):
 
 class SolicitudTutorFilter(filters.FilterSet):
     estudiante = UsuarioFilter(field_name='estudiante_id', help_text='Id del estudiante, o "me".')
+    sin_docente = filters.BooleanFilter(
+        method='filtrar_sin_docente',
+        help_text='true: solo las de materias sin docente en el periodo de la solicitud (las que revisa la '
+                  'coordinación); false: solo las que tienen docente.',
+    )
 
     class Meta:
         model = SolicitudTutor
-        fields = ['estudiante', 'materia', 'periodo', 'estado']
+        fields = ['estudiante', 'materia', 'periodo', 'estado', 'sin_docente']
+
+    def filtrar_sin_docente(self, queryset, name, value):
+        con_docente = Exists(DocenteMateria.objects.filter(materia=OuterRef('materia'), periodo=OuterRef('periodo')))
+        return queryset.exclude(con_docente) if value else queryset.filter(con_docente)
 
 
 @extend_schema(tags=['Tutores'])

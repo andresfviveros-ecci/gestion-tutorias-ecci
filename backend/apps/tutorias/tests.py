@@ -328,7 +328,12 @@ class TutoriasRecibidasTests(APITestCase):
         response = self.cambiar(tutoria, estado='CONFIRMADA')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['estado'], 'CONFIRMADA')
-        self.assertTrue(Notificacion.objects.filter(usuario=self.estudiante, tutoria=tutoria).exists())
+        aviso = Notificacion.objects.get(usuario=self.estudiante, tutoria=tutoria)
+        self.assertEqual(aviso.titulo, 'Tutoría confirmada')
+        # El estudiante también se entera por correo.
+        self.assertTrue(aviso.enviada_email)
+        self.assertEqual([m.to for m in mail.outbox], [[self.estudiante.email]])
+        self.assertEqual(mail.outbox[0].subject, 'Tutoría confirmada')
 
     def test_completar_desde_el_inicio(self):
         tutoria = crear_tutoria(self.pasado, self.estudiante, estado='CONFIRMADA')
